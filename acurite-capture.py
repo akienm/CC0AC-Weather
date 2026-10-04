@@ -275,9 +275,16 @@ def _log_raw(raw_dir: Path, path_and_query: str) -> None:
         f.write(f"{stamp:%Y-%m-%dT%H:%M:%SZ}\t{path_and_query}\n")
 
 
-def _relay(relay_url: str, path_and_query: str) -> tuple[int, str, bytes] | None:
+def _relay(relay_url: str, path_and_query: str, method: str = "GET", body: bytes | None = None,
+           ctype: str | None = None, agent: str | None = None) -> tuple[int, str, bytes] | None:
+    req = urllib.request.Request(relay_url + path_and_query, data=body, method=method)
+    if ctype:
+        req.add_header("Content-Type", ctype)
+    if agent:
+        # AcuRite answers "Invalid checkin data" to anything not calling itself Atlas/<fw>.
+        req.add_header("User-Agent", agent)
     try:
-        with urllib.request.urlopen(relay_url + path_and_query, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=10) as resp:
             return resp.status, resp.headers.get("Content-Type", "application/json"), resp.read()
     except urllib.error.HTTPError as exc:
         # AcuRite answered; hand its answer to the hub exactly as given.
@@ -308,11 +315,14 @@ def _make_hub_handler(cfg: configparser.ConfigParser, write_path: Path, sensors:
             self.end_headers()
             self.wfile.write(body)
 
-        def do_GET(self):
-            _log_raw(raw_dir, self.path)
+        def _handle(self, method: str, body: bytes | None):
+            # The Access sends its readings in the query string; firmware 051 uses POST.
+            _log_raw(raw_dir, f"{method} {self.path}" + (f" {body[:500]!r}" if body else ""))
             parsed = urllib.parse.urlparse(self.path)
             if parsed.path == HUB_UPDATE_PATH:
                 params = dict(urllib.parse.parse_qsl(parsed.query))
+                if body and "form-urlencoded" in self.headers.get("Content-Type", ""):
+                    params.update(urllib.parse.parse_qsl(body.decode(errors="replace")))
                 if hub_id and params.get("id", "").upper() != hub_id:
                     log.warning("HUB reading from unknown id %r not recorded", params.get("id"))
                     self._answer(403, "application/json", b'{"error":"unknown hub"}')
@@ -324,9 +334,17 @@ def _make_hub_handler(cfg: configparser.ConfigParser, write_path: Path, sensors:
                 except Exception as exc:
                     log.error("HUB record failed: %s (query=%s)", exc, parsed.query)
             else:
-                log.info("HUB other path: %s", self.path)
+                log.info("HUB other path: %s %s", method, self.path)
 
-            answer = _relay(relay_url, self.path) if relay_on else None
+            answer = (_relay(relay_url, self.path, method, body, self.headers.get("Content-Type"),
+                             self.headers.get("User-Agent"))
+                      if relay_on else None)
+            if answer is not None and answer[0] >= 300:
+                # AcuRite refused it. Passing the refusal on makes the Access resend the
+                # same reading forever, so log it and answer as if no relay were set.
+                log.warning("Relay: AcuRite answered %d %r; headers sent were %s",
+                            answer[0], answer[2][:200], dict(self.headers))
+                answer = None
             if answer is None:
                 # What the Access accepts when AcuRite is not answering (per acuparse).
                 offset = datetime.now().astimezone().strftime("%z")
@@ -334,12 +352,12 @@ def _make_hub_handler(cfg: configparser.ConfigParser, write_path: Path, sensors:
                           json.dumps({"timezone": f"{offset[:3]}:{offset[3:]}"}).encode())
             self._answer(*answer)
 
+        def do_GET(self):
+            self._handle("GET", None)
+
         def do_POST(self):
             length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(length)
-            _log_raw(raw_dir, f"POST {self.path} {body[:500]!r}")
-            log.info("HUB POST %s (logged, not relayed)", self.path)
-            self._answer(200, "application/json", b'{"success":1}')
+            self._handle("POST", self.rfile.read(length) if length else b"")
 
     return HubHandler
 
