@@ -120,8 +120,9 @@ function load() {
   tag.src = 'current.js?t=' + Date.now();
   tag.onload = () => window.ACURITE_CURRENT && render(window.ACURITE_CURRENT);
   tag.onerror = () => {
+    document.getElementById('written').textContent = 'no readings received yet';
     document.getElementById('error').textContent =
-      'Could not load current.js — it should sit in the same folder as this page.';
+      'current.js is missing. It appears beside this page once the hub has sent its first reading.';
   };
   document.head.appendChild(tag);
 }
