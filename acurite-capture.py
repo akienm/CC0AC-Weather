@@ -2,8 +2,11 @@
 """
 acurite-capture.py — AcuRite weather sensor capture daemon.
 
-Captures AcuRite sensor data via rtl_433, appends readings to weather.csv,
-and optionally uploads to Weather Underground.
+Two sources, either or both:
+  * the AcuRite Access hub: an HTTPS listener the hub reports to, which records
+    each reading and relays it on to AcuRite unchanged ([hub]);
+  * rtl_433 with a USB SDR, decoding the sensors off the air ([capture]).
+Hub readings land in <write_path>/current.json, current.js and history.csv.
 
 Requirements:
     sudo apt install rtl-sdr
@@ -30,14 +33,17 @@ import configparser
 import csv
 import json
 import logging
+import os
+import ssl
 import subprocess
 import sys
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 log = logging.getLogger("acurite")
@@ -184,109 +190,184 @@ def upload_wu(cfg: configparser.ConfigParser, packet: dict) -> None:
         log.warning("WU upload failed: %s", exc)
 
 
-# ── Hub listener (AcuRite Access 09155M) ─────────────────────────────────────
+# ── Hub relay (AcuRite Access 09155M) ────────────────────────────────────────
+#
+# The Access sends one HTTPS GET per sensor reading to the server named on its
+# local page (Server Name, default atlasapi.myacurite.com):
+#   /weatherstation/updateweatherstation?id=<MAC>&mt=<Atlas|tower|...>&sensor=<id>&tempf=...
+# We record the reading, then pass the request on to AcuRite unchanged and hand
+# AcuRite's answer back to the hub, so AcuRite keeps working while we listen.
+# The hub uploads to Weather Underground on its own; nothing here touches that.
 
-# Per-sensor state — merged across the two messages the hub sends per cycle.
-# Maps sensor_id → {field: value}. Written to CSV on each update.
-_hub_state: dict[str, dict] = {}
-_hub_lock = threading.Lock()
+ACCESS_RELAY_URL = "https://atlasapi.myacurite.com"
+HUB_UPDATE_PATH = "/weatherstation/updateweatherstation"
+
+# Hub query keys → our field names. Every key also lands in the raw log.
+HUB_FIELDS = {
+    "tempf": "temp_f", "indoortempf": "temp_f",
+    "humidity": "humidity_pct", "indoorhumidity": "humidity_pct",
+    "dewptf": "dew_point_f", "heatindex": "heat_index_f",
+    "feelslike": "feels_like_f", "windchill": "wind_chill_f",
+    "windspeedmph": "wind_mph", "windspeedavgmph": "wind_avg_mph",
+    "windgustmph": "wind_gust_mph", "winddir": "wind_dir_deg",
+    "windgustdir": "wind_gust_dir_deg",
+    "rainin": "rain_hour_in", "dailyrainin": "rain_day_in",
+    "baromin": "pressure_inhg", "uvindex": "uv_index",
+    "lightintensity": "light_lux", "measured_light_seconds": "light_seconds",
+    "strikecount": "strike_count", "last_strike_distance": "last_strike_mi",
+    "last_strike_ts": "last_strike_ts", "interference": "interference",
+    "sensorbattery": "battery", "rssi": "signal", "hubbattery": "hub_battery",
+}
+HISTORY_FIELDS = ["timestamp", "sensor_id", "sensor_name", "type"] + sorted(set(HUB_FIELDS.values()))
+
+_current: dict[str, dict] = {}
+_current_lock = threading.Lock()
 
 
-def _make_hub_handler(cfg: configparser.ConfigParser, csv_path: Path, sensors: dict):
-    """Return a request handler class closed over the runtime state."""
+def _hub_value(v: str):
+    """Numbers as numbers; anything else (battery 'normal'/'low', timestamps) as text."""
+    try:
+        f = float(v)
+    except ValueError:
+        return v
+    return int(f) if f.is_integer() and "." not in v else f
 
-    atlas_name = cfg.get("hub", "atlas_name", fallback="AcuRite Atlas")
+
+def _write_atomic(path: Path, text: str) -> None:
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def record_hub_reading(params: dict, write_path: Path, sensors: dict) -> dict:
+    """Fold one hub reading into current.json / current.js and append history.csv."""
+    sensor_id = params.get("sensor", "")
+    kind = params.get("mt", "unknown")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    fields = {HUB_FIELDS[k]: _hub_value(v) for k, v in params.items() if k in HUB_FIELDS and v != ""}
+    with _current_lock:
+        entry = _current.setdefault(sensor_id, {"sensor_id": sensor_id, "type": kind, "fields": {}})
+        entry["name"] = sensors.get(sensor_id, entry.get("name") or f"{kind} {sensor_id}")
+        entry["type"] = kind
+        entry["updated"] = now
+        entry["fields"].update(fields)
+        snapshot = {"written": now, "hub": params.get("id", ""), "sensors": list(_current.values())}
+        body = json.dumps(snapshot, indent=1)
+        _write_atomic(write_path / "current.json", body)
+        # current.js lets the dashboard load the data with a <script> tag, which
+        # works from a file:// URL and from any static host without CORS.
+        _write_atomic(write_path / "current.js", f"window.ACURITE_CURRENT = {body};\n")
+        history = write_path / "history.csv"
+        exists = history.exists()
+        with history.open("a", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=HISTORY_FIELDS, extrasaction="ignore")
+            if not exists:
+                w.writeheader()
+            w.writerow({"timestamp": now, "sensor_id": sensor_id,
+                        "sensor_name": entry["name"], "type": kind, **fields})
+    return entry
+
+
+def _log_raw(raw_dir: Path, path_and_query: str) -> None:
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc)
+    with (raw_dir / f"{stamp:%Y-%m-%d}.log").open("a", encoding="utf-8") as f:
+        f.write(f"{stamp:%Y-%m-%dT%H:%M:%SZ}\t{path_and_query}\n")
+
+
+def _relay(relay_url: str, path_and_query: str) -> tuple[int, str, bytes] | None:
+    try:
+        with urllib.request.urlopen(relay_url + path_and_query, timeout=10) as resp:
+            return resp.status, resp.headers.get("Content-Type", "application/json"), resp.read()
+    except urllib.error.HTTPError as exc:
+        # AcuRite answered; hand its answer to the hub exactly as given.
+        return exc.code, exc.headers.get("Content-Type", "application/json"), exc.read()
+    except Exception as exc:
+        log.warning("Relay to %s failed: %s", relay_url, exc)
+        return None
+
+
+def _make_hub_handler(cfg: configparser.ConfigParser, write_path: Path, sensors: dict):
+    relay_on = cfg.getboolean("hub", "relay", fallback=True)
+    relay_url = cfg.get("hub", "relay_url", fallback=ACCESS_RELAY_URL).rstrip("/")
+    raw_dir = Path(cfg.get("hub", "raw_dir", fallback=str(DEFAULT_CONFIG.parent / "hub-raw"))).expanduser()
 
     class HubHandler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
         def log_message(self, fmt, *args):  # silence default access log
             pass
 
-        def _send_json(self, body: dict):
-            data = json.dumps(body).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(data)))
+        def _answer(self, status: int, ctype: str, body: bytes):
+            self.send_response(status)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
             self.end_headers()
-            self.wfile.write(data)
+            self.wfile.write(body)
 
         def do_GET(self):
+            _log_raw(raw_dir, self.path)
             parsed = urllib.parse.urlparse(self.path)
-            params = dict(urllib.parse.parse_qsl(parsed.query))
-
-            if parsed.path == "/weatherstation/updateweatherstation":
-                self._handle_wu(params)
+            if parsed.path == HUB_UPDATE_PATH:
+                params = dict(urllib.parse.parse_qsl(parsed.query))
+                try:
+                    e = record_hub_reading(params, write_path, sensors)
+                    log.info("HUB %s %s %s", e["type"], e["name"],
+                             {k: e["fields"].get(k) for k in ("temp_f", "humidity_pct", "wind_mph") if k in e["fields"]})
+                except Exception as exc:
+                    log.error("HUB record failed: %s (query=%s)", exc, parsed.query)
             else:
-                log.info("HUB unknown path: %s params=%s", parsed.path, params)
-                self._send_json({"success": 1, "checkversion": "224"})
+                log.info("HUB other path: %s", self.path)
+
+            answer = _relay(relay_url, self.path) if relay_on else None
+            if answer is None:
+                # What the Access accepts when AcuRite is not answering (per acuparse).
+                offset = datetime.now().astimezone().strftime("%z")
+                answer = (200, "application/json",
+                          json.dumps({"timezone": f"{offset[:3]}:{offset[3:]}"}).encode())
+            self._answer(*answer)
 
         def do_POST(self):
             length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(length).decode(errors="replace")
-            parsed = urllib.parse.urlparse(self.path)
-            log.info("HUB POST %s body=%s", parsed.path, body[:200])
-            self._send_json({"success": 1, "checkversion": "224"})
-
-        def _handle_wu(self, p: dict):
-            hub_id = p.get("ID", "hub")
-            sensor_id = f"atlas_{hub_id}"
-            sensor_name = sensors.get(sensor_id, atlas_name)
-
-            def _f(key):
-                v = p.get(key)
-                return None if v is None else float(v)
-
-            update = {
-                "sensor_id": sensor_id,
-                "sensor_name": sensor_name,
-                "model": "AcuRite Atlas",
-                "temp_f": _f("tempf"),
-                "humidity_pct": _f("humidity"),
-                "wind_mph": _f("windspeedmph"),
-                "wind_dir_deg": _f("winddir"),
-                "wind_gust_mph": _f("windgustmph"),
-                "rain_in": _f("rainin"),
-                "pressure_inhg": _f("baromin"),
-                "dew_point_f": _f("dewptf"),
-                "uv_index": _f("UV"),
-                "battery_ok": None,
-            }
-
-            with _hub_lock:
-                prev = _hub_state.get(sensor_id, {})
-                merged = {k: (update[k] if update[k] is not None else prev.get(k))
-                          for k in update}
-                _hub_state[sensor_id] = merged
-
-            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            row = {"timestamp": now, **merged}
-            append_csv(csv_path, row)
-            log.info(
-                "HUB atlas sensor=%s temp_f=%s humidity=%s wind_mph=%s",
-                sensor_name,
-                merged.get("temp_f"), merged.get("humidity_pct"), merged.get("wind_mph"),
-            )
-
-            threading.Thread(
-                target=upload_wu, args=(cfg, merged), daemon=True
-            ).start()
-
-            self._send_json({"success": 1, "checkversion": "224"})
+            body = self.rfile.read(length)
+            _log_raw(raw_dir, f"POST {self.path} {body[:500]!r}")
+            log.info("HUB POST %s (logged, not relayed)", self.path)
+            self._answer(200, "application/json", b'{"success":1}')
 
     return HubHandler
 
 
-def run_hub_listener(cfg: configparser.ConfigParser, csv_path: Path, sensors: dict) -> None:
-    port = cfg.getint("hub", "port", fallback=80)
-    handler = _make_hub_handler(cfg, csv_path, sensors)
-    try:
-        server = HTTPServer(("", port), handler)
-    except PermissionError:
-        log.error(
-            "Hub listener: cannot bind port %d — run as root or use port > 1024 "
-            "(set [hub] port = 8080 in config.ini)", port
+def _hub_tls_context(cfg: configparser.ConfigParser) -> ssl.SSLContext:
+    cert_dir = Path(cfg.get("hub", "cert_dir", fallback=str(DEFAULT_CONFIG.parent))).expanduser()
+    crt, key = cert_dir / "hub.crt", cert_dir / "hub.key"
+    if not crt.exists() or not key.exists():
+        log.info("Generating self-signed hub certificate in %s", cert_dir)
+        subprocess.run(
+            ["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "3650",
+             "-subj", "/CN=atlasapi.myacurite.com", "-keyout", str(key), "-out", str(crt)],
+            check=True, capture_output=True,
         )
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    # The Access speaks TLS 1.1; modern OpenSSL refuses that by default.
+    ctx.minimum_version = ssl.TLSVersion.TLSv1
+    ctx.set_ciphers("DEFAULT:@SECLEVEL=0")
+    ctx.load_cert_chain(crt, key)
+    return ctx
+
+
+def run_hub_listener(cfg: configparser.ConfigParser, write_path: Path, sensors: dict) -> None:
+    port = cfg.getint("hub", "port", fallback=443)
+    handler = _make_hub_handler(cfg, write_path, sensors)
+    try:
+        server = ThreadingHTTPServer(("", port), handler)
+    except PermissionError:
+        log.error("Hub listener: cannot bind port %d — run with CAP_NET_BIND_SERVICE "
+                  "(see weather_monitor.service) or use a port above 1024", port)
         return
-    log.info("Hub listener started on port %d", port)
+    if cfg.getboolean("hub", "tls", fallback=True):
+        server.socket = _hub_tls_context(cfg).wrap_socket(server.socket, server_side=True)
+    log.info("Hub listener on port %d (tls=%s, relay=%s)", port,
+             cfg.getboolean("hub", "tls", fallback=True), cfg.getboolean("hub", "relay", fallback=True))
     server.serve_forever()
 
 
@@ -355,11 +436,18 @@ def run_daemon(cfg: configparser.ConfigParser) -> None:
     sensors = sensor_map(cfg)
     whitelist = set(sensors.keys()) if sensors else None
 
+    hub_thread = None
     if cfg.has_section("hub"):
         hub_thread = threading.Thread(
-            target=run_hub_listener, args=(cfg, csv_path, sensors), daemon=True
+            target=run_hub_listener, args=(cfg, write_path, sensors), daemon=True
         )
         hub_thread.start()
+
+    if not cfg.getboolean("capture", "enabled", fallback=False):
+        log.info("Radio capture off ([capture] enabled = false) — hub relay only")
+        if hub_thread:
+            hub_thread.join()
+        return
 
     cmd = rtl433_cmd(cfg)
     log.info("Starting — writing to %s", csv_path)

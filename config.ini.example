@@ -1,11 +1,12 @@
 [device]
-; Local folder where weather.csv (and weather.html) will be written.
+; Folder where current.json, current.js, history.csv (and weather.html) are written.
 ; Sync this folder to your cloud storage — OneDrive, Google Drive, Dropbox, etc.
 ; Share the folder publicly and use that URL to access weather.html.
 write_path = ~/AcuRite
 
 [sensors]
-; Map your sensor IDs to display names.
+; Map your sensor IDs to display names. Hub sensor IDs are listed on the hub's
+; local page (http://<hub IP>/), e.g.  00005358 = Kitchen
 ; Run:  python3 acurite-capture.py --discover
 ; to find your sensor IDs. Then add them here.
 ;
@@ -14,19 +15,25 @@ write_path = ~/AcuRite
 ; 9012 = Roof
 
 [hub]
-; AcuRite Access 09155M hub HTTP listener.
-; Configure your hub to POST to this machine instead of AcuRite's cloud:
-;   1. Install acuparse (https://github.com/acuparse/acuparse) and use its
-;      hub-redirect script, OR point your router's DNS for "atlasapi.myacurite.com"
-;      and "hubapi.myacurite.com" to this machine's IP.
-;   2. Set port = 80 and run as root, or use port = 8080 and forward 80→8080
-;      on your router.
-
-; Port for the hub HTTP listener (80 requires root; use 8080 + port-forward).
-port = 80
-
-; Display name for the AcuRite Atlas outdoor sensor.
-atlas_name = AcuRite Atlas
+; AcuRite Access 09155M hub relay. The hub reports each reading over HTTPS to
+; the "Server Name" on its local page (http://<hub IP>/). Point that at this
+; machine and the daemon records every reading, then passes it on to AcuRite
+; unchanged, so the AcuRite app keeps working. Weather Underground is sent by
+; the hub itself and is untouched.
+;
+;   point the hub here:   curl -d 'ser=<this machine IP>' http://<hub IP>/config.cgi
+;   put it back:          curl -d 'ser=atlasapi.myacurite.com' http://<hub IP>/config.cgi
+;
+; Port 443 needs CAP_NET_BIND_SERVICE (the systemd unit grants it).
+port = 443
+tls = true
+; Pass every reading on to AcuRite and return AcuRite's answer to the hub.
+relay = true
+relay_url = https://atlasapi.myacurite.com
+; Self-signed certificate is generated here on first run.
+; cert_dir = ~/.acurite-free
+; Every raw hub request, one file per day, for re-processing later.
+; raw_dir = ~/.acurite-free/hub-raw
 
 [weather_underground]
 ; Optional — set enabled = true and fill in your WU station credentials.
@@ -35,6 +42,9 @@ enabled = false
 ; station_key = YOUR_WU_STATION_KEY
 
 [capture]
+; Radio capture with a USB SDR and rtl_433. Off unless you have the dongle.
+enabled = false
+
 ; RTL-SDR device index (0 = first dongle found).
 device_index = 0
 
