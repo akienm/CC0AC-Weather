@@ -239,8 +239,11 @@ def _write_atomic(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
-def record_hub_reading(params: dict, write_path: Path, sensors: dict) -> dict:
-    """Fold one hub reading into current.json / current.js and append history.csv."""
+def record_hub_reading(params: dict, write_path: Path, sensors: dict, page: dict | None = None) -> dict:
+    """Fold one hub reading into current.json / current.js and append history.csv.
+
+    page: settings the dashboard reads from the data file (it cannot read
+    config.ini), e.g. {"wu_url": "https://..."}; empty values are left out."""
     sensor_id = params.get("sensor", "")
     kind = params.get("mt", "unknown")
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -251,7 +254,9 @@ def record_hub_reading(params: dict, write_path: Path, sensors: dict) -> dict:
         entry["type"] = kind
         entry["updated"] = now
         entry["fields"].update(fields)
-        snapshot = {"written": now, "hub": params.get("id", ""), "sensors": list(_current.values())}
+        snapshot = {"written": now, "hub": params.get("id", ""),
+                    **{k: v for k, v in (page or {}).items() if v},
+                    "sensors": list(_current.values())}
         body = json.dumps(snapshot, indent=1)
         _write_atomic(write_path / "current.json", body)
         # current.js lets the dashboard load the data with a <script> tag, which
@@ -301,6 +306,10 @@ def _make_hub_handler(cfg: configparser.ConfigParser, write_path: Path, sensors:
     # anything else is relayed but not kept. Matters once 443 faces the internet.
     hub_id = cfg.get("hub", "hub_id", fallback="").strip().upper()
     raw_dir = Path(cfg.get("hub", "raw_dir", fallback=str(DEFAULT_CONFIG.parent / "hub-raw"))).expanduser()
+    # The dashboard shows a Weather Underground pane only when a station is named.
+    station = cfg.get("weather_underground", "station_id", fallback="").strip()
+    page = {"wu_url": cfg.get("weather_underground", "pane_url", fallback="").strip()
+                      or (f"https://www.wunderground.com/dashboard/pws/{station}" if station else "")}
 
     class HubHandler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -328,7 +337,7 @@ def _make_hub_handler(cfg: configparser.ConfigParser, write_path: Path, sensors:
                     self._answer(403, "application/json", b'{"error":"unknown hub"}')
                     return
                 try:
-                    e = record_hub_reading(params, write_path, sensors)
+                    e = record_hub_reading(params, write_path, sensors, page)
                     log.info("HUB %s %s %s", e["type"], e["name"],
                              {k: e["fields"].get(k) for k in ("temp_f", "humidity_pct", "wind_mph") if k in e["fields"]})
                 except Exception as exc:

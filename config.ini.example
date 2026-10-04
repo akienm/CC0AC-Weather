@@ -48,9 +48,15 @@ enabled = false
 port = 12345
 
 [weather_underground]
-; Optional — set enabled = true and fill in your WU station credentials.
-enabled = false
+; station_id alone adds a Weather Underground pane (your station's page:
+; forecast, sun/moon, history) to the bottom of the dashboard. Leave it unset
+; and the pane is not shown. The pane opens WU's station dashboard; pane_url
+; swaps in any other WU page (e.g. your town's page, which has the forecast).
 ; station_id = YOUR_WU_STATION_ID
+; pane_url = https://www.wunderground.com/weather/us/<state>/<town>/YOUR_WU_STATION_ID
+; Uploading to WU from this program: only for the rtl_433 capture path. An
+; Access hub uploads to WU itself, so leave this off with a hub.
+enabled = false
 ; station_key = YOUR_WU_STATION_KEY
 
 [capture]
