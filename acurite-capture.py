@@ -371,6 +371,55 @@ def run_hub_listener(cfg: configparser.ConfigParser, write_path: Path, sensors: 
     server.serve_forever()
 
 
+# ── Web server ───────────────────────────────────────────────────────────────
+#
+# Serves the dashboard and its data, read-only, and nothing else: no directory
+# listing, no other files. The page comes from beside this script (so a repo
+# update shows at once); the data comes from write_path.
+
+PAGES = {"/": "weather.html", "/weather.html": "weather.html"}
+DATA_FILES = {"/current.js": "application/javascript", "/current.json": "application/json",
+              "/history.csv": "text/csv"}
+
+
+def _make_web_handler(write_path: Path):
+    page_dir = Path(__file__).resolve().parent
+
+    class WebHandler(BaseHTTPRequestHandler):
+        def log_message(self, fmt, *args):
+            pass
+
+        def do_GET(self):
+            path = urllib.parse.urlparse(self.path).path
+            if path in PAGES:
+                target, ctype = page_dir / PAGES[path], "text/html; charset=utf-8"
+            elif path in DATA_FILES:
+                target, ctype = write_path / path.lstrip("/"), DATA_FILES[path]
+            else:
+                self.send_error(404)
+                return
+            try:
+                body = target.read_bytes()
+            except FileNotFoundError:
+                self.send_error(404, "No data yet")
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(body)
+
+    return WebHandler
+
+
+def run_web_server(cfg: configparser.ConfigParser, write_path: Path) -> None:
+    port = cfg.getint("web", "port", fallback=12345)
+    server = ThreadingHTTPServer(("", port), _make_web_handler(write_path))
+    log.info("Web server on port %d", port)
+    server.serve_forever()
+
+
 # ── Discover mode ─────────────────────────────────────────────────────────────
 
 def run_discover(cfg: configparser.ConfigParser, duration_s: int = 300) -> None:
@@ -442,6 +491,9 @@ def run_daemon(cfg: configparser.ConfigParser) -> None:
             target=run_hub_listener, args=(cfg, write_path, sensors), daemon=True
         )
         hub_thread.start()
+
+    if cfg.getboolean("web", "enabled", fallback=False):
+        threading.Thread(target=run_web_server, args=(cfg, write_path), daemon=True).start()
 
     if not cfg.getboolean("capture", "enabled", fallback=False):
         log.info("Radio capture off ([capture] enabled = false) — hub relay only")
