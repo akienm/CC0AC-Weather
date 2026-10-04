@@ -334,7 +334,11 @@ def _make_hub_handler(cfg: configparser.ConfigParser, write_path: Path, sensors:
                 except Exception as exc:
                     log.error("HUB record failed: %s (query=%s)", exc, parsed.query)
             else:
-                log.info("HUB other path: %s %s", method, self.path)
+                # Only the upload path is the hub's; with 443 open to the internet,
+                # everything else is scanners and gets nothing, not a relay.
+                log.info("HUB other path refused: %s %s from %s", method, self.path, self.client_address[0])
+                self._answer(404, "text/plain", b"not found")
+                return
 
             answer = (_relay(relay_url, self.path, method, body, self.headers.get("Content-Type"),
                              self.headers.get("User-Agent"))
