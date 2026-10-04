@@ -421,10 +421,15 @@ def _make_web_handler(write_path: Path):
 
 
 def run_web_server(cfg: configparser.ConfigParser, write_path: Path) -> None:
-    port = cfg.getint("web", "port", fallback=12345)
-    server = ThreadingHTTPServer(("", port), _make_web_handler(write_path))
-    log.info("Web server on port %d", port)
-    server.serve_forever()
+    # One or more ports, comma-separated: e.g. "12345, 80" when a router can only
+    # forward 80 to 80 but the inside address should stay easy to remember.
+    ports = [int(p) for p in cfg.get("web", "port", fallback="12345").split(",") if p.strip()]
+    handler = _make_web_handler(write_path)
+    servers = [ThreadingHTTPServer(("", port), handler) for port in ports]
+    for port, server in zip(ports[1:], servers[1:]):
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+    log.info("Web server on port(s) %s", ", ".join(map(str, ports)))
+    servers[0].serve_forever()
 
 
 # ── Discover mode ─────────────────────────────────────────────────────────────
