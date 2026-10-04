@@ -290,6 +290,9 @@ def _relay(relay_url: str, path_and_query: str) -> tuple[int, str, bytes] | None
 def _make_hub_handler(cfg: configparser.ConfigParser, write_path: Path, sensors: dict):
     relay_on = cfg.getboolean("hub", "relay", fallback=True)
     relay_url = cfg.get("hub", "relay_url", fallback=ACCESS_RELAY_URL).rstrip("/")
+    # If set, only readings from this hub (its Device ID / MAC) are recorded;
+    # anything else is relayed but not kept. Matters once 443 faces the internet.
+    hub_id = cfg.get("hub", "hub_id", fallback="").strip().upper()
     raw_dir = Path(cfg.get("hub", "raw_dir", fallback=str(DEFAULT_CONFIG.parent / "hub-raw"))).expanduser()
 
     class HubHandler(BaseHTTPRequestHandler):
@@ -310,6 +313,10 @@ def _make_hub_handler(cfg: configparser.ConfigParser, write_path: Path, sensors:
             parsed = urllib.parse.urlparse(self.path)
             if parsed.path == HUB_UPDATE_PATH:
                 params = dict(urllib.parse.parse_qsl(parsed.query))
+                if hub_id and params.get("id", "").upper() != hub_id:
+                    log.warning("HUB reading from unknown id %r not recorded", params.get("id"))
+                    self._answer(403, "application/json", b'{"error":"unknown hub"}')
+                    return
                 try:
                     e = record_hub_reading(params, write_path, sensors)
                     log.info("HUB %s %s %s", e["type"], e["name"],

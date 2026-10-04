@@ -30,6 +30,9 @@ tls = true
 ; Pass every reading on to AcuRite and return AcuRite's answer to the hub.
 relay = true
 relay_url = https://atlasapi.myacurite.com
+; Only record readings from this hub (Device ID on its local page). Set it if
+; port 443 is reachable from outside.
+; hub_id = 24C86E0B2179
 ; Self-signed certificate is generated here on first run.
 ; cert_dir = ~/.acurite-free
 ; Every raw hub request, one file per day, for re-processing later.
