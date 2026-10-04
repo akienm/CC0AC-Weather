@@ -30,6 +30,10 @@
   .row { display: flex; justify-content: space-between; border-bottom: 1px dotted var(--border); padding: 2px 0; }
   .row span:first-child { color: var(--muted); }
   .low { color: var(--warn); }
+  .wu { margin-top: 16px; background: var(--surface); border: 1px solid var(--border); }
+  .wu .name { padding: 14px 14px 0; }
+  .wu a { color: var(--accent); }
+  .wu iframe { display: block; width: 100%; height: 1400px; border: 0; background: #fff; }
   #error { color: var(--warn); margin-top: 16px; white-space: pre-wrap; }
 </style>
 </head>
@@ -39,11 +43,22 @@
 <div class="grid" id="grid"></div>
 <div id="error"></div>
 
+<!-- Forecast, sunrise/moon, history and the rest: our station's own page on
+     Weather Underground, which the hub uploads to directly. -->
+<div class="wu">
+  <div class="name"><span>Forecast &amp; more · Weather Underground</span>
+    <a id="wu-link" target="_blank" rel="noopener">open ↗</a></div>
+  <iframe id="wu-frame" loading="lazy" title="Weather Underground station page"></iframe>
+</div>
+
 <script>
 // Data arrives as current.js (window.ACURITE_CURRENT = {...}), written beside this
 // page by acurite-capture.py. A <script> tag can load it from a file:// URL or any
 // static host, where fetch() would be blocked.
 const REFRESH_SECONDS = 30;
+const WU_STATION_URL = 'https://www.wunderground.com/weather/us/nm/silver-city/KNMSILVE90';
+document.getElementById('wu-link').href = WU_STATION_URL;
+document.getElementById('wu-frame').src = WU_STATION_URL;
 const STALE_MINUTES = 10;
 
 const CARDINALS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
