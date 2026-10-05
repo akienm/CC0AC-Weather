@@ -393,17 +393,41 @@ def _hub_tls_context(cfg: configparser.ConfigParser) -> ssl.SSLContext:
     return ctx
 
 
+class _HubServer(ThreadingHTTPServer):
+    """Does the TLS handshake in each connection's own thread, under a timeout.
+
+    Wrapping the listening socket instead puts the handshake inside accept(),
+    in the one serving thread: a single client that connects and says nothing
+    stalls every connection after it. Internet scanners do exactly that, and
+    the hub went unheard for an hour (2026-10-04).
+    """
+    request_queue_size = 64
+    tls_context = None
+
+    def finish_request(self, request, client_address):
+        request.settimeout(CONNECTION_TIMEOUT)
+        if self.tls_context is not None:
+            request = self.tls_context.wrap_socket(request, server_side=True)
+        super().finish_request(request, client_address)
+
+    def handle_error(self, request, client_address):
+        log.debug("Hub connection from %s dropped: %s", client_address[0], sys.exc_info()[1])
+
+
+CONNECTION_TIMEOUT = 15  # seconds a client may stall before its connection is dropped
+
+
 def run_hub_listener(cfg: configparser.ConfigParser, write_path: Path, sensors: dict) -> None:
     port = cfg.getint("hub", "port", fallback=443)
     handler = _make_hub_handler(cfg, write_path, sensors)
     try:
-        server = ThreadingHTTPServer(("", port), handler)
+        server = _HubServer(("", port), handler)
     except PermissionError:
         log.error("Hub listener: cannot bind port %d — run with CAP_NET_BIND_SERVICE "
                   "(see weather_monitor.service) or use a port above 1024", port)
         return
     if cfg.getboolean("hub", "tls", fallback=True):
-        server.socket = _hub_tls_context(cfg).wrap_socket(server.socket, server_side=True)
+        server.tls_context = _hub_tls_context(cfg)
     log.info("Hub listener on port %d (tls=%s, relay=%s)", port,
              cfg.getboolean("hub", "tls", fallback=True), cfg.getboolean("hub", "relay", fallback=True))
     server.serve_forever()
