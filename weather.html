@@ -40,6 +40,7 @@
   .wu iframe { display: block; width: 100%; height: 1400px; border: 0; background: #fff; }
   #error { color: var(--warn); margin-top: 16px; white-space: pre-wrap; }
   .card { min-width: 0; }
+  .pane { display: contents; }
   .hour .ts, .name .ts, .days .ts { margin-bottom: 0; }
   .hours { display: flex; overflow-x: auto; gap: 2px; padding-bottom: 6px; }
   .hour { flex: 0 0 64px; text-align: center; padding: 6px 0; border-right: 1px dotted var(--border); }
@@ -71,7 +72,13 @@
 <h1>CC0AC Weather</h1>
 <div class="ts" id="written">waiting for data…</div>
 <div id="alerts"></div>
-<div class="grid" id="grid"></div>
+<div class="grid" id="grid">
+  <div class="pane" id="p-outdoor"></div>
+  <div class="pane" id="p-hourly"></div>
+  <div class="pane" id="p-daily"></div>
+  <div class="pane" id="p-sky"></div>
+  <div class="pane" id="p-rooms"></div>
+</div>
 <div id="error"></div>
 
 <!-- Forecast, history and the rest: the station's own page on
@@ -87,8 +94,18 @@
 // Data arrives as current.js (window.ACURITE_CURRENT = {...}), written beside this
 // page by acurite-capture.py. A <script> tag can load it from a file:// URL or any
 // static host, where fetch() would be blocked.
-const REFRESH_SECONDS = 30;
+//
+// Each pane keeps its own clock and redraws only when its own data changed, so a
+// swiped hourly strip or an open day stays put until there is news:
+//   outdoor + rooms  current.js, reloaded just after the hub's next post is due
+//   hourly, 7 days   forecast.js, redrawn when a new forecast is issued
+//   alerts, airport  forecast.js, polled every FORECAST_POLL_SECONDS
+// The "… ago" labels tick once a minute on their own, without a redraw.
 const STALE_MINUTES = 10;
+const HUB_EVERY_SECONDS = 300;        // first guess; learned from the data as posts arrive
+const AFTER_DUE_SECONDS = 10;         // the file lands a few seconds after the hub posts
+const LATE_RETRY_SECONDS = 60;        // a post that is late is looked for once a minute
+const FORECAST_POLL_SECONDS = 600;    // the program fetches alerts every 10 minutes
 
 const CARDINALS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
 const card = d => CARDINALS[Math.round(Number(d) / 22.5) % 16];
@@ -122,10 +139,9 @@ let showHours = 24;
 function partAge(fc, part, iso) {
   const err = fc.errors && fc.errors[part];
   if (!iso && !err) return '';
-  const a = iso ? age(iso) : null;
-  const text = a ? `issued ${a.text}` : '';
-  return err ? `<span class="stale" title="${err.replace(/"/g, '&quot;')}">${text} · last fetch failed</span>`
-             : `<span class="ts">${text}</span>`;
+  const issued = iso ? ageSpan(iso, 'issued ', err ? 0 : Infinity) : '';
+  return err ? `<span class="stale" title="${err.replace(/"/g, '&quot;')}">${issued} · last fetch failed</span>`
+             : issued;
 }
 
 function hourlyCard(fc, moonEmoji) {
@@ -147,7 +163,7 @@ function hourlyCard(fc, moonEmoji) {
       <div class="ts">${w}</div>
     </div>`;
   }).join('');
-  const toggle = `<button class="more" onclick="showHours = showHours === 24 ? 48 : 24; renderAll()">${showHours === 24 ? '48 h' : '24 h'}</button>`;
+  const toggle = `<button class="more" onclick="showHours = showHours === 24 ? 48 : 24; drawForecast()">${showHours === 24 ? '48 h' : '24 h'}</button>`;
   return `<div class="card outdoor">
     <div class="name"><span>Hourly ${toggle}</span>${partAge(fc, 'forecast', fc.hourly.updated)}</div>
     <div class="hours">${cells}</div>
@@ -171,8 +187,7 @@ function dailyCard(fc, moonEmoji) {
     const name = d.day ? d.day.name : d.night.name;
     const detail = [d.day, d.night].filter(Boolean)
       .map(p => `<p><b>${p.name}:</b> ${p.detail}</p>`).join('');
-    const open = (window.OPEN_DAYS || []).includes(name) ? ' open' : '';
-    return `<details${open}><summary>
+    return `<details><summary>
       <span>${name}</span>
       <span class="e">${skyEmoji(lead.sky, !!d.day, moonEmoji)}</span>
       <span>${hi}${hi && lo ? ' / ' : ''}<span class="ts">${lo}</span></span>
@@ -195,7 +210,7 @@ function observationRows(fc) {
   const clouds = (o.clouds || []).map(c =>
     `${CLOUD_WORDS[c.amount] || c.amount}${c.base_ft != null ? ` at ${(Math.round(c.base_ft / 100) * 100).toLocaleString()} ft` : ''}`
   ).join(', ') || (o.sky ? '—' : '—');
-  const where = `${o.name || o.station}, ${o.distance_mi} mi away · ${o.time ? age(o.time).text : ''}`;
+  const where = `${o.name || o.station}, ${o.distance_mi} mi away · ${o.time ? ageSpan(o.time, '', Infinity) : ''}`;
   return `${row('👁️ Visibility', o.visibility_mi == null ? '—' : `${o.visibility_mi} mi`)}
       ${row('🌥️ Sky', o.sky || '—')}
       ${row('☁️ Clouds', clouds)}
@@ -311,6 +326,22 @@ function age(iso) {
   return { text, stale: mins > STALE_MINUTES };
 }
 
+// An age label that the minute ticker keeps current. staleMin: when it turns red
+// (0 = always, Infinity = never).
+function ageSpan(iso, prefix = '', staleMin = STALE_MINUTES) {
+  const a = age(iso), mins = (Date.now() - new Date(iso).getTime()) / 60000;
+  return `<span class="${mins > staleMin ? 'stale' : 'ts'}" data-age="${iso}" data-prefix="${prefix}"
+    data-stale="${staleMin}">${prefix}${a.text}</span>`;
+}
+
+function tickAges() {
+  for (const el of document.querySelectorAll('[data-age]')) {
+    const iso = el.dataset.age, mins = (Date.now() - new Date(iso).getTime()) / 60000;
+    el.textContent = el.dataset.prefix + age(iso).text;
+    el.className = mins > Number(el.dataset.stale) ? 'stale' : 'ts';
+  }
+}
+
 function row(label, value) {
   return value.includes('—') ? '' : `<div class="row"><span>${label}</span><span>${value}</span></div>`;
 }
@@ -327,10 +358,10 @@ function wind(f) {
 }
 
 function outdoorCard(s, data, sk) {
-  const f = s.fields, a = age(s.updated);
+  const f = s.fields;
   const icon = sk ? (sk.up ? '☀️' : sk.moon.emoji) + ' ' : '';
   return `<div class="card outdoor">
-    <div class="name"><span>${s.name}</span><span class="${a.stale ? 'stale' : 'ts'}">${a.text}</span></div>
+    <div class="name"><span>${s.name}</span>${ageSpan(s.updated)}</div>
     <div class="big">${icon}${num(f.temp_f)}°<small>F</small></div>
     <div class="rows">
       ${row('🌡️ Feels like', num(f.feels_like_f) + '°')}
@@ -351,9 +382,9 @@ function outdoorCard(s, data, sk) {
 }
 
 function sensorCard(s) {
-  const f = s.fields, a = age(s.updated);
+  const f = s.fields;
   return `<div class="card">
-    <div class="name"><span>${s.name}</span><span class="${a.stale ? 'stale' : 'ts'}">${a.text}</span></div>
+    <div class="name"><span>${s.name}</span>${ageSpan(s.updated)}</div>
     <div class="big">${num(f.temp_f)}°<small>F</small></div>
     <div class="rows">
       ${row('💧 Humidity', num(f.humidity_pct, 0) + '%')}
@@ -371,64 +402,118 @@ function showWu(url) {
   pane.style.display = 'block';
 }
 
-function renderAll() {
-  if (window.ACURITE_CURRENT) render(window.ACURITE_CURRENT);
+// ── Panes ────────────────────────────────────────────────────────────────────
+//
+// A pane redraws only when the key of what it shows changed. A redraw keeps the
+// hourly strip's scroll position and which days are open.
+
+const drawn = {};
+
+function pane(id, key, html) {
+  if (drawn[id] === key) return;
+  drawn[id] = key;
+  const box = document.getElementById(id);
+  const strip = box.querySelector('.hours');
+  const scroll = strip ? strip.scrollLeft : 0;
+  const open = [...box.querySelectorAll('details[open] summary span:first-child')].map(e => e.textContent);
+  box.innerHTML = html;
+  const after = box.querySelector('.hours');
+  if (after) after.scrollLeft = scroll;
+  for (const d of box.querySelectorAll('details'))
+    if (open.includes(d.querySelector('summary span:first-child')?.textContent)) d.open = true;
 }
 
-function render(data) {
+const OUTDOOR = ['Atlas', 'Iris', '5N1'];
+
+function drawCurrent() {
+  const data = window.ACURITE_CURRENT;
+  if (!data) return;
   showWu(data.wu_url);
-  const outdoor = ['Atlas', 'Iris', '5N1'];
-  const sensors = [...data.sensors].sort((x, y) =>
-    (outdoor.includes(y.type) - outdoor.includes(x.type)) || x.name.localeCompare(y.name));
   const sk = sky(data.station);
-  const cards = sensors.map(s => outdoor.includes(s.type) ? outdoorCard(s, data, sk) : sensorCard(s));
-  // The sun & moon card follows the outdoor card(s), before the rooms.
-  // Then the forecast, hourly first, then the days, then the sun & moon card.
-  const fc = window.ACURITE_FORECAST || {};
-  const moonEmoji = sk ? sk.moon.emoji : null;
-  cards.splice(sensors.filter(s => outdoor.includes(s.type)).length, 0,
-               hourlyCard(fc, moonEmoji), dailyCard(fc, moonEmoji), skyCard(data.station, sk));
-  renderAlerts(fc);
-  document.getElementById('grid').innerHTML = cards.join('');
-  const a = age(data.written);
+  const sensors = [...data.sensors].sort((x, y) => x.name.localeCompare(y.name));
+  pane('p-outdoor', data.written,
+       sensors.filter(s => OUTDOOR.includes(s.type)).map(s => outdoorCard(s, data, sk)).join(''));
+  pane('p-rooms', data.written,
+       sensors.filter(s => !OUTDOOR.includes(s.type)).map(sensorCard).join(''));
   const w = document.getElementById('written');
-  w.textContent = `updated ${a.text} · ${new Date(data.written).toLocaleString()}`;
-  w.className = 'ts' + (a.stale ? ' stale' : '');
+  w.innerHTML = `${ageSpan(data.written, 'updated ')} · ${new Date(data.written).toLocaleString()}`;
   document.getElementById('error').textContent = '';
+  drawForecast();
 }
 
-function loadForecast() {
-  const old = document.getElementById('forecast');
+function drawForecast() {
+  const data = window.ACURITE_CURRENT, fc = window.ACURITE_FORECAST || {};
+  const sk = data ? sky(data.station) : null;
+  const moonEmoji = sk ? sk.moon.emoji : null;
+  const err = fc.errors || {};
+  // Hours that have passed drop off the strip, so the first hour shown is in its key.
+  const now = Date.now();
+  const first = fc.hourly && fc.hourly.periods.find(h => new Date(h.start).getTime() + 3600000 > now);
+  pane('p-hourly', [fc.hourly?.updated, err.forecast, first?.start, showHours, moonEmoji].join('|'),
+       hourlyCard(fc, moonEmoji));
+  pane('p-daily', [fc.daily?.updated, err.forecast, moonEmoji].join('|'), dailyCard(fc, moonEmoji));
+  // Sun & moon move slowly; a ten-minute bucket redraws it often enough.
+  if (data) pane('p-sky', [JSON.stringify(fc.observation), err.observation, Math.floor(now / 600000)].join('|'),
+                 skyCard(data.station, sk));
+  const alerts = JSON.stringify(fc.alerts || []);
+  if (drawn.alerts !== alerts) { drawn.alerts = alerts; renderAlerts(fc); }
+}
+
+// ── Loading ──────────────────────────────────────────────────────────────────
+
+function loadScript(id, src, onload, onerror) {
+  const old = document.getElementById(id);
   if (old) old.remove();
   const tag = document.createElement('script');
-  tag.id = 'forecast';
-  tag.src = 'forecast.js?t=' + Date.now();
-  tag.onload = renderAll;           // missing forecast.js is fine: the panes stay away
+  tag.id = id;
+  tag.src = src + '?t=' + Date.now();
+  tag.onload = onload;
+  tag.onerror = onerror;
   document.head.appendChild(tag);
 }
 
-function load() {
-  // Keep any open day open across the refresh.
-  const open = [...document.querySelectorAll('.days details[open] summary span:first-child')].map(e => e.textContent);
-  window.OPEN_DAYS = open;
-  const old = document.getElementById('data');
-  if (old) old.remove();
-  const tag = document.createElement('script');
-  tag.id = 'data';
-  tag.src = 'current.js?t=' + Date.now();
-  tag.onload = () => window.ACURITE_CURRENT && render(window.ACURITE_CURRENT);
-  tag.onerror = () => {
+// The hub posts on its own clock. Learn the gap between posts, then come back just
+// after the next one is due; a late post is looked for once a minute.
+let lastWritten = null, hubEvery = HUB_EVERY_SECONDS, currentTimer = null;
+
+function scheduleCurrent(seconds) {
+  clearTimeout(currentTimer);
+  currentTimer = setTimeout(loadCurrent, Math.max(seconds, 5) * 1000);
+}
+
+function loadCurrent() {
+  loadScript('data', 'current.js', () => {
+    const data = window.ACURITE_CURRENT;
+    if (!data) return scheduleCurrent(LATE_RETRY_SECONDS);
+    const written = new Date(data.written).getTime();
+    if (lastWritten && written > lastWritten) {
+      const gap = (written - lastWritten) / 1000;
+      if (gap > 30 && gap < 3600) hubEvery = gap;     // ignore a restart's burst and long outages
+    }
+    lastWritten = written;
+    drawCurrent();
+    const due = (written + hubEvery * 1000 - Date.now()) / 1000 + AFTER_DUE_SECONDS;
+    scheduleCurrent(due > 0 ? due : LATE_RETRY_SECONDS);
+  }, () => {
     document.getElementById('written').textContent = 'no readings received yet';
     document.getElementById('error').textContent =
       'current.js is missing. It appears beside this page once the hub has sent its first reading.';
-  };
-  document.head.appendChild(tag);
+    scheduleCurrent(LATE_RETRY_SECONDS);
+  });
 }
 
-load();
+// Missing forecast.js is fine: the forecast panes stay away.
+const loadForecast = () => loadScript('forecast', 'forecast.js', drawForecast);
+
+// A phone that slept, or a tab left in the background, catches up when looked at.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') { loadCurrent(); loadForecast(); }
+});
+
+loadCurrent();
 loadForecast();
-setInterval(load, REFRESH_SECONDS * 1000);
-setInterval(loadForecast, 5 * 60 * 1000);
+setInterval(loadForecast, FORECAST_POLL_SECONDS * 1000);
+setInterval(() => { tickAges(); drawForecast(); }, 60 * 1000);
 </script>
 </body>
 </html>
