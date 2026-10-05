@@ -47,6 +47,15 @@ relay_url = https://atlasapi.myacurite.com
 enabled = false
 port = 12345
 
+[station]
+; Where the station is. With latitude and longitude set, the dashboard shows
+; sunrise, sunset, day length and the moon phase, all computed in the page with
+; no outside service. Degrees, north and east positive (west is negative).
+; elevation_ft is shown on the card.
+; latitude = 32.0
+; longitude = -108.0
+; elevation_ft = 6000
+
 [weather_underground]
 ; station_id alone adds a Weather Underground pane (your station's page:
 ; forecast, sun/moon, history) to the bottom of the dashboard. Leave it unset

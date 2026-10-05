@@ -26,10 +26,14 @@
   .name { color: var(--accent); font-size: 13px; margin-bottom: 8px; display: flex; justify-content: space-between; gap: 8px; }
   .big { font-size: 44px; line-height: 1.1; }
   .big small { font-size: 18px; color: var(--muted); }
-  .rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 16px; margin-top: 10px; }
+  .rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 4px 20px; margin-top: 10px; }
   .row { display: flex; justify-content: space-between; border-bottom: 1px dotted var(--border); padding: 2px 0; }
-  .row span:first-child { color: var(--muted); }
+  .row span:first-child { color: var(--muted); white-space: nowrap; margin-right: 12px; }
+  .row span:last-child { text-align: right; }
   .low { color: var(--warn); }
+  .arrow { display: inline-block; font-size: 16px; line-height: 1; }
+  .sky { display: flex; align-items: center; gap: 16px; }
+  .sky .moon { font-size: 56px; line-height: 1; }
   .wu { display: none; margin-top: 16px; background: var(--surface); border: 1px solid var(--border); }
   .wu .name { padding: 14px 14px 0; }
   .wu a { color: var(--accent); }
@@ -43,7 +47,7 @@
 <div class="grid" id="grid"></div>
 <div id="error"></div>
 
-<!-- Forecast, sunrise/moon, history and the rest: the station's own page on
+<!-- Forecast, history and the rest: the station's own page on
      Weather Underground. Shown only when the data file names a station
      ([weather_underground] station_id in config.ini). -->
 <div class="wu">
@@ -62,6 +66,97 @@ const STALE_MINUTES = 10;
 const CARDINALS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
 const card = d => CARDINALS[Math.round(Number(d) / 22.5) % 16];
 const num = (v, places = 1) => v == null || v === '' ? '—' : Number(v).toFixed(places);
+const clock = d => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+// ── Sun and moon, computed here from the station's position: no outside service.
+// Sunrise equation (as in NOAA's simplified solar calculator), good to a minute or
+// two; the moon is its mean phase, good to about half a day.
+const RAD = Math.PI / 180;
+const sin = d => Math.sin(d * RAD), cos = d => Math.cos(d * RAD);
+
+function sunTimes(day, lat, lon) {
+  const noon = new Date(day); noon.setHours(12, 0, 0, 0);
+  const n = Math.round(noon.getTime() / 86400000 + 2440587.5 - 2451545.0);
+  const j = n - lon / 360;
+  const m = (357.5291 + 0.98560028 * j) % 360;
+  const l = (m + 1.9148 * sin(m) + 0.02 * sin(2 * m) + 0.0003 * sin(3 * m) + 282.9372) % 360;
+  const transit = 2451545 + j + 0.0053 * sin(m) - 0.0069 * sin(2 * l);
+  const sinDec = sin(l) * sin(23.4397);
+  const cosDec = Math.sqrt(1 - sinDec * sinDec);
+  // -0.833° is the standard horizon (refraction + the sun's radius), as published
+  // tables use. No elevation dip: that correction is for height above the
+  // surrounding land, and a town at 6,000 ft sits on land at 6,000 ft.
+  const cosW = (sin(-0.833) - sin(lat) * sinDec) / (cos(lat) * cosDec);
+  const toDate = jd => new Date((jd - 2440587.5) * 86400000);
+  if (cosW > 1) return { polar: 'night' };
+  if (cosW < -1) return { polar: 'day' };
+  const w = Math.acos(cosW) / RAD / 360;
+  return { rise: toDate(transit - w), set: toDate(transit + w) };
+}
+
+const SYNODIC = 29.530588853;
+const MOONS = [['🌑', 'New moon'], ['🌒', 'Waxing crescent'], ['🌓', 'First quarter'],
+  ['🌔', 'Waxing gibbous'], ['🌕', 'Full moon'], ['🌖', 'Waning gibbous'],
+  ['🌗', 'Last quarter'], ['🌘', 'Waning crescent']];
+
+function moon(now) {
+  const days = now.getTime() / 86400000 - Date.UTC(2000, 0, 6, 18, 14) / 86400000;
+  const frac = ((days % SYNODIC) + SYNODIC) % SYNODIC / SYNODIC;
+  const [emoji, name] = MOONS[Math.floor(frac * 8 + 0.5) % 8];
+  return { emoji, name, lit: (1 - Math.cos(2 * Math.PI * frac)) / 2,
+           toFull: ((1.5 - frac) % 1) * SYNODIC, toNew: (1 - frac) * SYNODIC };
+}
+
+function sky(station) {
+  if (!station || station.latitude == null) return null;
+  const now = new Date(), sun = sunTimes(now, station.latitude, station.longitude);
+  const up = sun.polar ? sun.polar === 'day' : now >= sun.rise && now < sun.set;
+  return { sun, up, moon: moon(now) };
+}
+
+function skyCard(station, s) {
+  if (!s) return '';
+  const { sun, moon: mo } = s;
+  const length = sun.polar ? '—' : (() => {
+    const mins = Math.round((sun.set - sun.rise) / 60000);
+    return `${Math.floor(mins / 60)} h ${mins % 60} min`;
+  })();
+  const days = d => d < 1.5 ? 'about a day' : `about ${Math.round(d)} days`;
+  const ns = (v, p, n) => `${Math.abs(v).toFixed(3)}° ${v >= 0 ? p : n}`;
+  return `<div class="card outdoor">
+    <div class="name"><span>Sun &amp; moon</span><span class="ts">${s.up ? '☀️ sun is up' : '🌙 sun is down'}</span></div>
+    <div class="sky">
+      <div class="moon">${mo.emoji}</div>
+      <div>${mo.name} · ${Math.round(mo.lit * 100)}% lit<br>
+        <span class="ts">full moon in ${days(mo.toFull)} · new moon in ${days(mo.toNew)}</span></div>
+    </div>
+    <div class="rows">
+      ${row('🌅 Sunrise', sun.polar ? (sun.polar === 'day' ? 'sun stays up' : 'sun stays down') : clock(sun.rise))}
+      ${row('🌇 Sunset', sun.polar ? '—' : clock(sun.set))}
+      ${row('⏳ Daylight', length)}
+      ${row('📍 Latitude', ns(station.latitude, 'N', 'S'))}
+      ${row('📍 Longitude', ns(station.longitude, 'E', 'W'))}
+      ${row('⛰️ Elevation', station.elevation_ft == null ? '—' : `${Math.round(station.elevation_ft).toLocaleString()} ft`)}
+    </div>
+  </div>`;
+}
+
+// Wind: the arrow points the way the wind is blowing; the text says where it comes from.
+const windArrow = deg => `<span class="arrow" style="transform: rotate(${Number(deg)}deg)">↓</span>`;
+
+function uvLevel(v) {
+  if (v == null || v === '') return '—';
+  const n = Number(v);
+  const word = n < 3 ? 'low' : n < 6 ? 'moderate' : n < 8 ? 'high' : n < 11 ? 'very high' : 'extreme';
+  return `${n.toFixed(0)} ${word}`;
+}
+
+// Forecasters call a 3-hour change under 0.02 inHg steady.
+function trend(change) {
+  if (change == null) return '';
+  const c = Number(change);
+  return Math.abs(c) < 0.02 ? ' → steady' : c > 0 ? ` ↗ +${c.toFixed(2)}` : ` ↘ ${c.toFixed(2)}`;
+}
 
 function age(iso) {
   const mins = (Date.now() - new Date(iso).getTime()) / 60000;
@@ -76,27 +171,34 @@ function row(label, value) {
 
 function battery(f) {
   return f.battery && String(f.battery).toLowerCase() !== 'normal'
-    ? `<span class="low">battery ${f.battery}</span>` : '';
+    ? `<span class="low">🪫 battery ${f.battery}</span>` : '';
 }
 
-function outdoorCard(s) {
+function wind(f) {
+  if (f.wind_mph == null) return '—';
+  const speed = num(f.wind_avg_mph ?? f.wind_mph);
+  return f.wind_dir_deg == null ? `${speed} mph` : `${speed} mph from ${card(f.wind_dir_deg)} ${windArrow(f.wind_dir_deg)}`;
+}
+
+function outdoorCard(s, data, sk) {
   const f = s.fields, a = age(s.updated);
+  const icon = sk ? (sk.up ? '☀️' : sk.moon.emoji) + ' ' : '';
   return `<div class="card outdoor">
     <div class="name"><span>${s.name}</span><span class="${a.stale ? 'stale' : 'ts'}">${a.text}</span></div>
-    <div class="big">${num(f.temp_f)}°<small>F</small></div>
+    <div class="big">${icon}${num(f.temp_f)}°<small>F</small></div>
     <div class="rows">
-      ${row('Feels like', num(f.feels_like_f) + '°')}
-      ${row('Humidity', num(f.humidity_pct, 0) + '%')}
-      ${row('Dew point', num(f.dew_point_f) + '°')}
-      ${row('Wind', f.wind_mph == null ? '—' : `${num(f.wind_avg_mph ?? f.wind_mph)} mph ${f.wind_dir_deg != null ? card(f.wind_dir_deg) : ''}`)}
-      ${row('Gust', num(f.wind_gust_mph) + ' mph')}
-      ${row('Pressure', num(f.pressure_inhg, 2) + ' inHg')}
-      ${row('Rain today', num(f.rain_day_in, 2) + ' in')}
-      ${row('Rain rate', num(f.rain_hour_in, 2) + ' in/h')}
-      ${row('UV index', num(f.uv_index, 0))}
-      ${row('Light', num(f.light_lux, 0) + ' lux')}
-      ${row('Lightning', f.strike_count == null ? '—' : `${f.strike_count} strikes`)}
-      ${row('Last strike', f.last_strike_mi == null ? '—' : `${f.last_strike_mi} mi`)}
+      ${row('🌡️ Feels like', num(f.feels_like_f) + '°')}
+      ${row('💧 Humidity', num(f.humidity_pct, 0) + '%')}
+      ${row('🌫️ Dew point', num(f.dew_point_f) + '°')}
+      ${row('💨 Wind', wind(f))}
+      ${row('🌬️ Gust', num(f.wind_gust_mph) + ' mph')}
+      ${row('⏲️ Pressure', num(f.pressure_inhg, 2) + ' inHg' + trend(data.pressure_change_3h))}
+      ${row('☔ Rain today', num(f.rain_day_in, 2) + ' in')}
+      ${row('🌧️ Rain rate', num(f.rain_hour_in, 2) + ' in/h')}
+      ${row('🔆 UV index', uvLevel(f.uv_index))}
+      ${row('☀️ Light', num(f.light_lux, 0) + ' lux')}
+      ${row('⚡ Lightning', f.strike_count == null ? '—' : `${f.strike_count} strikes`)}
+      ${row('⚡ Last strike', f.last_strike_mi == null ? '—' : `${f.last_strike_mi} mi`)}
     </div>
     <div style="margin-top:8px">${battery(f)}</div>
   </div>`;
@@ -107,7 +209,10 @@ function sensorCard(s) {
   return `<div class="card">
     <div class="name"><span>${s.name}</span><span class="${a.stale ? 'stale' : 'ts'}">${a.text}</span></div>
     <div class="big">${num(f.temp_f)}°<small>F</small></div>
-    <div class="rows">${row('Humidity', num(f.humidity_pct, 0) + '%')}</div>
+    <div class="rows">
+      ${row('💧 Humidity', num(f.humidity_pct, 0) + '%')}
+      ${row('🌫️ Dew point', num(f.dew_point_f) + '°')}
+    </div>
     <div style="margin-top:8px">${battery(f)}</div>
   </div>`;
 }
@@ -125,8 +230,11 @@ function render(data) {
   const outdoor = ['Atlas', 'Iris', '5N1'];
   const sensors = [...data.sensors].sort((x, y) =>
     (outdoor.includes(y.type) - outdoor.includes(x.type)) || x.name.localeCompare(y.name));
-  document.getElementById('grid').innerHTML = sensors
-    .map(s => outdoor.includes(s.type) ? outdoorCard(s) : sensorCard(s)).join('');
+  const sk = sky(data.station);
+  const cards = sensors.map(s => outdoor.includes(s.type) ? outdoorCard(s, data, sk) : sensorCard(s));
+  // The sun & moon card follows the outdoor card(s), before the rooms.
+  cards.splice(sensors.filter(s => outdoor.includes(s.type)).length, 0, skyCard(data.station, sk));
+  document.getElementById('grid').innerHTML = cards.join('');
   const a = age(data.written);
   const w = document.getElementById('written');
   w.textContent = `updated ${a.text} · ${new Date(data.written).toLocaleString()}`;

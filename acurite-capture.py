@@ -42,6 +42,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections import deque
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -223,6 +224,44 @@ HISTORY_FIELDS = ["timestamp", "sensor_id", "sensor_name", "type"] + sorted(set(
 _current: dict[str, dict] = {}
 _current_lock = threading.Lock()
 
+# Pressure trend: the barometer is the hub's, so every sensor's reading carries
+# the same value. Forecasters read the change over 3 hours; we keep a little
+# more than that, seeded from history.csv so a restart doesn't blank the trend.
+PRESSURE_TREND_S = 3 * 3600
+_pressure: deque = deque()   # (epoch seconds, inHg), guarded by _current_lock
+_pressure_seeded = False
+_current_page: dict = {}     # derived values for the page, e.g. pressure_change_3h
+
+
+def _epoch(iso: str) -> float:
+    return datetime.strptime(iso, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
+
+
+def _seed_pressure(history: Path, now: float) -> None:
+    """Load the last few hours of pressure from the tail of history.csv."""
+    if not history.exists():
+        return
+    with history.open("rb") as f:
+        f.seek(0, os.SEEK_END)
+        f.seek(max(0, f.tell() - 256 * 1024))
+        tail = f.read().decode("utf-8", errors="replace").splitlines()[1:]
+    for row in csv.DictReader(tail, fieldnames=HISTORY_FIELDS):
+        try:
+            t, p = _epoch(row["timestamp"]), float(row["pressure_inhg"])
+        except (TypeError, ValueError):
+            continue
+        if now - t <= PRESSURE_TREND_S * 1.2:
+            _pressure.append((t, p))
+
+
+def _pressure_change(now: float, value: float) -> float | None:
+    """inHg change since about 3 hours ago, or None until we have that much."""
+    _pressure.append((now, value))
+    while _pressure and now - _pressure[0][0] > PRESSURE_TREND_S * 1.2:
+        _pressure.popleft()
+    then = [p for t, p in _pressure if now - t >= PRESSURE_TREND_S * 0.9]
+    return round(value - then[-1], 2) if then else None
+
 
 def _hub_value(v: str):
     """Numbers as numbers; anything else (battery 'normal'/'low', timestamps) as text."""
@@ -244,11 +283,17 @@ def record_hub_reading(params: dict, write_path: Path, sensors: dict, page: dict
 
     page: settings the dashboard reads from the data file (it cannot read
     config.ini), e.g. {"wu_url": "https://..."}; empty values are left out."""
+    global _pressure_seeded
     sensor_id = params.get("sensor", "")
     kind = params.get("mt", "unknown")
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     fields = {HUB_FIELDS[k]: _hub_value(v) for k, v in params.items() if k in HUB_FIELDS and v != ""}
     with _current_lock:
+        if not _pressure_seeded:
+            _seed_pressure(write_path / "history.csv", _epoch(now))
+            _pressure_seeded = True
+        if isinstance(fields.get("pressure_inhg"), (int, float)):
+            _current_page["pressure_change_3h"] = _pressure_change(_epoch(now), float(fields["pressure_inhg"]))
         entry = _current.setdefault(sensor_id, {"sensor_id": sensor_id, "type": kind, "fields": {}})
         entry["name"] = sensors.get(sensor_id, entry.get("name") or f"{kind} {sensor_id}")
         entry["type"] = kind
@@ -256,6 +301,7 @@ def record_hub_reading(params: dict, write_path: Path, sensors: dict, page: dict
         entry["fields"].update(fields)
         snapshot = {"written": now, "hub": params.get("id", ""),
                     **{k: v for k, v in (page or {}).items() if v},
+                    **{k: v for k, v in _current_page.items() if v is not None},
                     "sensors": list(_current.values())}
         body = json.dumps(snapshot, indent=1)
         _write_atomic(write_path / "current.json", body)
@@ -299,6 +345,18 @@ def _relay(relay_url: str, path_and_query: str, method: str = "GET", body: bytes
         return None
 
 
+def _station(cfg: configparser.ConfigParser) -> dict:
+    """[station] latitude/longitude/elevation_ft, for the page's sun and moon.
+    Empty (and the sun/moon card hidden) unless latitude and longitude are set."""
+    out = {}
+    for key in ("latitude", "longitude", "elevation_ft"):
+        try:
+            out[key] = cfg.getfloat("station", key)
+        except (configparser.Error, ValueError):
+            pass
+    return out if "latitude" in out and "longitude" in out else {}
+
+
 def _make_hub_handler(cfg: configparser.ConfigParser, write_path: Path, sensors: dict):
     relay_on = cfg.getboolean("hub", "relay", fallback=True)
     relay_url = cfg.get("hub", "relay_url", fallback=ACCESS_RELAY_URL).rstrip("/")
@@ -309,7 +367,8 @@ def _make_hub_handler(cfg: configparser.ConfigParser, write_path: Path, sensors:
     # The dashboard shows a Weather Underground pane only when a station is named.
     station = cfg.get("weather_underground", "station_id", fallback="").strip()
     page = {"wu_url": cfg.get("weather_underground", "pane_url", fallback="").strip()
-                      or (f"https://www.wunderground.com/dashboard/pws/{station}" if station else "")}
+                      or (f"https://www.wunderground.com/dashboard/pws/{station}" if station else ""),
+            "station": _station(cfg)}
 
     class HubHandler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"

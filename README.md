@@ -79,7 +79,13 @@ are answered locally.
 `http://THIS_BOX:12345/` (port set by `[web] port`; several comma-separated
 ports allowed). To share it, forward that port on your router. Set
 `[weather_underground] station_id` and a Weather Underground pane (forecast,
-sun and moon, history) appears at the bottom; leave it unset and there is none.
+history) appears at the bottom; leave it unset and there is none.
+
+Set `[station] latitude` and `longitude` (and optionally `elevation_ft`) and a
+Sun & moon card appears: sunrise, sunset, daylight and the moon phase, computed
+in the page with no outside service. The outdoor card shows everything the
+Atlas sends (feels-like, dew point, wind with direction arrow, gusts, rain, UV
+with its level, light, lightning) plus the 3-hour pressure trend.
 
 ## Radio capture (no hub)
 
