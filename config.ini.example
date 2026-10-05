@@ -47,6 +47,11 @@ relay_url = https://atlasapi.myacurite.com
 enabled = false
 port = 12345
 
+; A page shown in a pane at the bottom of the dashboard: a radar map, a
+; webcam, anything that lets itself be framed. Blank, and there is no pane.
+; e.g. https://www.wunderground.com/wundermap?lat=<lat>&lon=<lon>&zoom=12&radar=true
+lower_pane_url =
+
 [station]
 ; Where the station is. With latitude and longitude set, the dashboard shows
 ; sunrise, sunset, day length and the moon phase, all computed in the page with
@@ -57,12 +62,8 @@ port = 12345
 ; elevation_ft = 6000
 
 [weather_underground]
-; station_id alone adds a Weather Underground pane (your station's page:
-; forecast, sun/moon, history) to the bottom of the dashboard. Leave it unset
-; and the pane is not shown. The pane opens WU's station dashboard; pane_url
-; swaps in any other WU page (e.g. your town's page, which has the forecast).
+; Station ID and key: only for uploading from this program (below).
 ; station_id = YOUR_WU_STATION_ID
-; pane_url = https://www.wunderground.com/weather/us/<state>/<town>/YOUR_WU_STATION_ID
 ; Uploading to WU from this program: only for the rtl_433 capture path. An
 ; Access hub uploads to WU itself, so leave this off with a hub.
 enabled = false

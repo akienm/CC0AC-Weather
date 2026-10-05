@@ -78,8 +78,9 @@ are answered locally.
 
 `http://THIS_BOX:12345/` (port set by `[web] port`; several comma-separated
 ports allowed). To share it, forward that port on your router. Set
-`[weather_underground] station_id` and a Weather Underground pane (forecast,
-history) appears at the bottom; leave it unset and there is none.
+`[web] lower_pane_url` to any page that allows framing (a radar map such as
+Weather Underground's WunderMap, a webcam) and it appears in a pane at the
+bottom; leave it blank and there is none.
 
 Set `[station] latitude` and `longitude` (and optionally `elevation_ft`) and a
 Sun & moon card appears: sunrise, sunset, daylight and the moon phase, computed

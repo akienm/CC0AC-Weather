@@ -34,10 +34,10 @@
   .arrow { display: inline-block; font-size: 16px; line-height: 1; }
   .sky { display: flex; align-items: center; gap: 16px; }
   .sky .moon { font-size: 56px; line-height: 1; }
-  .wu { display: none; margin-top: 16px; background: var(--surface); border: 1px solid var(--border); }
-  .wu .name { padding: 14px 14px 0; }
-  .wu a { color: var(--accent); }
-  .wu iframe { display: block; width: 100%; height: 1400px; border: 0; background: #fff; }
+  .lower { display: none; margin-top: 16px; background: var(--surface); border: 1px solid var(--border); }
+  .lower .name { padding: 14px 14px 0; }
+  .lower a { color: var(--accent); }
+  .lower iframe { display: block; width: 100%; height: max(85vh, 500px); border: 0; background: #fff; }
   #error { color: var(--warn); margin-top: 16px; white-space: pre-wrap; }
   .card { min-width: 0; }
   .pane { display: contents; }
@@ -81,13 +81,12 @@
 </div>
 <div id="error"></div>
 
-<!-- Forecast, history and the rest: the station's own page on
-     Weather Underground. Shown only when the data file names a station
-     ([weather_underground] station_id in config.ini). -->
-<div class="wu">
-  <div class="name"><span>Forecast &amp; more · Weather Underground</span>
-    <a id="wu-link" target="_blank" rel="noopener">open ↗</a></div>
-  <iframe id="wu-frame" loading="lazy" title="Weather Underground station page"></iframe>
+<!-- The lower pane: any page, named by [web] lower_pane_url in config.ini.
+     Blank, and the pane is not shown. -->
+<div class="lower">
+  <div class="name"><span id="lower-title"></span>
+    <a id="lower-link" target="_blank" rel="noopener">open ↗</a></div>
+  <iframe id="lower-frame" loading="lazy" title="Lower pane"></iframe>
 </div>
 
 <script>
@@ -394,11 +393,17 @@ function sensorCard(s) {
   </div>`;
 }
 
-function showWu(url) {
-  const pane = document.querySelector('.wu');
+function showLowerPane(url) {
+  const pane = document.querySelector('.lower');
   if (!url) { pane.style.display = 'none'; return; }
-  const frame = document.getElementById('wu-frame');
-  if (frame.src !== url) { frame.src = url; document.getElementById('wu-link').href = url; }
+  const frame = document.getElementById('lower-frame');
+  if (frame.src !== url) {
+    frame.src = url;
+    document.getElementById('lower-link').href = url;
+    let host = url;
+    try { host = new URL(url).hostname.replace(/^www\./, ''); } catch (e) {}
+    document.getElementById('lower-title').textContent = host;
+  }
   pane.style.display = 'block';
 }
 
@@ -428,7 +433,7 @@ const OUTDOOR = ['Atlas', 'Iris', '5N1'];
 function drawCurrent() {
   const data = window.ACURITE_CURRENT;
   if (!data) return;
-  showWu(data.wu_url);
+  showLowerPane(data.lower_pane_url);
   const sk = sky(data.station);
   const sensors = [...data.sensors].sort((x, y) => x.name.localeCompare(y.name));
   pane('p-outdoor', data.written,
