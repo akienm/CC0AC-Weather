@@ -1,0 +1,19 @@
+[Unit]
+Description=CC0AC-Weather: AcuRite hub relay, recorder and dashboard
+Documentation=https://github.com/akienm/CC0AC-Weather
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+ExecStart=/usr/bin/python3 /home/%i/dev/src/CC0AC-Weather/acurite-capture.py
+# The hub insists on port 443.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

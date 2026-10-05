@@ -34,9 +34,9 @@ relay_url = https://atlasapi.myacurite.com
 ; port 443 is reachable from outside.
 ; hub_id = 24C86E0B0000   (yours is on the hub's local page as its MAC)
 ; Self-signed certificate is generated here on first run.
-; cert_dir = ~/.acurite-free
+; cert_dir = ~/.cc0ac-weather
 ; Every raw hub request, one file per day, for re-processing later.
-; raw_dir = ~/.acurite-free/hub-raw
+; raw_dir = ~/.cc0ac-weather/hub-raw
 
 [web]
 ; Built-in web server for the dashboard: serves weather.html, current.js,

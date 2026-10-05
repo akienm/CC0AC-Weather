@@ -1,126 +1,109 @@
-# acurite-free
+# CC0AC-Weather
 
-Free, open-source replacement for the AcuRite app. Captures your AcuRite weather sensor data directly over the air using a $20 RTL-SDR dongle — no AcuRite hub, no AcuRite account, no cloud subscription.
+Keep your AcuRite weather station working on your own terms: your own
+dashboard, your own data files, Weather Underground uploads unchanged, and no
+dependence on AcuRite's cloud. Built by Claude Code ("cc.0") with Akien
+MacIain; contributions welcome.
 
-Data lives in a CSV file you sync to any cloud storage (OneDrive, Google Drive, Dropbox, iCloud, etc.). A single HTML file served from that same folder is your dashboard — no web server, no infrastructure, just a URL.
+Not affiliated with or endorsed by AcuRite or Chaney Instrument Co. AcuRite is
+their trademark; it is used here only to say which hardware this works with.
 
-## What you need
+## How it works
 
-- **RTL-SDR dongle** — any RTL2832U-based USB dongle (~$20–$30). [RTL-SDR Blog V3](https://www.rtl-sdr.com/buy-rtl-sdr-dvb-t-dongles/) is recommended.
-- **A computer that stays on** — Raspberry Pi, NAS, old laptop, the box running your cloud sync client
-- **Python 3.8+** — comes with most Linux distros
-- **rtl_433** — the open-source SDR decoder
+The AcuRite **Access** hub (or smartHUB) uploads each sensor reading over HTTPS
+to a server named in its settings. CC0AC-Weather is that server:
 
-## Installation
+    sensors ──radio──▶ Access hub ──HTTPS──▶ this program (port 443)
+                                              ├─ current.json / current.js / history.csv
+                                              ├─ relays the reading to AcuRite (optional; their app keeps working)
+                                              └─ web server ──▶ weather.html dashboard
+    The hub uploads to Weather Underground itself; that is untouched.
 
-### 1. Install rtl_433
+- One burst every 5 minutes, one request per sensor (Atlas, 5-in-1, Iris, towers, …).
+- `current.js` loads with a plain `<script>` tag, so the dashboard also works
+  opened as a file or from any static host — no web server required to view it.
+- `history.csv` keeps every reading, for charts (coming).
 
-```bash
-sudo apt install rtl-sdr
+No hub? The older path still works: an RTL-SDR dongle and rtl_433 receive the
+sensors directly (see *Radio capture* below).
 
-# Ubuntu 22.04+ / Debian 12+:
-sudo apt install rtl-433
+## Setup with an Access hub
 
-# Older systems — build from source:
-# https://github.com/merbanan/rtl_433#installation
-```
-
-### 2. Allow non-root SDR access
-
-```bash
-sudo usermod -aG plugdev $USER
-# Log out and back in for this to take effect
-```
-
-Test the dongle:
-```bash
-rtl_433 -T 5    # should print received packets for 5 seconds; Ctrl+C to stop
-```
-
-### 3. Configure
+You need: a Linux box that stays on (a Raspberry Pi is plenty), Python 3.8+,
+openssl, and a router that can forward port 443.
 
 ```bash
-mkdir -p ~/.acurite-free
-cp config.ini.example ~/.acurite-free/config.ini
+git clone https://github.com/akienm/CC0AC-Weather ~/dev/src/CC0AC-Weather
+mkdir -p ~/.cc0ac-weather
+cp ~/dev/src/CC0AC-Weather/config.ini.example ~/.cc0ac-weather/config.ini
 ```
 
-Edit `~/.acurite-free/config.ini` — set `write_path` to a folder your cloud sync client watches.
-
-### 4. Discover your sensor IDs
+Edit `~/.cc0ac-weather/config.ini`: `write_path`, your sensor names under
+`[sensors]`, `hub_id` under `[hub]` (the hub's MAC, from its local web page),
+and `[web] enabled = true`. Then install the service:
 
 ```bash
-python3 acurite-capture.py --discover
+sudo cp ~/dev/src/CC0AC-Weather/cc0ac-weather@.service /etc/systemd/system/
+sudo systemctl enable --now cc0ac-weather@$USER
 ```
 
-Leave it running for a few minutes. Your sensors transmit every 18–36 seconds. The output shows each sensor's ID and what it's reporting. Add those IDs to `~/.acurite-free/config.ini` under `[sensors]`:
+### Point the hub at it
 
-```ini
-[sensors]
-1234 = Backyard
-5678 = Garage
-```
+1. **Give the hub a hostname that reaches this box.** The hub accepts only a
+   name, not an IP address. If your router can't serve local names, use your
+   public hostname (your ISP's reverse-DNS name, or a free dynamic DNS name)
+   and forward **port 443** on the router to this box.
+2. **Change the hub's server setting.** Its web form is read-only in a
+   browser, but the hub accepts a direct POST. Send *all five* fields, or its
+   Weather Underground settings are blanked (read the current values from the
+   hub's page first):
 
-IDs keep noise from your neighbours' sensors out of your CSV.
+   ```bash
+   curl -d 'ser=YOUR.HOST.NAME&id=WU_STATION_ID&ps=WU_PASSWORD&dev1=ATLAS_ID&ele=ELEVATION' \
+        http://HUB_IP/config.cgi
+   ```
 
-### 5. Copy weather.html to your synced folder
+   To undo, send the same with `ser=atlasapi.myacurite.com`.
+3. Watch `journalctl -u cc0ac-weather@$USER -f`: within 5 minutes a line per
+   sensor appears, and every raw request is kept in `~/.cc0ac-weather/hub-raw/`.
 
-Put `weather.html` in the same folder as your `write_path` (the one your cloud client syncs). It will read `weather.csv` from the same location.
+Things learned the hard way (firmware 051): the hub uses TLS 1.0/1.1 and
+doesn't check the certificate (a self-signed one is generated for you); it
+sends POST with everything in the query string; AcuRite rejects relayed
+readings unless the hub's own `Atlas/<fw>` User-Agent is passed along; and
+if the hub gets an error back it resends the same reading forever, so refusals
+are answered locally.
 
-Share that folder publicly in your cloud storage app and note the public URL.
+### The dashboard
 
-### 6. Run the daemon
+`http://THIS_BOX:12345/` (port set by `[web] port`; several comma-separated
+ports allowed). To share it, forward that port on your router. Set
+`[weather_underground] station_id` and a Weather Underground pane (forecast,
+sun and moon, history) appears at the bottom; leave it unset and there is none.
+
+## Radio capture (no hub)
+
+With an RTL-SDR dongle (~$25) and [rtl_433](https://github.com/merbanan/rtl_433):
 
 ```bash
-python3 acurite-capture.py
+sudo apt install rtl-sdr rtl-433
+sudo usermod -aG plugdev $USER          # log out and back in
+python3 acurite-capture.py --discover   # lists sensor IDs in range
 ```
 
-Or install as a systemd service:
-
-```bash
-# Edit weather_monitor.service — update the ExecStart path to match your setup
-sudo cp weather_monitor.service /etc/systemd/system/acurite@.service
-sudo systemctl enable --now acurite@$USER
-sudo systemctl status acurite@$USER
-```
-
-### 7. Open your dashboard
-
-Navigate to the public URL of your cloud-shared folder and open `weather.html`. Bookmark it. On Android, use **Add to Home Screen** to install it as an app.
-
-## Weather Underground upload
-
-Set `enabled = true` under `[weather_underground]` in config.ini and add your station ID and key. The daemon uploads on every valid sensor reading.
+Then set `[capture] enabled = true` in config.ini. `[weather_underground]
+enabled = true` with a station key uploads to WU from this path (a hub
+already does that itself).
 
 ## Files
 
 | File | Purpose |
 |---|---|
-| `acurite-capture.py` | Capture daemon — the only thing that runs on your machine |
-| `config.ini.example` | Configuration template |
-| `weather.html` | Dashboard — goes in your cloud-synced folder alongside weather.csv |
-| `weather_monitor.service` | systemd unit for auto-start on boot |
-
-## Cloud storage notes
-
-The dashboard fetches `weather.csv` via JavaScript. For this to work, your cloud storage's public share URL must respond with a CORS header (`Access-Control-Allow-Origin: *`). Services that work well:
-
-- **Cloudflare R2** (free tier, CORS configurable in dashboard) — recommended
-- **AWS S3** (cheap, CORS configurable)
-- **Backblaze B2** (free tier with CORS)
-- **OneDrive** — public share links work with fetch() in most browsers
-- **Google Drive** — public file URLs may require CORS proxy; Google Sheets export is CORS-friendly
-
-If your cloud storage blocks cross-origin requests, the dashboard will show an error in the browser console. Switch services or add a free CORS proxy in front.
-
-## Supported AcuRite devices
-
-Any device decoded by rtl_433 under AcuRite protocols. Tested with:
-- AcuRite 5-in-1 Weather Station (temp, humidity, wind, rain)
-- AcuRite Atlas
-- AcuRite 592TXR Tower sensor (temp, humidity)
-
-If your device shows up in `--discover` mode, it works.
+| `acurite-capture.py` | The program: hub listener and relay, web server, optional radio capture |
+| `config.ini.example` | Configuration template, every option documented |
+| `weather.html` | Dashboard; reads `current.js` beside it |
+| `cc0ac-weather@.service` | systemd unit |
 
 ## License
 
-MIT
+MIT, see `LICENSE`.

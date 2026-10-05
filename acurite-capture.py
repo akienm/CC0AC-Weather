@@ -17,7 +17,7 @@ Requirements:
     sudo usermod -aG plugdev $USER    # log out and back in after
 
 Setup:
-    cp config.ini.example ~/.acurite-free/config.ini
+    cp config.ini.example ~/.cc0ac-weather/config.ini
     python3 acurite-capture.py --discover   # find your sensor IDs
     # edit config.ini — add sensor IDs under [sensors]
     python3 acurite-capture.py              # run daemon
@@ -48,7 +48,7 @@ from pathlib import Path
 
 log = logging.getLogger("acurite")
 
-DEFAULT_CONFIG = Path.home() / ".acurite-free" / "config.ini"
+DEFAULT_CONFIG = Path.home() / ".cc0ac-weather" / "config.ini"
 DEFAULT_PROTOCOLS = ["40", "78", "112", "191"]
 WU_URL = "https://weatherstation.wunderground.com/weatherstation/updateweatherstation.php"
 
@@ -512,7 +512,7 @@ def run_discover(cfg: configparser.ConfigParser, duration_s: int = 300) -> None:
         proc.wait()
 
     print(f"{'─'*60}")
-    print(f"Found {len(seen)} sensor(s). Add to ~/.acurite-free/config.ini under [sensors]:\n")
+    print(f"Found {len(seen)} sensor(s). Add to ~/.cc0ac-weather/config.ini under [sensors]:\n")
     for sid, p in seen.items():
         print(f"  {sid} = My {p['model']}")
     print(f"\n{'─'*60}\n")
