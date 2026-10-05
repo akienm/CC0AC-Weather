@@ -40,7 +40,7 @@ relay_url = https://atlasapi.myacurite.com
 
 [web]
 ; Built-in web server for the dashboard: serves weather.html, current.js,
-; current.json and history.csv, read-only, nothing else. To reach it from
+; current.json, forecast.js and history.csv, read-only, nothing else. To reach it from
 ; outside, forward a port on your router to this one (e.g. outside 80 -> 12345).
 ; Several ports are allowed, comma-separated: routers that can only forward a
 ; port to the same number (Xfinity) need 80 listed here, e.g. port = 12345, 80
@@ -67,6 +67,18 @@ port = 12345
 ; Access hub uploads to WU itself, so leave this off with a hub.
 enabled = false
 ; station_key = YOUR_WU_STATION_KEY
+
+[forecast]
+; Forecast, nearest-airport visibility and clouds, and active alerts from the
+; US National Weather Service (api.weather.gov; free, no key, US only). Uses
+; [station] latitude and longitude. Writes forecast.json and forecast.js beside
+; current.json; the dashboard shows them as an hourly strip, a 7-day list, two
+; rows on the sun & moon card and a banner while an alert is active.
+enabled = false
+
+; The Weather Service asks every caller to name itself with a way to reach
+; them (sent in the User-Agent). A website or an email address.
+contact = github.com/akienm/CC0AC-Weather
 
 [capture]
 ; Radio capture with a USB SDR and rtl_433. Off unless you have the dongle.

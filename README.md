@@ -87,6 +87,15 @@ in the page with no outside service. The outdoor card shows everything the
 Atlas sends (feels-like, dew point, wind with direction arrow, gusts, rain, UV
 with its level, light, lightning) plus the 3-hour pressure trend.
 
+In the US, set `[forecast] enabled = true` (with `[station]` latitude and
+longitude) and the program also fetches from the National Weather Service
+(api.weather.gov, free, no key): an hourly strip for the next 24 hours (48 on
+request) with sky, temperature, rain chance and wind; a 7-day list (tap a day
+for the full forecast); visibility and cloud layers from the nearest airport on
+the Sun & moon card; and a banner while any alert is active. Forecasts refresh
+hourly, the airport every 20 minutes, alerts every 10. A failed fetch keeps
+the last good copy and says so on the page.
+
 ## Radio capture (no hub)
 
 With an RTL-SDR dongle (~$25) and [rtl_433](https://github.com/merbanan/rtl_433):
@@ -107,7 +116,7 @@ already does that itself).
 |---|---|
 | `acurite-capture.py` | The program: hub listener and relay, web server, optional radio capture |
 | `config.ini.example` | Configuration template, every option documented |
-| `weather.html` | Dashboard; reads `current.js` beside it |
+| `weather.html` | Dashboard; reads `current.js` and `forecast.js` |
 | `cc0ac-weather@.service` | systemd unit |
 
 ## License

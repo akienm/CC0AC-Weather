@@ -39,11 +39,38 @@
   .wu a { color: var(--accent); }
   .wu iframe { display: block; width: 100%; height: 1400px; border: 0; background: #fff; }
   #error { color: var(--warn); margin-top: 16px; white-space: pre-wrap; }
+  .card { min-width: 0; }
+  .hour .ts, .name .ts, .days .ts { margin-bottom: 0; }
+  .hours { display: flex; overflow-x: auto; gap: 2px; padding-bottom: 6px; }
+  .hour { flex: 0 0 64px; text-align: center; padding: 6px 0; border-right: 1px dotted var(--border); }
+  .hour .e { font-size: 24px; line-height: 1.3; }
+  .hour .t { font-size: 18px; }
+  .hour .day { color: var(--accent); }
+  .pop { color: var(--accent); }
+  .days details { border-bottom: 1px dotted var(--border); }
+  .days summary { display: grid; grid-template-columns: 9em 2em 7em 4em 1fr; gap: 8px; align-items: center;
+                  padding: 6px 0; cursor: pointer; list-style: none; }
+  .days summary::-webkit-details-marker { display: none; }
+  .days .e { font-size: 22px; }
+  .days .sky-text { color: var(--muted); }
+  .days .detail { color: var(--muted); padding: 0 0 8px 1em; }
+  .days .detail p { margin-top: 4px; }
+  @media (max-width: 560px) {
+    .days summary { grid-template-columns: 6.5em 2em 6em 3.5em; }
+    .days .sky-text { display: none; }
+  }
+  .more { background: none; border: 1px solid var(--border); color: var(--accent); font: inherit;
+          font-size: 12px; padding: 2px 8px; cursor: pointer; }
+  #alerts .alert { border: 2px solid #f90; background: #210; padding: 10px 14px; margin-bottom: 12px; }
+  #alerts .alert.severe { border-color: var(--warn); background: #300; }
+  #alerts summary { cursor: pointer; font-weight: bold; }
+  #alerts .text { white-space: pre-wrap; margin-top: 8px; color: var(--text); }
 </style>
 </head>
 <body>
 <h1>WEATHER</h1>
 <div class="ts" id="written">waiting for data…</div>
+<div id="alerts"></div>
 <div class="grid" id="grid"></div>
 <div id="error"></div>
 
@@ -67,6 +94,124 @@ const CARDINALS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW
 const card = d => CARDINALS[Math.round(Number(d) / 22.5) % 16];
 const num = (v, places = 1) => v == null || v === '' ? '—' : Number(v).toFixed(places);
 const clock = d => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+// ── Forecast, airport observation and alerts: forecast.js (window.ACURITE_FORECAST),
+// written by acurite-capture.py from the National Weather Service. Optional: the
+// page works without it.
+
+// The Weather Service's short forecast → one emoji. The first matching rule wins,
+// and "X then Y" is read by its first half.
+function skyEmoji(text, day, moonEmoji) {
+  const t = String(text || '').split(' then ')[0].toLowerCase();
+  if (/thunder/.test(t)) return '⛈️';
+  if (/snow|flurr|blizzard|sleet|freezing|ice/.test(t)) return '🌨️';
+  if (/rain|shower|drizzle/.test(t)) return /chance/.test(t) && day ? '🌦️' : '🌧️';
+  if (/fog|haze|smoke|dust/.test(t)) return '🌫️';
+  if (/overcast|^cloudy|mostly cloudy/.test(t)) return day && /mostly/.test(t) ? '🌥️' : '☁️';
+  if (/partly/.test(t)) return day ? '⛅' : '☁️';
+  if (/mostly (sunny|clear)/.test(t)) return day ? '🌤️' : (moonEmoji || '🌙');
+  if (/sunny|clear|fair/.test(t)) return day ? '☀️' : (moonEmoji || '🌙');
+  if (/wind|breezy|blustery/.test(t)) return '💨';
+  return day ? '🌤️' : '☁️';
+}
+
+const cardinalDeg = c => CARDINALS.indexOf(c) * 22.5;
+const popText = p => p != null && p >= 10 ? `<span class="pop">💧${p}%</span>` : '';
+let showHours = 24;
+
+function partAge(fc, part, iso) {
+  const err = fc.errors && fc.errors[part];
+  if (!iso && !err) return '';
+  const a = iso ? age(iso) : null;
+  const text = a ? `issued ${a.text}` : '';
+  return err ? `<span class="stale" title="${err.replace(/"/g, '&quot;')}">${text} · last fetch failed</span>`
+             : `<span class="ts">${text}</span>`;
+}
+
+function hourlyCard(fc, moonEmoji) {
+  if (!fc.hourly) return '';
+  const now = Date.now();
+  const hours = fc.hourly.periods.filter(h => new Date(h.start).getTime() + 3600000 > now).slice(0, showHours);
+  const cells = hours.map((h, i) => {
+    const d = new Date(h.start);
+    const label = i > 0 && d.getHours() === 0
+      ? `<span class="day">${d.toLocaleDateString([], { weekday: 'short' })}</span>`
+      : d.toLocaleTimeString([], { hour: 'numeric' });
+    const w = h.wind_mph == null ? '' :
+      `${h.wind_from ? windArrow(cardinalDeg(h.wind_from)) : ''} ${h.wind_mph}`;
+    return `<div class="hour" title="${h.sky}">
+      <div class="ts">${label}</div>
+      <div class="e">${skyEmoji(h.sky, h.day, moonEmoji)}</div>
+      <div class="t">${h.temp_f}°</div>
+      <div>${popText(h.pop) || '&nbsp;'}</div>
+      <div class="ts">${w}</div>
+    </div>`;
+  }).join('');
+  const toggle = `<button class="more" onclick="showHours = showHours === 24 ? 48 : 24; renderAll()">${showHours === 24 ? '48 h' : '24 h'}</button>`;
+  return `<div class="card outdoor">
+    <div class="name"><span>Hourly ${toggle}</span>${partAge(fc, 'forecast', fc.hourly.updated)}</div>
+    <div class="hours">${cells}</div>
+  </div>`;
+}
+
+function dailyCard(fc, moonEmoji) {
+  if (!fc.daily) return '';
+  // Day and night halves, paired by date; the first day may be night only.
+  const days = [];
+  for (const p of fc.daily.periods) {
+    const key = new Date(p.start).toDateString();
+    let d = days.find(x => x.key === key);
+    if (!d) days.push(d = { key });
+    d[p.day ? 'day' : 'night'] = p;
+  }
+  const rows = days.map(d => {
+    const lead = d.day || d.night;
+    const hi = d.day ? `${d.day.temp_f}°` : '', lo = d.night ? `${d.night.temp_f}°` : '';
+    const pop = Math.max(d.day?.pop ?? 0, d.night?.pop ?? 0);
+    const name = d.day ? d.day.name : d.night.name;
+    const detail = [d.day, d.night].filter(Boolean)
+      .map(p => `<p><b>${p.name}:</b> ${p.detail}</p>`).join('');
+    const open = (window.OPEN_DAYS || []).includes(name) ? ' open' : '';
+    return `<details${open}><summary>
+      <span>${name}</span>
+      <span class="e">${skyEmoji(lead.sky, !!d.day, moonEmoji)}</span>
+      <span>${hi}${hi && lo ? ' / ' : ''}<span class="ts">${lo}</span></span>
+      <span>${popText(pop)}</span>
+      <span class="sky-text">${lead.sky}</span>
+    </summary><div class="detail">${detail}</div></details>`;
+  }).join('');
+  return `<div class="card outdoor days">
+    <div class="name"><span>7 days · tap a day for detail</span>${partAge(fc, 'forecast', fc.daily.updated)}</div>
+    ${rows}
+  </div>`;
+}
+
+const CLOUD_WORDS = { FEW: 'few clouds', SCT: 'scattered clouds', BKN: 'broken clouds',
+                      OVC: 'overcast', VV: 'sky obscured', CLR: 'clear', SKC: 'clear' };
+
+function observationRows(fc) {
+  const o = fc && fc.observation;
+  if (!o) return '';
+  const clouds = (o.clouds || []).map(c =>
+    `${CLOUD_WORDS[c.amount] || c.amount}${c.base_ft != null ? ` at ${(Math.round(c.base_ft / 100) * 100).toLocaleString()} ft` : ''}`
+  ).join(', ') || (o.sky ? '—' : '—');
+  const where = `${o.name || o.station}, ${o.distance_mi} mi away · ${o.time ? age(o.time).text : ''}`;
+  return `${row('👁️ Visibility', o.visibility_mi == null ? '—' : `${o.visibility_mi} mi`)}
+      ${row('🌥️ Sky', o.sky || '—')}
+      ${row('☁️ Clouds', clouds)}
+      <div class="ts" style="grid-column: 1 / -1">visibility and clouds from ${where}; cloud heights are above the airport</div>`;
+}
+
+function renderAlerts(fc) {
+  const box = document.getElementById('alerts');
+  const list = (fc && fc.alerts) || [];
+  box.innerHTML = list.map(a => {
+    const severe = a.severity === 'Extreme' || a.severity === 'Severe';
+    const until = a.ends ? ` · until ${new Date(a.ends).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}` : '';
+    return `<details class="alert${severe ? ' severe' : ''}"><summary>⚠️ ${a.event}${until}</summary>
+      <div class="text">${[a.headline, a.description, a.instruction].filter(Boolean).join('\n\n')}</div></details>`;
+  }).join('');
+}
 
 // ── Sun and moon, computed here from the station's position: no outside service.
 // Sunrise equation (as in NOAA's simplified solar calculator), good to a minute or
@@ -137,6 +282,7 @@ function skyCard(station, s) {
       ${row('📍 Latitude', ns(station.latitude, 'N', 'S'))}
       ${row('📍 Longitude', ns(station.longitude, 'E', 'W'))}
       ${row('⛰️ Elevation', station.elevation_ft == null ? '—' : `${Math.round(station.elevation_ft).toLocaleString()} ft`)}
+      ${observationRows(window.ACURITE_FORECAST)}
     </div>
   </div>`;
 }
@@ -225,6 +371,10 @@ function showWu(url) {
   pane.style.display = 'block';
 }
 
+function renderAll() {
+  if (window.ACURITE_CURRENT) render(window.ACURITE_CURRENT);
+}
+
 function render(data) {
   showWu(data.wu_url);
   const outdoor = ['Atlas', 'Iris', '5N1'];
@@ -233,7 +383,12 @@ function render(data) {
   const sk = sky(data.station);
   const cards = sensors.map(s => outdoor.includes(s.type) ? outdoorCard(s, data, sk) : sensorCard(s));
   // The sun & moon card follows the outdoor card(s), before the rooms.
-  cards.splice(sensors.filter(s => outdoor.includes(s.type)).length, 0, skyCard(data.station, sk));
+  // Then the forecast, hourly first, then the days, then the sun & moon card.
+  const fc = window.ACURITE_FORECAST || {};
+  const moonEmoji = sk ? sk.moon.emoji : null;
+  cards.splice(sensors.filter(s => outdoor.includes(s.type)).length, 0,
+               hourlyCard(fc, moonEmoji), dailyCard(fc, moonEmoji), skyCard(data.station, sk));
+  renderAlerts(fc);
   document.getElementById('grid').innerHTML = cards.join('');
   const a = age(data.written);
   const w = document.getElementById('written');
@@ -242,7 +397,20 @@ function render(data) {
   document.getElementById('error').textContent = '';
 }
 
+function loadForecast() {
+  const old = document.getElementById('forecast');
+  if (old) old.remove();
+  const tag = document.createElement('script');
+  tag.id = 'forecast';
+  tag.src = 'forecast.js?t=' + Date.now();
+  tag.onload = renderAll;           // missing forecast.js is fine: the panes stay away
+  document.head.appendChild(tag);
+}
+
 function load() {
+  // Keep any open day open across the refresh.
+  const open = [...document.querySelectorAll('.days details[open] summary span:first-child')].map(e => e.textContent);
+  window.OPEN_DAYS = open;
   const old = document.getElementById('data');
   if (old) old.remove();
   const tag = document.createElement('script');
@@ -258,7 +426,9 @@ function load() {
 }
 
 load();
+loadForecast();
 setInterval(load, REFRESH_SECONDS * 1000);
+setInterval(loadForecast, 5 * 60 * 1000);
 </script>
 </body>
 </html>
