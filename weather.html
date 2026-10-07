@@ -13,16 +13,25 @@
     --muted: #888;
     --accent: #4af;
     --warn: #f44;
-    --font: "Courier New", Courier, monospace;
+    --font: "Helvetica Neue", Helvetica, Arial, Roboto, "Liberation Sans", sans-serif;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; padding: 16px; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; padding: 16px;
+         font-variant-numeric: tabular-nums; }
   h1 { font-size: 16px; color: var(--muted); margin-bottom: 4px; letter-spacing: 1px; }
   .ts { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
   .stale { color: var(--warn) !important; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
   .card { background: var(--surface); border: 1px solid var(--border); padding: 14px; }
-  .card.outdoor { grid-column: 1 / -1; }
+  .card.outdoor { grid-column: 1 / -1; position: relative; }
+  /* The outdoor headline: the name above the sky icon on the left, and the temperature
+     beside them as tall as both together, to read from across the room. */
+  .hero { display: flex; align-items: center; gap: 16px; }
+  .hero .name { margin-bottom: 4px; }
+  .hero .icon { font-size: 48px; line-height: 1; }
+  .hero .temp { font-size: 96px; line-height: 0.9; font-weight: 300; letter-spacing: -2px; }
+  .hero .temp small { font-size: 24px; color: var(--muted); letter-spacing: 0; }
+  .card.outdoor > .age { position: absolute; top: 14px; right: 14px; font-size: 13px; }
   .name { color: var(--accent); font-size: 13px; margin-bottom: 8px; display: flex; justify-content: space-between; gap: 8px; }
   .big { font-size: 44px; line-height: 1.1; }
   .big small { font-size: 18px; color: var(--muted); }
@@ -382,10 +391,13 @@ function wind(f) {
 
 function outdoorCard(s, data, sk) {
   const f = s.fields;
-  const icon = sk ? (sk.up ? '☀️' : sk.moon.emoji) + ' ' : '';
+  const icon = sk ? (sk.up ? '☀️' : sk.moon.emoji) : '';
   return `<div class="card outdoor">
-    <div class="name"><span>${s.name}</span>${ageSpan(s.updated)}</div>
-    <div class="big">${icon}${num(f.temp_f)}°<small>F</small></div>
+    <div class="age">${ageSpan(s.updated)}</div>
+    <div class="hero">
+      <div><div class="name"><span>${s.name}</span></div><div class="icon">${icon}</div></div>
+      <div class="temp">${num(f.temp_f)}°<small>F</small></div>
+    </div>
     <div class="rows">
       ${row('🌡️ Feels like', num(f.feels_like_f) + '°')}
       ${row('💧 Humidity', num(f.humidity_pct, 0) + '%')}
