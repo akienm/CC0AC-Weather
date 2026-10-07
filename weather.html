@@ -37,6 +37,10 @@
   .lower { display: none; margin-top: 16px; background: var(--surface); border: 1px solid var(--border); }
   .lower .name { padding: 14px 14px 0; }
   .lower a { color: var(--accent); }
+  .login-help { display: inline-block; margin-left: 12px; font-size: 13px; color: var(--muted); }
+  .login-help summary { cursor: pointer; }
+  .login-help[open] { display: block; margin: 8px 0 0; max-width: 70ch; }
+  .login-help p, .login-help ul { margin: 6px 0; }
   .buttons { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 14px 0; }
   .buttons button { font: inherit; font-size: 13px; color: var(--text); background: var(--bg);
                     border: 1px solid var(--border); padding: 6px 12px; cursor: pointer; }
@@ -91,7 +95,21 @@
 <div class="lower">
   <div class="buttons" id="lower-buttons"></div>
   <div class="name"><span id="lower-title"></span>
-    <a id="lower-link" target="_blank" rel="noopener">open ↗</a></div>
+    <a id="lower-link" target="_blank" rel="noopener">open ↗</a>
+    <details class="login-help"><summary>can't log in?</summary>
+      <p>Inside this pane, the site's login cookie counts as a third-party cookie, and the
+      browser may block it. Allow it once for this dashboard and logging in here works:</p>
+      <ul>
+        <li><b>Chrome / Edge:</b> click the eye icon at the right of the address bar and allow
+        third-party cookies for this site. Or: Settings → Privacy and security → Third-party
+        cookies → Allowed to use third-party cookies → Add, and enter this page's address.</li>
+        <li><b>Firefox:</b> click the shield icon left of the address bar and turn off Enhanced
+        Tracking Protection for this site.</li>
+        <li><b>Safari:</b> Settings → Privacy → untick Prevent cross-site tracking (this applies to every site).</li>
+      </ul>
+      <p>Each address you open the dashboard from counts as its own site. Or use
+      “open ↗” to view the page in its own tab.</p>
+    </details></div>
   <iframe id="lower-frame" loading="lazy" title="Lower pane"></iframe>
 </div>
 
