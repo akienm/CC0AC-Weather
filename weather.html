@@ -29,7 +29,9 @@
   .hero { display: flex; align-items: center; gap: 16px; }
   .hero .name { margin-bottom: 4px; }
   .hero .icon { font-size: 48px; line-height: 1; }
-  .hero .temp { font-size: 96px; line-height: 0.9; font-weight: 300; letter-spacing: -2px; }
+  /* Sized to the screen so the widest likely reading, 108.8°F, still fits on one line. */
+  .hero .temp { font-size: clamp(48px, calc(34vw - 55px), 96px); line-height: 0.9; white-space: nowrap;
+                padding-top: 18px; /* clears the age label in the card's corner */ font-weight: 300; letter-spacing: -2px; }
   .hero .temp small { font-size: 24px; color: var(--muted); letter-spacing: 0; }
   .card.outdoor > .age { position: absolute; top: 14px; right: 14px; font-size: 13px; }
   .name { color: var(--accent); font-size: 13px; margin-bottom: 8px; display: flex; justify-content: space-between; gap: 8px; }
