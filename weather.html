@@ -389,6 +389,30 @@ function wind(f) {
   return f.wind_dir_deg == null ? `${speed} mph` : `${speed} mph from ${card(f.wind_dir_deg)} ${windArrow(f.wind_dir_deg)}`;
 }
 
+// The outdoor temperature's color: the National Weather Service's own temperature map
+// scale (NDFD, read from the legend of mapservices.weather.noaa.gov NDFD_temp), one stop
+// every 5°F, blended between stops so the color moves smoothly with the temperature.
+const TEMP_COLORS = [
+  [-30, '#ffe6ff'], [-25, '#ffc9ff'], [-20, '#ff94ff'], [-15, '#ff5cff'], [-10, '#ff00ff'],
+  [-5, '#cc00ff'], [0, '#9900ff'], [5, '#5e00ff'], [10, '#0808ff'], [15, '#304fff'],
+  [20, '#3b86ff'], [25, '#33c2ff'], [30, '#08fffb'], [35, '#2bffc3'], [40, '#30ff87'],
+  [45, '#26ff4e'], [50, '#1aff00'], [55, '#6aff00'], [60, '#a1ff00'], [65, '#d4ff00'],
+  [70, '#fffb00'], [75, '#ffd900'], [80, '#ffbb00'], [85, '#ff9900'], [90, '#fa7d00'],
+  [95, '#d95e00'], [100, '#b84000'], [105, '#992400'], [140, '#800000'],
+];
+
+function tempColor(t) {
+  if (t == null || isNaN(t)) return '';
+  const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const first = TEMP_COLORS[0], last = TEMP_COLORS[TEMP_COLORS.length - 1];
+  if (t <= first[0]) return first[1];
+  if (t >= last[0]) return last[1];
+  const i = TEMP_COLORS.findIndex(([v]) => v >= t);
+  const [v0, c0] = TEMP_COLORS[i - 1], [v1, c1] = TEMP_COLORS[i];
+  const k = (t - v0) / (v1 - v0), a = rgb(c0), b = rgb(c1);
+  return `rgb(${a.map((x, j) => Math.round(x + (b[j] - x) * k)).join(',')})`;
+}
+
 function outdoorCard(s, data, sk) {
   const f = s.fields;
   const icon = sk ? (sk.up ? '☀️' : sk.moon.emoji) : '';
@@ -396,7 +420,7 @@ function outdoorCard(s, data, sk) {
     <div class="age">${ageSpan(s.updated)}</div>
     <div class="hero">
       <div><div class="name"><span>${s.name}</span></div><div class="icon">${icon}</div></div>
-      <div class="temp">${num(f.temp_f)}°<small>F</small></div>
+      <div class="temp" style="color:${tempColor(f.temp_f)}">${num(f.temp_f)}°<small>F</small></div>
     </div>
     <div class="rows">
       ${row('🌡️ Feels like', num(f.feels_like_f) + '°')}
