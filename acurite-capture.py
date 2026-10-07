@@ -284,7 +284,7 @@ def record_hub_reading(params: dict, write_path: Path, sensors: dict, page: dict
     """Fold one hub reading into current.json / current.js and append history.csv.
 
     page: settings the dashboard reads from the data file (it cannot read
-    config.ini), e.g. {"lower_pane_url": "https://..."}; empty values are left out."""
+    config.ini), e.g. {"lower_buttons": [{"label": ..., "url": ...}]}; empty values are left out."""
     global _pressure_seeded
     sensor_id = params.get("sensor", "")
     kind = params.get("mt", "unknown")
@@ -359,6 +359,21 @@ def _station(cfg: configparser.ConfigParser) -> dict:
     return out if "latitude" in out and "longitude" in out else {}
 
 
+def _buttons(cfg: configparser.ConfigParser) -> list[dict]:
+    """[buttons] button1..buttonN = Label | URL, in number order, for the lower pane.
+    A blank button, or one missing its label or URL, is left out."""
+    if not cfg.has_section("buttons"):
+        return []
+    numbered = []
+    for key, value in cfg.items("buttons"):
+        if not (key.startswith("button") and key[6:].isdigit()):
+            continue
+        label, _, url = (part.strip() for part in value.partition("|"))
+        if label and url:
+            numbered.append((int(key[6:]), {"label": label, "url": url}))
+    return [b for _, b in sorted(numbered, key=lambda n: n[0])]
+
+
 def _make_hub_handler(cfg: configparser.ConfigParser, write_path: Path, sensors: dict):
     relay_on = cfg.getboolean("hub", "relay", fallback=True)
     relay_url = cfg.get("hub", "relay_url", fallback=ACCESS_RELAY_URL).rstrip("/")
@@ -366,9 +381,9 @@ def _make_hub_handler(cfg: configparser.ConfigParser, write_path: Path, sensors:
     # anything else is relayed but not kept. Matters once 443 faces the internet.
     hub_id = cfg.get("hub", "hub_id", fallback="").strip().upper()
     raw_dir = Path(cfg.get("hub", "raw_dir", fallback=str(DEFAULT_CONFIG.parent / "hub-raw"))).expanduser()
-    # The dashboard's lower pane shows [web] lower_pane_url; blank, and there is none.
-    page = {"lower_pane_url": cfg.get("web", "lower_pane_url", fallback="").strip(),
-            "station": _station(cfg)}
+    # The dashboard's lower pane: a row of [buttons], each loading its page below.
+    # None set, and there is no pane.
+    page = {"lower_buttons": _buttons(cfg), "station": _station(cfg)}
 
     class HubHandler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"

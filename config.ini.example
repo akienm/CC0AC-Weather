@@ -47,10 +47,16 @@ relay_url = https://atlasapi.myacurite.com
 enabled = false
 port = 12345
 
-; A page shown in a pane at the bottom of the dashboard: a radar map, a
-; webcam, anything that lets itself be framed. Blank, and there is no pane.
-; e.g. https://www.wunderground.com/wundermap?lat=<lat>&lon=<lon>&zoom=12&radar=true
-lower_pane_url =
+[buttons]
+; A row of buttons in a pane at the bottom of the dashboard. Each loads its page
+; into the pane: a radar map, a forecast, a webcam, anything that lets itself be
+; framed. buttonN = Label | URL, shown in number order. A blank one is not shown,
+; so you can keep spare slots. None set, and there is no pane.
+; Logging in to a site inside the pane needs the browser to allow third-party
+; cookies for the dashboard's address (in Chrome: the eye icon in the address bar).
+button1 = Radar | https://www.wunderground.com/wundermap?lat=<lat>&lon=<lon>&zoom=12&radar=true
+button2 =
+button3 =
 
 [station]
 ; Where the station is. With latitude and longitude set, the dashboard shows

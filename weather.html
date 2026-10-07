@@ -37,6 +37,11 @@
   .lower { display: none; margin-top: 16px; background: var(--surface); border: 1px solid var(--border); }
   .lower .name { padding: 14px 14px 0; }
   .lower a { color: var(--accent); }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 14px 0; }
+  .buttons button { font: inherit; font-size: 13px; color: var(--text); background: var(--bg);
+                    border: 1px solid var(--border); padding: 6px 12px; cursor: pointer; }
+  .buttons button:hover { border-color: var(--accent); }
+  .buttons button.on { color: var(--bg); background: var(--accent); border-color: var(--accent); }
   .lower iframe { display: block; width: 100%; height: max(85vh, 500px); border: 0; background: #fff; }
   #error { color: var(--warn); margin-top: 16px; white-space: pre-wrap; }
   .card { min-width: 0; }
@@ -81,9 +86,10 @@
 </div>
 <div id="error"></div>
 
-<!-- The lower pane: any page, named by [web] lower_pane_url in config.ini.
-     Blank, and the pane is not shown. -->
+<!-- The lower pane: a row of buttons from [buttons] in config.ini, each loading
+     its page into the frame below. None set, and the pane is not shown. -->
 <div class="lower">
+  <div class="buttons" id="lower-buttons"></div>
   <div class="name"><span id="lower-title"></span>
     <a id="lower-link" target="_blank" rel="noopener">open ↗</a></div>
   <iframe id="lower-frame" loading="lazy" title="Lower pane"></iframe>
@@ -393,17 +399,44 @@ function sensorCard(s) {
   </div>`;
 }
 
-function showLowerPane(url) {
-  const pane = document.querySelector('.lower');
-  if (!url) { pane.style.display = 'none'; return; }
+// The chosen button is remembered per browser; a missing or stale choice falls
+// back to the first button.
+const LOWER_KEY = 'cc0ac-lower-button';
+
+function remembered() {
+  try { return localStorage.getItem(LOWER_KEY); } catch (e) { return null; }
+}
+
+function chooseLower(button) {
   const frame = document.getElementById('lower-frame');
-  if (frame.src !== url) {
-    frame.src = url;
-    document.getElementById('lower-link').href = url;
-    let host = url;
-    try { host = new URL(url).hostname.replace(/^www\./, ''); } catch (e) {}
-    document.getElementById('lower-title').textContent = host;
+  if (frame.src !== button.url) frame.src = button.url;
+  document.getElementById('lower-link').href = button.url;
+  document.getElementById('lower-title').textContent = button.label;
+  for (const b of document.querySelectorAll('#lower-buttons button'))
+    b.classList.toggle('on', b.dataset.url === button.url);
+  try { localStorage.setItem(LOWER_KEY, button.url); } catch (e) {}
+}
+
+let lowerKey = null;
+
+function showLowerPane(buttons) {
+  const pane = document.querySelector('.lower');
+  buttons = (buttons || []).filter(b => b && b.label && b.url);
+  const key = JSON.stringify(buttons);
+  if (key === lowerKey) return;
+  lowerKey = key;
+  if (!buttons.length) { pane.style.display = 'none'; return; }
+  const row = document.getElementById('lower-buttons');
+  row.innerHTML = '';
+  for (const b of buttons) {
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.textContent = b.label;
+    el.dataset.url = b.url;
+    el.addEventListener('click', () => chooseLower(b));
+    row.appendChild(el);
   }
+  chooseLower(buttons.find(b => b.url === remembered()) || buttons[0]);
   pane.style.display = 'block';
 }
 
@@ -433,7 +466,7 @@ const OUTDOOR = ['Atlas', 'Iris', '5N1'];
 function drawCurrent() {
   const data = window.ACURITE_CURRENT;
   if (!data) return;
-  showLowerPane(data.lower_pane_url);
+  showLowerPane(data.lower_buttons);
   const sk = sky(data.station);
   const sensors = [...data.sensors].sort((x, y) => x.name.localeCompare(y.name));
   pane('p-outdoor', data.written,

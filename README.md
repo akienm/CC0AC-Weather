@@ -77,10 +77,13 @@ are answered locally.
 ### The dashboard
 
 `http://THIS_BOX:12345/` (port set by `[web] port`; several comma-separated
-ports allowed). To share it, forward that port on your router. Set
-`[web] lower_pane_url` to any page that allows framing (a radar map such as
-Weather Underground's WunderMap, a webcam) and it appears in a pane at the
-bottom; leave it blank and there is none.
+ports allowed). To share it, forward that port on your router. The
+`[buttons]` section puts a row of buttons in a pane at the bottom, each loading
+a page that allows framing (a radar map such as Weather Underground's WunderMap,
+a forecast, a webcam): `buttonN = Label | URL`. Blank buttons are not shown, and
+with none set there is no pane. The page remembers which button you chose. To
+log in to a site inside the pane, allow third-party cookies for the dashboard's
+address in your browser.
 
 Set `[station] latitude` and `longitude` (and optionally `elevation_ft`) and a
 Sun & moon card appears: sunrise, sunset, daylight and the moon phase, computed
