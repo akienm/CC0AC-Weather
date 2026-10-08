@@ -36,6 +36,7 @@ import csv
 import json
 import logging
 import os
+import sqlite3
 import ssl
 import subprocess
 import sys
@@ -280,12 +281,14 @@ def _write_atomic(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
-def record_hub_reading(params: dict, write_path: Path, sensors: dict, page: dict | None = None) -> dict:
-    """Fold one hub reading into current.json / current.js and append history.csv.
+def record_hub_reading(params: dict, write_path: Path, sensors: dict, page: dict | None = None,
+                       query: str = "", db_path: Path | None = None) -> dict:
+    """Fold one hub reading into current.json / current.js, append history.csv,
+    and store it in the database at db_path (query: the hub's query string as sent).
 
     page: settings the dashboard reads from the data file (it cannot read
     config.ini), e.g. {"lower_buttons": [{"label": ..., "url": ...}]}; empty values are left out."""
-    global _pressure_seeded
+    global _pressure_seeded, _db
     sensor_id = params.get("sensor", "")
     kind = params.get("mt", "unknown")
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -318,7 +321,90 @@ def record_hub_reading(params: dict, write_path: Path, sensors: dict, page: dict
                 w.writeheader()
             w.writerow({"timestamp": now, "sensor_id": sensor_id,
                         "sensor_name": entry["name"], "type": kind, **fields})
+        if db_path is not None:
+            try:
+                if _db is None:
+                    _db = open_db(db_path)
+                store_reading(_db, now, query)
+            except sqlite3.Error as exc:
+                log.error("HUB store failed: %s (query=%s)", exc, query)
     return entry
+
+
+# ── Long-term store (SQLite) ──────────────────────────────────────────────────
+#
+# One row per hub reading, kept for good: our field names as columns for
+# querying and charting, plus the hub's whole query string so no field it sends
+# is ever lost, even ones we don't map yet. history.csv stays as a plain-text
+# copy. A reading the hub sends twice (it resends whatever AcuRite refused)
+# carries the same query string, so it is stored once.
+
+DB_COLUMNS = sorted(set(HUB_FIELDS.values()))
+_db: sqlite3.Connection | None = None   # guarded by _current_lock
+
+
+def open_db(path: Path) -> sqlite3.Connection:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(path, check_same_thread=False, timeout=30)
+    con.execute("PRAGMA journal_mode=WAL")
+    con.execute("PRAGMA synchronous=NORMAL")
+    con.execute(f"""CREATE TABLE IF NOT EXISTS readings (
+        received_utc TEXT NOT NULL,  -- when it reached us, e.g. 2026-10-08T18:17:23Z
+        hub_utc TEXT,                -- the hub's own dateutc for the reading
+        hub_id TEXT,
+        sensor_id TEXT NOT NULL,
+        type TEXT,                   -- Atlas, tower, ...
+        {", ".join(DB_COLUMNS)},
+        query TEXT NOT NULL UNIQUE   -- the hub's query string, exactly as sent
+    )""")
+    con.execute("CREATE INDEX IF NOT EXISTS readings_by_sensor ON readings (sensor_id, received_utc)")
+    con.execute("CREATE INDEX IF NOT EXISTS readings_by_time ON readings (received_utc)")
+    return con
+
+
+def store_reading(con: sqlite3.Connection, received_utc: str, query: str) -> bool:
+    """Insert one hub reading; False if that exact reading was already stored."""
+    params = dict(urllib.parse.parse_qsl(query))
+    hub_utc = params.get("dateutc", "")
+    row = {"received_utc": received_utc,
+           "hub_utc": hub_utc + "Z" if len(hub_utc) == 19 else (hub_utc or None),
+           "hub_id": params.get("id"), "sensor_id": params.get("sensor", ""), "type": params.get("mt"),
+           **{HUB_FIELDS[k]: _hub_value(v) for k, v in params.items() if k in HUB_FIELDS and v != ""},
+           "query": query}
+    cur = con.execute(f"INSERT OR IGNORE INTO readings ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})",
+                      list(row.values()))
+    con.commit()
+    return cur.rowcount == 1
+
+
+def import_raw(cfg: configparser.ConfigParser) -> None:
+    """Load every reading in the raw hub logs into the store. Safe to run again:
+    readings already there are skipped."""
+    raw_dir = Path(cfg.get("hub", "raw_dir", fallback=str(DEFAULT_CONFIG.parent / "hub-raw"))).expanduser()
+    hub_id = cfg.get("hub", "hub_id", fallback="").strip().upper()
+    con = open_db(_db_path(cfg))
+    added = skipped = other = 0
+    for log_file in sorted(raw_dir.glob("*.log")):
+        for line in log_file.read_text(encoding="utf-8", errors="replace").splitlines():
+            stamp, _, request = line.partition("\t")
+            target = request.split(" ")[1] if request.count(" ") else ""
+            path, _, query = target.partition("?")
+            params = dict(urllib.parse.parse_qsl(query))
+            # The same test the live listener applies before it records a reading.
+            if path != HUB_UPDATE_PATH or (hub_id and params.get("id", "").upper() != hub_id):
+                other += 1
+            elif store_reading(con, stamp, query):
+                added += 1
+            else:
+                skipped += 1
+    total = con.execute("SELECT count(*) FROM readings").fetchone()[0]
+    print(f"{added} readings added, {skipped} already stored, {other} other requests left out; "
+          f"{total} readings in {_db_path(cfg)}")
+
+
+def _db_path(cfg: configparser.ConfigParser) -> Path:
+    write_path = Path(cfg.get("device", "write_path")).expanduser()
+    return Path(cfg.get("storage", "database", fallback=str(write_path / "weather.db"))).expanduser()
 
 
 def _log_raw(raw_dir: Path, path_and_query: str) -> None:
@@ -384,6 +470,7 @@ def _make_hub_handler(cfg: configparser.ConfigParser, write_path: Path, sensors:
     # The dashboard's lower pane: a row of [buttons], each loading its page below.
     # None set, and there is no pane.
     page = {"lower_buttons": _buttons(cfg), "station": _station(cfg)}
+    db_path = _db_path(cfg)
 
     class HubHandler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -403,15 +490,16 @@ def _make_hub_handler(cfg: configparser.ConfigParser, write_path: Path, sensors:
             _log_raw(raw_dir, f"{method} {self.path}" + (f" {body[:500]!r}" if body else ""))
             parsed = urllib.parse.urlparse(self.path)
             if parsed.path == HUB_UPDATE_PATH:
-                params = dict(urllib.parse.parse_qsl(parsed.query))
+                query = parsed.query
                 if body and "form-urlencoded" in self.headers.get("Content-Type", ""):
-                    params.update(urllib.parse.parse_qsl(body.decode(errors="replace")))
+                    query += "&" + body.decode(errors="replace")
+                params = dict(urllib.parse.parse_qsl(query))
                 if hub_id and params.get("id", "").upper() != hub_id:
                     log.warning("HUB reading from unknown id %r not recorded", params.get("id"))
                     self._answer(403, "application/json", b'{"error":"unknown hub"}')
                     return
                 try:
-                    e = record_hub_reading(params, write_path, sensors, page)
+                    e = record_hub_reading(params, write_path, sensors, page, query, db_path)
                     log.info("HUB %s %s %s", e["type"], e["name"],
                              {k: e["fields"].get(k) for k in ("temp_f", "humidity_pct", "wind_mph") if k in e["fields"]})
                 except Exception as exc:
@@ -863,6 +951,10 @@ def main() -> None:
         metavar="SECONDS",
         help="How long to listen in discover mode (default: 300)",
     )
+    parser.add_argument(
+        "--import-raw", action="store_true",
+        help="Load every reading in the raw hub logs into the database and exit (safe to re-run)",
+    )
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
 
@@ -873,7 +965,9 @@ def main() -> None:
 
     cfg = load_config(args.config)
 
-    if args.discover:
+    if args.import_raw:
+        import_raw(cfg)
+    elif args.discover:
         run_discover(cfg, args.discover_time)
     else:
         run_daemon(cfg)

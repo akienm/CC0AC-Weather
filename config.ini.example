@@ -38,6 +38,13 @@ relay_url = https://atlasapi.myacurite.com
 ; Every raw hub request, one file per day, for re-processing later.
 ; raw_dir = ~/.cc0ac-weather/hub-raw
 
+[storage]
+; Every hub reading is kept in a SQLite database (one row per sensor reading,
+; plus the hub's whole request). Default: weather.db in write_path. The web
+; server never serves it. To load readings from before it existed, out of the
+; raw hub logs:  python3 acurite-capture.py --import-raw
+; database = ~/AcuRite/weather.db
+
 [web]
 ; Built-in web server for the dashboard: serves weather.html, current.js,
 ; current.json, forecast.js and history.csv, read-only, nothing else. To reach it from

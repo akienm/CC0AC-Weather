@@ -14,7 +14,7 @@ The AcuRite **Access** hub (or smartHUB) uploads each sensor reading over HTTPS
 to a server named in its settings. CC0AC-Weather is that server:
 
     sensors ──radio──▶ Access hub ──HTTPS──▶ this program (port 443)
-                                              ├─ current.json / current.js / history.csv
+                                              ├─ current.json / current.js / history.csv / weather.db
                                               ├─ relays the reading to AcuRite (optional; their app keeps working)
                                               └─ web server ──▶ weather.html dashboard
     The hub uploads to Weather Underground itself; that is untouched.
@@ -22,7 +22,11 @@ to a server named in its settings. CC0AC-Weather is that server:
 - One burst every 5 minutes, one request per sensor (Atlas, 5-in-1, Iris, towers, …).
 - `current.js` loads with a plain `<script>` tag, so the dashboard also works
   opened as a file or from any static host — no web server required to view it.
-- `history.csv` keeps every reading, for charts (coming).
+- `weather.db` (SQLite) keeps every reading for good, one row per sensor reading,
+  with each value in its own column and the hub's whole request kept beside it,
+  so nothing the hub sends is lost. `history.csv` is the same record as plain text.
+  Readings from before the database existed load from the raw hub logs:
+  `python3 acurite-capture.py --import-raw` (safe to run again).
 
 No hub? The older path still works: an RTL-SDR dongle and rtl_433 receive the
 sensors directly (see *Radio capture* below).
