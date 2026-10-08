@@ -67,6 +67,10 @@ port = 12345
 ; so you can keep spare slots. None set, and there is no pane.
 ; Logging in to a site inside the pane needs the browser to allow third-party
 ; cookies for the dashboard's address (in Chrome: the eye icon in the address bar).
+; Or add  | Target=<name>  and the button opens its page in a browser window of
+; that name instead, where logging in just works; pressing it again reuses that
+; window. Target=_blank opens a new tab every time.
+;   button2 = Weather Underground | https://www.wunderground.com/ | Target=wu
 button1 = Radar | https://www.wunderground.com/wundermap?lat=<lat>&lon=<lon>&zoom=12&radar=true
 button2 =
 button3 =

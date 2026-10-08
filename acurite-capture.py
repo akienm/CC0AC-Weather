@@ -589,16 +589,23 @@ def _title(cfg: configparser.ConfigParser) -> str:
 
 def _buttons(cfg: configparser.ConfigParser) -> list[dict]:
     """[buttons] button1..buttonN = Label | URL, in number order, for the lower pane.
-    A blank button, or one missing its label or URL, is left out."""
+    A third part, Target=<window name>, opens the page in that browser window or
+    tab instead of the pane (Target=_blank: a new tab every time). A blank button,
+    or one missing its label or URL, is left out."""
     if not cfg.has_section("buttons"):
         return []
     numbered = []
     for key, value in cfg.items("buttons"):
         if not (key.startswith("button") and key[6:].isdigit()):
             continue
-        label, _, url = (part.strip() for part in value.partition("|"))
+        label, url, *rest = [part.strip() for part in value.split("|")] + [""]
+        button = {"label": label, "url": url}
+        for part in rest:
+            name, eq, target = part.partition("=")
+            if eq and name.strip().lower() == "target" and target.strip():
+                button["target"] = target.strip()
         if label and url:
-            numbered.append((int(key[6:]), {"label": label, "url": url}))
+            numbered.append((int(key[6:]), button))
     return [b for _, b in sorted(numbered, key=lambda n: n[0])]
 
 

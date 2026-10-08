@@ -239,7 +239,10 @@ a page that allows framing (a radar map such as Weather Underground's WunderMap,
 a forecast, a webcam): `buttonN = Label | URL`. Blank buttons are not shown, and
 with none set there is no pane. The page remembers which button you chose. To
 log in to a site inside the pane, allow third-party cookies for the dashboard's
-address in your browser.
+address in your browser. Or add a third part, `Label | URL | Target=wu`, and the
+button opens its page in a browser window of that name instead, where logging
+in works as usual; pressing it again reuses that window. `Target=_blank` opens
+a new tab every time.
 
 Set `[station] latitude` and `longitude` (and optionally `elevation_ft`) and a
 Sun & moon card appears: sunrise, sunset, daylight and the moon phase, computed

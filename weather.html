@@ -56,7 +56,9 @@
   .buttons { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 14px 0; }
   .buttons button { font: inherit; font-size: 13px; color: var(--text); background: var(--bg);
                     border: 1px solid var(--border); padding: 6px 12px; cursor: pointer; }
-  .buttons button:hover { border-color: var(--accent); }
+  .buttons a { font-size: 13px; color: var(--text); background: var(--bg); text-decoration: none;
+               border: 1px solid var(--border); padding: 6px 12px; }
+  .buttons button:hover, .buttons a:hover { border-color: var(--accent); }
   .buttons button.on { color: var(--bg); background: var(--accent); border-color: var(--accent); }
   .lower iframe { display: block; width: 100%; height: max(85vh, 500px); border: 0; background: #fff; }
   #error { color: var(--warn); margin-top: 16px; white-space: pre-wrap; }
@@ -104,10 +106,11 @@
 <div id="error"></div>
 
 <!-- The lower pane: a row of buttons from [buttons] in config.ini, each loading
-     its page into the frame below. None set, and the pane is not shown. -->
+     its page into the frame below, or, with Target= set, into its own window.
+     None set, and the pane is not shown. -->
 <div class="lower">
   <div class="buttons" id="lower-buttons"></div>
-  <div class="name"><span id="lower-title"></span>
+  <div class="name" id="lower-head"><span id="lower-title"></span>
     <a id="lower-link" target="_blank" rel="noopener">open ↗</a>
     <details class="login-help"><summary>can't log in?</summary>
       <p>Inside this pane, the site's login cookie counts as a third-party cookie, and the
@@ -487,6 +490,17 @@ function showLowerPane(buttons) {
   const row = document.getElementById('lower-buttons');
   row.innerHTML = '';
   for (const b of buttons) {
+    // Target= opens the page in its own window, where its login works like any
+    // other tab; the same name reuses that window.
+    if (b.target) {
+      const a = document.createElement('a');
+      a.textContent = `${b.label} ↗`;
+      a.href = b.url;
+      a.target = b.target;
+      a.rel = 'noopener';
+      row.appendChild(a);
+      continue;
+    }
     const el = document.createElement('button');
     el.type = 'button';
     el.textContent = b.label;
@@ -494,7 +508,12 @@ function showLowerPane(buttons) {
     el.addEventListener('click', () => chooseLower(b));
     row.appendChild(el);
   }
-  chooseLower(buttons.find(b => b.url === remembered()) || buttons[0]);
+  // With every button opening its own window, the pane is only the row.
+  const inPane = buttons.filter(b => !b.target);
+  document.getElementById('lower-head').style.display = inPane.length ? '' : 'none';
+  document.getElementById('lower-frame').style.display = inPane.length ? '' : 'none';
+  row.style.paddingBottom = inPane.length ? '' : '12px';
+  if (inPane.length) chooseLower(inPane.find(b => b.url === remembered()) || inPane[0]);
   pane.style.display = 'block';
 }
 
