@@ -44,9 +44,10 @@
   .u-legend .u-marker { width: 10px; height: 10px; }
   .u-select { background: rgba(68, 170, 255, 0.15); }
 </style>
+<link rel="stylesheet" href="theme.css">
 </head>
 <body>
-<h1>CC0AC Weather <a href="/">← now</a></h1>
+<h1><span id="title">CC0AC Weather</span> <a href="/">← now</a></h1>
 <div class="ts" id="written">loading…</div>
 <div class="buttons" id="periods">
   <button data-p="today">Today</button>
@@ -66,7 +67,15 @@
 // (#week, #range:2026-10-01:2026-10-08) so a chart view can be bookmarked or shared.
 // The server groups readings into buckets sized to the period; see /history.json.
 
-const COLORS = ["#4af", "#f90", "#6d6", "#f6c", "#fd4", "#a8f", "#4dd", "#f66", "#ccc"];
+// Chart colors come from theme.css (--chart-1 … --chart-9 and the rest), so a
+// restyle is one file. A page opened without it falls back to these.
+const DEFAULT_COLORS = { "1": "#4af", "2": "#f90", "3": "#6d6", "4": "#f6c", "5": "#fd4", "6": "#a8f",
+  "7": "#4dd", "8": "#f66", "9": "#ccc", axis: "#888", grid: "#222", band: "#2a5f8f",
+  "band-fill": "rgba(68,170,255,0.12)", outdoor: "#fff", rain: "rgba(68,170,255,0.5)" };
+const css = getComputedStyle(document.documentElement);
+const C = Object.fromEntries(Object.entries(DEFAULT_COLORS).map(
+  ([k, v]) => [k, css.getPropertyValue(`--chart-${k}`).trim() || v]));
+const COLORS = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(i => C[i]);
 const REFRESH_MS = 5 * 60 * 1000;
 const plots = [];
 let current = null;
@@ -133,7 +142,7 @@ function width() {
 }
 
 function axes(left, right) {
-  const base = { stroke: "#888", grid: { stroke: "#222" }, ticks: { stroke: "#333" } };
+  const base = { stroke: C.axis, grid: { stroke: C.grid }, ticks: { stroke: C.grid } };
   const a = [{ ...base }, { ...base, label: left, labelSize: 18, size: 55 }];
   if (right) a.push({ ...base, label: right, labelSize: 18, size: 55, side: 1, scale: "r", grid: { show: false } });
   return a;
@@ -165,6 +174,10 @@ function draw(d) {
   document.getElementById("charts").innerHTML = "";
   const span = d.to - d.from;
   const fmt = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: span > 2 * 86400 ? undefined : "short" });
+  if (d.title) {
+    document.getElementById("title").textContent = d.title;
+    document.title = `${d.title} Charts`;
+  }
   document.getElementById("written").textContent =
     `${fmt.format(new Date(d.from * 1000))} – ${fmt.format(new Date(d.to * 1000))} · ${stepLabel(d.step)} averages`;
 
@@ -172,9 +185,9 @@ function draw(d) {
 
   plot("Outdoor temperature °F", {
     axes: axes("°F"),
-    series: [{}, line("Temp", COLORS[0]), line("Low", "#2a5f8f", { width: 1 }), line("High", "#2a5f8f", { width: 1 }),
+    series: [{}, line("Temp", COLORS[0]), line("Low", C.band, { width: 1 }), line("High", C.band, { width: 1 }),
              line("Dew point", COLORS[2]), line("Feels like", COLORS[1], { dash: [4, 4] })],
-    bands: [{ series: [3, 2], fill: "rgba(68,170,255,0.12)" }],
+    bands: [{ series: [3, 2], fill: C["band-fill"] }],
     scales: { x: { time: true } },
   }, [t, o.temp_f, o.temp_min, o.temp_max, o.dew_point_f, o.feels_like_f]);
 
@@ -200,7 +213,7 @@ function draw(d) {
   const per = { 3600: "hour", 86400: "day", 604800: "week" }[d.rain.step] || `${d.rain.step / 3600} hours`;
   plot(`Rain, inches per ${per}`, {
     axes: axes("in"),
-    series: [{}, { label: "Rain", stroke: COLORS[0], fill: "rgba(68,170,255,0.5)",
+    series: [{}, { label: "Rain", stroke: COLORS[0], fill: C.rain,
                    paths: uPlot.paths.bars({ size: [0.8, 40], align: 1 }), points: { show: false } }],
     scales: { y: { range: (u, min, max) => [0, Math.max(0.1, max * 1.1)] } },
   }, [d.rain.t, d.rain.in], totals);
@@ -219,7 +232,7 @@ function draw(d) {
 
   plot("Humidity %", {
     axes: axes("%"),
-    series: [{}, line("Outdoor", "#fff", { width: 1, dash: [4, 4] }),
+    series: [{}, line("Outdoor", C.outdoor, { width: 1, dash: [4, 4] }),
              ...rooms.map((r, i) => line(r.name, COLORS[i % COLORS.length]))],
   }, [t, o.humidity_pct, ...rooms.map(r => r.humidity_pct)]);
 }

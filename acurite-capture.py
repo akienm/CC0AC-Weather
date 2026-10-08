@@ -36,6 +36,7 @@ import csv
 import json
 import logging
 import os
+import re
 import sqlite3
 import ssl
 import subprocess
@@ -581,6 +582,11 @@ def _station(cfg: configparser.ConfigParser) -> dict:
     return out if "latitude" in out and "longitude" in out else {}
 
 
+def _title(cfg: configparser.ConfigParser) -> str:
+    """[station] name: the pages' title and heading."""
+    return cfg.get("station", "name", fallback="").strip() or DEFAULT_TITLE
+
+
 def _buttons(cfg: configparser.ConfigParser) -> list[dict]:
     """[buttons] button1..buttonN = Label | URL, in number order, for the lower pane.
     A blank button, or one missing its label or URL, is left out."""
@@ -605,7 +611,7 @@ def _make_hub_handler(cfg: configparser.ConfigParser, write_path: Path, sensors:
     raw_dir = Path(cfg.get("hub", "raw_dir", fallback=str(DEFAULT_CONFIG.parent / "hub-raw"))).expanduser()
     # The dashboard's lower pane: a row of [buttons], each loading its page below.
     # None set, and there is no pane.
-    page = {"lower_buttons": _buttons(cfg), "station": _station(cfg)}
+    page = {"title": _title(cfg), "lower_buttons": _buttons(cfg), "station": _station(cfg)}
     db_path = _db_path(cfg)
 
     class HubHandler(BaseHTTPRequestHandler):
@@ -867,16 +873,35 @@ def run_forecast(cfg: configparser.ConfigParser, write_path: Path) -> None:
 # ── Web server ───────────────────────────────────────────────────────────────
 #
 # Serves the dashboard and its data, read-only, and nothing else: no directory
-# listing, no other files. The page comes from beside this script (so a repo
+# listing, no other files. The pages come from beside this script (so a repo
 # update shows at once); the data comes from write_path.
+#
+# [web] pages names a folder of your own: a page, stylesheet, script or image
+# put there is served by its name, and one named like a shipped page (theme.css,
+# weather.html, charts.html) replaces it. An update never touches that folder.
 
-PAGES = {"/": "weather.html", "/weather.html": "weather.html", "/charts.html": "charts.html"}
+DEFAULT_TITLE = "CC0AC Weather"
+SHIPPED_PAGES = ("weather.html", "charts.html", "theme.css")
+PAGE_TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "application/javascript",
+              ".png": "image/png", ".jpg": "image/jpeg", ".svg": "image/svg+xml",
+              ".ico": "image/x-icon", ".webp": "image/webp"}
+PAGE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 DATA_FILES = {"/current.js": "application/javascript", "/current.json": "application/json",
               "/forecast.js": "application/javascript", "/forecast.json": "application/json",
               "/history.csv": "text/csv"}
 
 
-def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: dict | None = None):
+def _find_page(name: str, own_dir: Path | None, page_dir: Path) -> Path | None:
+    """The file to serve for /<name>: yours first, then the shipped one."""
+    if not PAGE_NAME.fullmatch(name) or Path(name).suffix.lower() not in PAGE_TYPES:
+        return None
+    if own_dir is not None and (own_dir / name).is_file():
+        return own_dir / name
+    return page_dir / name if name in SHIPPED_PAGES else None
+
+
+def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: dict | None = None,
+                      own_dir: Path | None = None, title: str = DEFAULT_TITLE):
     page_dir = Path(__file__).resolve().parent
 
     class WebHandler(BaseHTTPRequestHandler):
@@ -889,13 +914,14 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
             if path == "/history.json":
                 self._history(dict(urllib.parse.parse_qsl(url.query)))
                 return
-            if path in PAGES:
-                target, ctype = page_dir / PAGES[path], "text/html; charset=utf-8"
-            elif path in DATA_FILES:
+            if path in DATA_FILES:
                 target, ctype = write_path / path.lstrip("/"), DATA_FILES[path]
             else:
-                self.send_error(404)
-                return
+                target = _find_page(path.lstrip("/") or "weather.html", own_dir, page_dir)
+                if target is None:
+                    self.send_error(404)
+                    return
+                ctype = PAGE_TYPES[target.suffix.lower()]
             try:
                 body = target.read_bytes()
             except FileNotFoundError:
@@ -908,7 +934,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
                 self.send_error(404, "No database yet")
                 return
             try:
-                data = history(db_path, sensors or {}, q)
+                data = {"title": title, **history(db_path, sensors or {}, q)}
             except ValueError as e:
                 self.send_error(400, str(e))
                 return
@@ -933,7 +959,11 @@ def run_web_server(cfg: configparser.ConfigParser, write_path: Path) -> None:
     # One or more ports, comma-separated: e.g. "12345, 80" when a router can only
     # forward 80 to 80 but the inside address should stay easy to remember.
     ports = [int(p) for p in cfg.get("web", "port", fallback="12345").split(",") if p.strip()]
-    handler = _make_web_handler(write_path, _db_path(cfg), sensor_map(cfg))
+    own = cfg.get("web", "pages", fallback="").strip()
+    own_dir = Path(own).expanduser() if own else None
+    if own_dir is not None and not own_dir.is_dir():
+        log.warning("[web] pages folder %s not found; serving the shipped pages only", own_dir)
+    handler = _make_web_handler(write_path, _db_path(cfg), sensor_map(cfg), own_dir, _title(cfg))
     servers = [ThreadingHTTPServer(("", port), handler) for port in ports]
     for port, server in zip(ports[1:], servers[1:]):
         threading.Thread(target=server.serve_forever, daemon=True).start()

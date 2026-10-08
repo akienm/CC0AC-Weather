@@ -1,0 +1,33 @@
+/* Colors and font for every page. To change them, copy this file into your own
+   pages folder ([web] pages in config.ini) and edit the copy; it replaces this
+   one, and an update never touches it. Each page also carries these same values,
+   so a page opened without this file still looks right. */
+:root {
+  --bg: #000;            /* page background */
+  --surface: #111;       /* cards */
+  --border: #333;        /* card edges, dotted rows */
+  --text: #e8e8e8;
+  --muted: #888;         /* labels, times */
+  --accent: #4af;        /* names, links, the selected button */
+  --warn: #f44;          /* stale data, low battery, errors */
+  --font: "Helvetica Neue", Helvetica, Arial, Roboto, "Liberation Sans", sans-serif;
+
+  /* Charts: one color per line, in order, then axes, grid, the low-high band
+     around the temperature and its shading, the outdoor line on the humidity chart, and the
+     fill under the rain bars. */
+  --chart-1: #4af;
+  --chart-2: #f90;
+  --chart-3: #6d6;
+  --chart-4: #f6c;
+  --chart-5: #fd4;
+  --chart-6: #a8f;
+  --chart-7: #4dd;
+  --chart-8: #f66;
+  --chart-9: #ccc;
+  --chart-axis: #888;
+  --chart-grid: #222;
+  --chart-band: #2a5f8f;
+  --chart-band-fill: rgba(68, 170, 255, 0.12);
+  --chart-outdoor: #fff;
+  --chart-rain: rgba(68, 170, 255, 0.5);
+}

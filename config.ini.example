@@ -48,13 +48,17 @@ relay_url = https://atlasapi.myacurite.com
 ; database = ~/AcuRite/weather.db
 
 [web]
-; Built-in web server for the dashboard: serves weather.html, current.js,
-; current.json, forecast.js and history.csv, read-only, nothing else. To reach it from
+; Built-in web server for the dashboard: serves weather.html, charts.html,
+; theme.css and the data files, read-only, nothing else. To reach it from
 ; outside, forward a port on your router to this one (e.g. outside 80 -> 12345).
 ; Several ports are allowed, comma-separated: routers that can only forward a
 ; port to the same number (Xfinity) need 80 listed here, e.g. port = 12345, 80
 enabled = false
 port = 12345
+; A folder of your own pages, stylesheets and images, served by name. A file
+; named like a shipped one (theme.css, weather.html, charts.html) replaces it, so
+; copy theme.css here to change the colors. Updates never touch this folder.
+; pages = ~/.cc0ac-weather/pages
 
 [buttons]
 ; A row of buttons in a pane at the bottom of the dashboard. Each loads its page
@@ -68,6 +72,9 @@ button2 =
 button3 =
 
 [station]
+; The station's name, shown in the heading and browser tab of every page.
+; name = CC0AC Weather
+;
 ; Where the station is. With latitude and longitude set, the dashboard shows
 ; sunrise, sunset, day length and the moon phase, all computed in the page with
 ; no outside service. Degrees, north and east positive (west is negative).

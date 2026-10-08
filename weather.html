@@ -88,9 +88,10 @@
   #alerts summary { cursor: pointer; font-weight: bold; }
   #alerts .text { white-space: pre-wrap; margin-top: 8px; color: var(--text); }
 </style>
+<link rel="stylesheet" href="theme.css">
 </head>
 <body>
-<h1>CC0AC Weather <a class="charts" href="/charts.html">📈 Charts</a></h1>
+<h1><span id="title">CC0AC Weather</span> <a class="charts" href="/charts.html">📈 Charts</a></h1>
 <div class="ts" id="written">waiting for data…</div>
 <div id="alerts"></div>
 <div class="grid" id="grid">
@@ -524,6 +525,10 @@ function drawCurrent() {
   const data = window.ACURITE_CURRENT;
   if (!data) return;
   showLowerPane(data.lower_buttons);
+  if (data.title) {
+    document.getElementById('title').textContent = data.title;
+    document.title = data.title;
+  }
   const sk = sky(data.station);
   const sensors = [...data.sensors].sort((x, y) => x.name.localeCompare(y.name));
   pane('p-outdoor', data.written,

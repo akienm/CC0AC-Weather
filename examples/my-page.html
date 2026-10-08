@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My weather page</title>
+<!-- A starting point for a page of your own. Copy it into your pages folder
+     ([web] pages in config.ini), rename it if you like, and open
+     http://<this machine>:12345/my-page.html. Everything it shows comes from two
+     addresses on the same server: /current.json (the latest reading from every
+     sensor) and /history.json (readings over a period). The README lists every
+     field in both. -->
+<link rel="stylesheet" href="theme.css">
+<style>
+  body { background: var(--bg); color: var(--text); font-family: var(--font); margin: 0; padding: 16px; }
+  h1 { font-size: 16px; color: var(--muted); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+  .card { background: var(--surface); border: 1px solid var(--border); padding: 14px; }
+  .name { color: var(--accent); font-size: 13px; }
+  .temp { font-size: 40px; }
+  .muted { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<h1 id="title">My weather page</h1>
+<div class="grid" id="sensors"></div>
+<p class="muted" id="today"></p>
+
+<script>
+"use strict";
+
+async function getJSON(url) {
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error(`${url}: ${r.status}`);
+  return r.json();
+}
+
+// One card per sensor: its name, temperature and humidity.
+async function showCurrent() {
+  const data = await getJSON("/current.json");
+  document.getElementById("title").textContent = data.title || "Weather";
+  document.getElementById("sensors").innerHTML = data.sensors.map(s => `
+    <div class="card">
+      <div class="name">${s.name}</div>
+      <div class="temp">${s.fields.temp_f ?? "—"}°</div>
+      <div class="muted">${s.fields.humidity_pct ?? "—"}% humidity</div>
+    </div>`).join("");
+}
+
+// Today's outdoor high and low, and the rain so far, from the history.
+async function showToday() {
+  const h = await getJSON("/history.json?period=today");
+  const temps = [...h.outdoor.temp_max, ...h.outdoor.temp_min].filter(v => v != null);
+  document.getElementById("today").textContent = temps.length
+    ? `Today: high ${Math.max(...temps).toFixed(1)}°, low ${Math.min(...temps).toFixed(1)}°, ` +
+      `rain ${h.rain_totals.today.toFixed(2)} in`
+    : "No outdoor readings today yet.";
+}
+
+function refresh() {
+  showCurrent().catch(e => { document.getElementById("today").textContent = e.message; });
+  showToday().catch(() => {});
+}
+refresh();
+setInterval(refresh, 60 * 1000);
+</script>
+</body>
+</html>

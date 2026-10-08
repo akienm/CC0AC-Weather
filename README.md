@@ -272,6 +272,69 @@ and the server averages the readings into a few hundred points for whatever
 the period is: 5-minute averages for a day, daily ones across years. The charts
 use [uPlot](https://github.com/leeoniya/uPlot), loaded from jsDelivr.
 
+### Making it yours
+
+**Name.** `[station] name = Hilltop Weather` puts your station's name in the
+heading and the browser tab of every page.
+
+**Colors.** All the colors and the font are in `theme.css`: background, cards,
+text, the accent color, warnings, and one color per chart line. Make a folder
+for your own files, name it in config.ini, copy the theme there and edit the
+copy:
+
+```bash
+mkdir -p ~/.cc0ac-weather/pages
+cp theme.css ~/.cc0ac-weather/pages/
+```
+```ini
+[web]
+pages = ~/.cc0ac-weather/pages
+```
+
+Restart the service, then edit as often as you like: the pages pick up a
+change on reload. Anything in that folder with the same name as a shipped file
+(`theme.css`, `weather.html`, `charts.html`) is served in its place, so you can
+also copy a whole page there and change its layout. Updating the program never
+touches the folder. A copied page does not get later fixes to the original, so
+copy only what you mean to change.
+
+**Pages of your own.** Any `.html`, `.css`, `.js` or image (`.png`, `.jpg`,
+`.svg`, `.webp`, `.ico`) in that folder is served by its name. The server
+serves nothing else: no folder listings, no subfolders, no other files.
+`examples/my-page.html` is a short page to start from. It shows each sensor's
+temperature and humidity and today's high, low and rain, in a few dozen lines of
+JavaScript. Copy it into the folder and open `http://THIS_BOX:12345/my-page.html`.
+
+A page gets everything from two addresses on the same server:
+
+- **`/current.json`**: the latest reading from every sensor. Main fields:
+  - `title` and `written`, the time of the last reading;
+  - `station`: latitude, longitude, elevation_ft;
+  - `pressure_change_3h`;
+  - `sensors`: a list. Each sensor has `sensor_id`, `name`, `type` (`Atlas`,
+    `tower`, …), `updated` and `fields`. Fields include `temp_f`,
+    `humidity_pct`, `dew_point_f` and `battery`. The Atlas also sends
+    `feels_like_f`, `wind_mph`, `wind_gust_mph`, `wind_dir_deg`,
+    `pressure_inhg`, `rain_day_in`, `rain_hour_in`, `uv_index` and
+    `light_lux`.
+
+  `/forecast.json` holds the Weather Service data (`hourly`, `daily`,
+  `observation`, `alerts`) when `[forecast]` is on. Both are also written as
+  `.js` files, for pages opened from a file or a cloud folder.
+- **`/history.json`**: readings averaged over a period.
+  - Ask for `?period=today` (or `week`, `month`, `year`, `all`), or
+    `?from=YYYY-MM-DD&to=YYYY-MM-DD`.
+  - The answer has `t`, a list of times in Unix seconds, and lists of the same
+    length under:
+    - `outdoor`: `temp_f`, `temp_min`, `temp_max`, `dew_point_f`,
+      `feels_like_f`, `humidity_pct`, `wind_mph`, `wind_gust_mph`,
+      `wind_dir_deg`, `pressure_inhg`, `uv_index`, `light_lux`;
+    - `rooms`: one entry per indoor sensor, with `name`, `temp_f` and
+      `humidity_pct`.
+  - A slot with no readings holds `null`.
+  - `rain` is a separate list per hour, day or week (`t`, `in`).
+  - `rain_totals` has `today`, `week`, `month`, `year`, `all` and `since`.
+
 ## Radio capture (no hub)
 
 With an RTL-SDR dongle (~$25) and [rtl_433](https://github.com/merbanan/rtl_433):
@@ -294,6 +357,8 @@ already does that itself).
 | `config.ini.example` | Configuration template, every option documented |
 | `weather.html` | Dashboard; reads `current.js` and `forecast.js` |
 | `charts.html` | Charts over any period; reads `/history.json` |
+| `theme.css` | Colors and font for every page |
+| `examples/my-page.html` | A short page of your own to start from |
 | `cc0ac-weather@.service` | systemd unit |
 
 ## License
