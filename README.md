@@ -33,8 +33,24 @@ sensors directly (see *Radio capture* below).
 
 ## Setup with an Access hub
 
-You need: a Linux box that stays on (a Raspberry Pi is plenty), Python 3.8+,
-openssl, and a router that can forward port 443.
+There are two ways to get the hub's readings to this program. Install the
+program first; it is the same for both.
+
+| | **A. Change the hub's server name** | **B. Plug the hub into the Pi** |
+|---|---|---|
+| Hardware | Any Linux box that stays on | A Raspberry Pi (or any Linux box) with a spare Ethernet port, on Wi-Fi |
+| Hub settings | Changed to name your box | Left exactly as they came |
+| Router | Forward port 443 to your box | Nothing (optionally a port for the dashboard) |
+| If your box is down | The hub keeps uploading to Weather Underground; AcuRite's app stops | The hub is offline: no AcuRite, no Weather Underground |
+| Setup effort | Five minutes | About half an hour |
+
+**A** is the quick one. **B** is what the author runs: the hub never knows
+anything changed, a factory reset of the hub doesn't undo it, and nothing on
+the internet can reach the hub.
+
+### Install the program
+
+You need: Python 3.8+ and openssl (both come with Raspberry Pi OS).
 
 ```bash
 git clone https://github.com/akienm/CC0AC-Weather ~/dev/src/CC0AC-Weather
@@ -51,7 +67,13 @@ sudo cp ~/dev/src/CC0AC-Weather/cc0ac-weather@.service /etc/systemd/system/
 sudo systemctl enable --now cc0ac-weather@$USER
 ```
 
-### Point the hub at it
+Find the hub's address on your router's client list (it shows up as
+`W550-…` or similar) and open `http://HUB_IP/` in a browser. That page lists
+the hub's ID (its MAC), every sensor ID it hears, and its current settings.
+
+### A. Change the hub's server name
+
+You also need a router that can forward port 443.
 
 1. **Give the hub a hostname that reaches this box.** The hub accepts only a
    name, not an IP address. If your router can't serve local names, use your
@@ -71,7 +93,137 @@ sudo systemctl enable --now cc0ac-weather@$USER
 3. Watch `journalctl -u cc0ac-weather@$USER -f`: within 5 minutes a line per
    sensor appears, and every raw request is kept in `~/.cc0ac-weather/hub-raw/`.
 
-Things learned the hard way (firmware 051): the hub uses TLS 1.0/1.1 and
+### B. Plug the hub into the Pi
+
+The hub's Ethernet cable goes into the Pi instead of your router, and the Pi
+reaches your network over Wi-Fi. The Pi then plays router for the hub. It gives
+the hub an address, and when the hub asks where `atlasapi.myacurite.com` is,
+the Pi answers "here". Every other name the hub looks up gets the real answer,
+so its Weather Underground uploads (and its clock) pass straight through the
+Pi to the internet. The hub's settings never change.
+
+    sensors ──radio──▶ hub ──cable──▶ Pi eth0 (192.168.77.1)
+                                       ├─ "atlasapi.myacurite.com" → this program → AcuRite
+                                       └─ everything else (Weather Underground) → Wi-Fi → internet
+
+Commands below are for Raspberry Pi OS (Debian 12/13, NetworkManager). The
+example uses a private network, `192.168.77.0/24`, that is unlikely to clash
+with yours; any private range works.
+
+1. **Get the Pi on Wi-Fi first** (Raspberry Pi Imager can set it up), and
+   install the program as above. Set `hub_id` in `config.ini`.
+
+2. **Give the cable port a fixed address, and keep it from becoming the
+   Pi's way to the internet:**
+
+   ```bash
+   sudo nmcli con add type ethernet ifname eth0 con-name hub \
+        ipv4.method manual ipv4.addresses 192.168.77.1/24 \
+        ipv4.never-default yes ipv6.method disabled
+   ```
+
+3. **Hand the hub an address, and answer AcuRite's name with the Pi.**
+   `sudo apt install dnsmasq`, then `/etc/dnsmasq.d/cc0ac-hub.conf`:
+
+   ```ini
+   # DHCP and DNS for the hub, on the cable port only.
+   interface=eth0
+   except-interface=lo
+   bind-interfaces
+   dhcp-range=192.168.77.50,192.168.77.99,12h
+   dhcp-option=option:router,192.168.77.1
+   dhcp-option=option:dns-server,192.168.77.1
+   # The hub's server name answers with this Pi; every other name passes through.
+   address=/atlasapi.myacurite.com/192.168.77.1
+   ```
+
+   `sudo systemctl restart dnsmasq`. dnsmasq serves the cable port only. The
+   Pi itself still asks your router for names, so when this program relays to
+   AcuRite it reaches the real server, not itself.
+
+4. **Let the hub out through the Pi.** Turn on forwarding:
+
+   ```bash
+   echo net.ipv4.ip_forward=1 | sudo tee /etc/sysctl.d/90-cc0ac-forward.conf
+   sudo sysctl --system
+   ```
+
+   Then replace `/etc/nftables.conf` with this (it also closes the Pi to
+   everything except what's listed), and `sudo systemctl enable --now nftables`:
+
+   ```
+   #!/usr/sbin/nft -f
+   # wlan0 = your network. eth0 = the hub's cable (192.168.77.0/24).
+   flush ruleset
+
+   table inet cc0ac {
+       chain input {
+           type filter hook input priority filter; policy drop;
+           iif lo accept
+           ct state established,related accept
+           ct state invalid drop
+           meta l4proto { icmp, ipv6-icmp } accept
+           tcp dport 22 accept comment "ssh"
+           udp dport { 68, 546 } accept comment "the Pi's own DHCP replies"
+           iifname "wlan0" tcp dport 12345 accept comment "dashboard"
+           iifname "wlan0" udp dport 5353 accept comment "mDNS: yourpi.local"
+           iifname "eth0" tcp dport 443 accept comment "the hub's uploads"
+           iifname "eth0" udp dport { 53, 67 } accept comment "the hub's DNS and DHCP"
+           iifname "eth0" tcp dport 53 accept
+       }
+       chain forward {
+           type filter hook forward priority filter; policy drop;
+           ct state established,related accept
+           iifname "eth0" oifname "wlan0" meta nfproto ipv4 accept comment "the hub out to the internet"
+       }
+   }
+
+   table ip cc0ac_nat {
+       chain postrouting {
+           type nat hook postrouting priority srcnat;
+           oifname "wlan0" masquerade
+       }
+   }
+   ```
+
+   Keep the `tcp dport 22` line or you lock yourself out of ssh.
+
+5. **Move the cable.** Unplug the hub from your router and plug it into the
+   Pi. If you had used method A before, put the hub's server name back to
+   `atlasapi.myacurite.com` (all five fields, as in A step 2). Then check:
+
+   ```bash
+   journalctl -u dnsmasq -f            # the hub asks for and gets an address
+   journalctl -u cc0ac-weather@$USER -f  # a line per sensor within 5 minutes
+   ```
+
+   The hub's own page is now at `http://192.168.77.5x/` from the Pi only
+   (`curl` it there, or use an ssh tunnel). To undo everything, plug the hub
+   back into your router.
+
+To see the dashboard from outside your house, forward one port on your router
+(for example 12345) to the Pi's Wi-Fi address, nothing else.
+
+### If Weather Underground stops
+
+The hub uploads to Weather Underground itself, over plain HTTP, whichever
+method you use; this program never touches it. If wunderground.com stops
+showing new readings while the dashboard is fine, the usual cause is the
+password: it must be the **station key** shown under My Devices on
+wunderground.com, not your account password (and not an older key from a
+previous signup). A wrong key gets `401 unauthorized` back every few seconds.
+Test a key without sending any data:
+
+```bash
+curl 'https://rtupdate.wunderground.com/weatherstation/updateweatherstation.php?ID=YOUR_STATION&PASSWORD=YOUR_KEY&dateutc=now&action=updateraw'
+```
+
+`success` means the key is right; then set it on the hub (all five fields, as
+in A step 2, with `ser=atlasapi.myacurite.com` if you use method B).
+
+### Things learned the hard way
+
+Measured on firmware 051: the hub uses TLS 1.0/1.1 and
 doesn't check the certificate (a self-signed one is generated for you); it
 sends POST with everything in the query string; AcuRite rejects relayed
 readings unless the hub's own `Atlas/<fw>` User-Agent is passed along; and
