@@ -407,6 +407,142 @@ def _db_path(cfg: configparser.ConfigParser) -> Path:
     return Path(cfg.get("storage", "database", fallback=str(write_path / "weather.db"))).expanduser()
 
 
+# ── History for the charts page ───────────────────────────────────────────────
+#
+# /history.json?period=today|week|month|year|all, or ?from=YYYY-MM-DD&to=YYYY-MM-DD.
+# Readings are grouped into time buckets sized so any period comes back as a few
+# hundred points: every reading for today, daily averages for a year. Days and
+# weeks follow the station's local time, as the hub's daily rain does.
+#
+# Rain: the hub sends rainin, a rolling total for the last 60 minutes, and
+# dailyrainin, the total since local midnight. A day's rain is its highest
+# dailyrainin; shorter spans use how much dailyrainin grew within them.
+
+HISTORY_STEPS = [300, 900, 1800, 3600, 2 * 3600, 3 * 3600, 6 * 3600, 12 * 3600, 86400, 7 * 86400]
+HISTORY_POINTS = 600   # about how many buckets a chart gets at most
+
+
+def _history_bounds(q: dict, first: float, now: datetime) -> tuple[float, float, str]:
+    """(from, to) in epoch seconds for the request, and the period it names."""
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    period = q.get("period", "today")
+    if "from" in q:
+        lo = datetime.strptime(q["from"], "%Y-%m-%d").astimezone()
+        hi = datetime.strptime(q.get("to", q["from"]), "%Y-%m-%d").astimezone().timestamp() + 86400
+        return lo.timestamp(), min(hi, now.timestamp()), "range"
+    days = {"week": 7, "month": 30, "year": 365}
+    if period in days:
+        return now.timestamp() - days[period] * 86400, now.timestamp(), period
+    if period == "all":
+        return first, now.timestamp(), period
+    return midnight.timestamp(), now.timestamp(), "today"
+
+
+def _local_days(con: sqlite3.Connection, lo: float | None = None, hi: float | None = None) -> list:
+    """[(local date 'YYYY-MM-DD', that day's rain)] from the Atlas's dailyrainin."""
+    where, args = "", []
+    if lo is not None:
+        where, args = "AND received_utc >= ? AND received_utc < ?", [_iso(lo), _iso(hi)]
+    return con.execute(f"""SELECT date(received_utc, 'localtime') AS d, max(rain_day_in)
+        FROM readings WHERE type = 'Atlas' AND rain_day_in IS NOT NULL {where}
+        GROUP BY d ORDER BY d""", args).fetchall()
+
+
+def _iso(epoch: float) -> str:
+    return datetime.fromtimestamp(epoch, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _rain_totals(con: sqlite3.Connection, now: datetime) -> dict:
+    days = _local_days(con)
+    today = now.date()
+    week_start = today.toordinal() - (today.isoweekday() % 7)   # weeks start on Sunday
+    def total(keep) -> float:
+        return round(sum(r for d, r in days if keep(datetime.strptime(d, "%Y-%m-%d").date())), 2)
+    return {"today": total(lambda d: d == today),
+            "week": total(lambda d: d.toordinal() >= week_start),
+            "month": total(lambda d: (d.year, d.month) == (today.year, today.month)),
+            "year": total(lambda d: d.year == today.year),
+            "all": total(lambda d: True),
+            "since": days[0][0] if days else None}
+
+
+def _rain_buckets(con: sqlite3.Connection, lo: float, hi: float, step: int, off: int) -> dict:
+    """Rain per bucket: an hour at the finest, a day once buckets reach a day."""
+    step = max(step, 3600)
+    buckets: dict[int, float] = {}
+    def key(epoch: float) -> int:
+        return int((epoch + off) // step * step - off)
+    if step >= 86400:
+        for d, rain in _local_days(con, lo, hi):
+            day = datetime.strptime(d, "%Y-%m-%d").astimezone().timestamp()
+            buckets[key(day)] = buckets.get(key(day), 0) + (rain or 0)
+    else:
+        rows = con.execute("""SELECT received_utc, rain_day_in FROM readings
+            WHERE type = 'Atlas' AND rain_day_in IS NOT NULL AND received_utc < ?
+              AND received_utc >= (SELECT coalesce(max(received_utc), '') FROM readings
+                                   WHERE type = 'Atlas' AND rain_day_in IS NOT NULL AND received_utc < ?)
+            ORDER BY received_utc""", [_iso(hi), _iso(lo)]).fetchall()
+        prev = None
+        for stamp, total in rows:
+            if prev is not None:
+                # A drop is the midnight reset: everything since is new rain.
+                grew = total - prev if total >= prev else total
+                t = _epoch(stamp)
+                if grew > 0 and t >= lo:
+                    buckets[key(t)] = buckets.get(key(t), 0) + grew
+            prev = total
+    t = list(range(key(lo), int(hi) + 1, step))
+    return {"step": step, "t": t, "in": [round(buckets.get(b, 0), 2) for b in t]}
+
+
+def history(db_path: Path, sensors: dict, q: dict) -> dict:
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
+    try:
+        now = datetime.now().astimezone()
+        off = int(now.utcoffset().total_seconds())
+        first = con.execute("SELECT min(received_utc) FROM readings").fetchone()[0]
+        first = _epoch(first) if first else now.timestamp()
+        lo, hi, period = _history_bounds(q, first, now)
+        lo = max(lo, first) if period != "today" else lo
+        step = next((s for s in HISTORY_STEPS if (hi - lo) / s <= HISTORY_POINTS), HISTORY_STEPS[-1])
+        bucket = "(CAST(strftime('%s', received_utc) AS INTEGER) + :off) / :step * :step - :off"
+        span = {"off": off, "step": step, "lo": _iso(lo), "hi": _iso(hi)}
+        t = list(range(int((lo + off) // step * step - off), int(hi) + 1, step))
+        index = {b: i for i, b in enumerate(t)}
+
+        def column(rows, n) -> list[list]:
+            cols = [[None] * len(t) for _ in range(n)]
+            for b, *vals in rows:
+                if b in index:
+                    for c, v in zip(cols, vals):
+                        c[index[b]] = None if v is None else round(v, 2)
+            return cols
+
+        out_names = ["temp_f", "temp_min", "temp_max", "dew_point_f", "feels_like_f", "humidity_pct",
+                     "wind_mph", "wind_gust_mph", "wind_dir_deg", "pressure_inhg", "uv_index", "light_lux"]
+        outdoor = con.execute(f"""SELECT {bucket} AS b, avg(temp_f), min(temp_f), max(temp_f),
+                avg(dew_point_f), avg(feels_like_f), avg(humidity_pct), avg(wind_mph), max(wind_gust_mph),
+                (degrees(atan2(avg(sin(radians(wind_dir_deg))), avg(cos(radians(wind_dir_deg))))) + 360) % 360,
+                avg(pressure_inhg), max(uv_index), avg(light_lux)
+            FROM readings WHERE type = 'Atlas' AND received_utc >= :lo AND received_utc < :hi
+            GROUP BY b""", span).fetchall()
+        rooms = []
+        for sid, kind in con.execute("""SELECT DISTINCT sensor_id, type FROM readings
+                WHERE type != 'Atlas' AND received_utc >= ? AND received_utc < ?""", [_iso(lo), _iso(hi)]):
+            temp, hum = column(con.execute(f"""SELECT {bucket} AS b, avg(temp_f), avg(humidity_pct)
+                FROM readings WHERE sensor_id = :sid AND received_utc >= :lo AND received_utc < :hi
+                GROUP BY b""", {**span, "sid": sid}).fetchall(), 2)
+            rooms.append({"id": sid, "name": sensors.get(sid, f"{kind} {sid}"), "temp_f": temp, "humidity_pct": hum})
+        rooms.sort(key=lambda r: r["name"])
+        return {"period": period, "from": lo, "to": hi, "step": step, "t": t,
+                "outdoor": dict(zip(out_names, column(outdoor, len(out_names)))),
+                "rooms": rooms,
+                "rain": _rain_buckets(con, lo, hi, step, off),
+                "rain_totals": _rain_totals(con, now)}
+    finally:
+        con.close()
+
+
 def _log_raw(raw_dir: Path, path_and_query: str) -> None:
     raw_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc)
@@ -734,13 +870,13 @@ def run_forecast(cfg: configparser.ConfigParser, write_path: Path) -> None:
 # listing, no other files. The page comes from beside this script (so a repo
 # update shows at once); the data comes from write_path.
 
-PAGES = {"/": "weather.html", "/weather.html": "weather.html"}
+PAGES = {"/": "weather.html", "/weather.html": "weather.html", "/charts.html": "charts.html"}
 DATA_FILES = {"/current.js": "application/javascript", "/current.json": "application/json",
               "/forecast.js": "application/javascript", "/forecast.json": "application/json",
               "/history.csv": "text/csv"}
 
 
-def _make_web_handler(write_path: Path):
+def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: dict | None = None):
     page_dir = Path(__file__).resolve().parent
 
     class WebHandler(BaseHTTPRequestHandler):
@@ -748,7 +884,11 @@ def _make_web_handler(write_path: Path):
             pass
 
         def do_GET(self):
-            path = urllib.parse.urlparse(self.path).path
+            url = urllib.parse.urlparse(self.path)
+            path = url.path
+            if path == "/history.json":
+                self._history(dict(urllib.parse.parse_qsl(url.query)))
+                return
             if path in PAGES:
                 target, ctype = page_dir / PAGES[path], "text/html; charset=utf-8"
             elif path in DATA_FILES:
@@ -761,6 +901,24 @@ def _make_web_handler(write_path: Path):
             except FileNotFoundError:
                 self.send_error(404, "No data yet")
                 return
+            self._send(body, ctype)
+
+        def _history(self, q: dict):
+            if db_path is None or not db_path.exists():
+                self.send_error(404, "No database yet")
+                return
+            try:
+                data = history(db_path, sensors or {}, q)
+            except ValueError as e:
+                self.send_error(400, str(e))
+                return
+            except sqlite3.Error as e:
+                log.error("history query failed: %s", e)
+                self.send_error(500, "Database error")
+                return
+            self._send(json.dumps(data, separators=(",", ":")).encode(), "application/json")
+
+        def _send(self, body: bytes, ctype: str):
             self.send_response(200)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
@@ -775,7 +933,7 @@ def run_web_server(cfg: configparser.ConfigParser, write_path: Path) -> None:
     # One or more ports, comma-separated: e.g. "12345, 80" when a router can only
     # forward 80 to 80 but the inside address should stay easy to remember.
     ports = [int(p) for p in cfg.get("web", "port", fallback="12345").split(",") if p.strip()]
-    handler = _make_web_handler(write_path)
+    handler = _make_web_handler(write_path, _db_path(cfg), sensor_map(cfg))
     servers = [ThreadingHTTPServer(("", port), handler) for port in ports]
     for port, server in zip(ports[1:], servers[1:]):
         threading.Thread(target=server.serve_forever, daemon=True).start()

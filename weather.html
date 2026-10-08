@@ -19,6 +19,7 @@
   body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; padding: 16px;
          font-variant-numeric: tabular-nums; }
   h1 { font-size: 16px; color: var(--muted); margin-bottom: 4px; letter-spacing: 1px; }
+  h1 a.charts { color: var(--accent); text-decoration: none; font-size: 14px; margin-left: 12px; letter-spacing: 0; }
   .ts { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
   .stale { color: var(--warn) !important; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
@@ -89,7 +90,7 @@
 </style>
 </head>
 <body>
-<h1>CC0AC Weather</h1>
+<h1>CC0AC Weather <a class="charts" href="/charts.html">📈 Charts</a></h1>
 <div class="ts" id="written">waiting for data…</div>
 <div id="alerts"></div>
 <div class="grid" id="grid">

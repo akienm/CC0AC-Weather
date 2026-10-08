@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CC0AC Weather Charts</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.32/dist/uPlot.min.css">
+<script src="https://cdn.jsdelivr.net/npm/uplot@1.6.32/dist/uPlot.iife.min.js"></script>
+<style>
+  :root {
+    --bg: #000;
+    --surface: #111;
+    --border: #333;
+    --text: #e8e8e8;
+    --muted: #888;
+    --accent: #4af;
+    --warn: #f44;
+    --font: "Helvetica Neue", Helvetica, Arial, Roboto, "Liberation Sans", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; padding: 16px;
+         font-variant-numeric: tabular-nums; }
+  h1 { font-size: 16px; color: var(--muted); margin-bottom: 4px; letter-spacing: 1px; }
+  h1 a { color: var(--accent); text-decoration: none; font-size: 14px; margin-left: 12px; letter-spacing: 0; }
+  .ts { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+  .buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 16px;
+             position: sticky; top: 0; z-index: 10; background: var(--bg); padding: 8px 0; }
+  .buttons button { font: inherit; font-size: 13px; color: var(--text); background: var(--bg);
+                    border: 1px solid var(--border); padding: 6px 12px; cursor: pointer; }
+  .buttons button:hover { border-color: var(--accent); }
+  .buttons button.on { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+  .buttons input { font: inherit; font-size: 13px; color: var(--text); background: var(--bg);
+                   border: 1px solid var(--border); padding: 5px 6px; color-scheme: dark; }
+  #range { display: none; gap: 6px; align-items: center; }
+  #range.on { display: flex; }
+  .card { background: var(--surface); border: 1px solid var(--border); padding: 14px; margin-bottom: 12px; }
+  .name { color: var(--accent); font-size: 13px; margin-bottom: 8px; }
+  .totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-bottom: 10px; }
+  .totals div { border: 1px solid var(--border); padding: 8px; }
+  .totals span { display: block; color: var(--muted); font-size: 12px; }
+  .totals b { font-size: 22px; font-weight: 400; }
+  #error { color: var(--warn); margin-bottom: 12px; }
+  .u-legend { color: var(--text); font-size: 12px; }
+  .u-legend .u-marker { width: 10px; height: 10px; }
+  .u-select { background: rgba(68, 170, 255, 0.15); }
+</style>
+</head>
+<body>
+<h1>CC0AC Weather <a href="/">← now</a></h1>
+<div class="ts" id="written">loading…</div>
+<div class="buttons" id="periods">
+  <button data-p="today">Today</button>
+  <button data-p="week">Week</button>
+  <button data-p="month">Month</button>
+  <button data-p="year">Year</button>
+  <button data-p="all">All time</button>
+  <button data-p="range">Range</button>
+  <span id="range"><input type="date" id="from"> to <input type="date" id="to"> <button id="go">Show</button></span>
+</div>
+<div id="error"></div>
+<div id="charts"></div>
+
+<script>
+"use strict";
+// One row of period buttons drives every chart. The period lives in the URL hash
+// (#week, #range:2026-10-01:2026-10-08) so a chart view can be bookmarked or shared.
+// The server groups readings into buckets sized to the period; see /history.json.
+
+const COLORS = ["#4af", "#f90", "#6d6", "#f6c", "#fd4", "#a8f", "#4dd", "#f66", "#ccc"];
+const REFRESH_MS = 5 * 60 * 1000;
+const plots = [];
+let current = null;
+
+function hashPeriod() {
+  const h = decodeURIComponent(location.hash.slice(1));
+  const m = h.match(/^range:(\d{4}-\d\d-\d\d):(\d{4}-\d\d-\d\d)$/);
+  if (m) return { period: "range", from: m[1], to: m[2] };
+  return { period: ["today", "week", "month", "year", "all"].includes(h) ? h : "today" };
+}
+
+function localDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function showButtons(p) {
+  for (const b of document.querySelectorAll("#periods [data-p]")) b.classList.toggle("on", b.dataset.p === p.period);
+  document.getElementById("range").classList.toggle("on", p.period === "range");
+  if (p.period === "range") {
+    document.getElementById("from").value = p.from;
+    document.getElementById("to").value = p.to;
+  }
+}
+
+document.getElementById("periods").addEventListener("click", e => {
+  const p = e.target.dataset && e.target.dataset.p;
+  if (!p) return;
+  if (p === "range") {
+    const to = new Date(), from = new Date(Date.now() - 7 * 86400e3);
+    showButtons({ period: "range", from: localDate(from), to: localDate(to) });
+    return;
+  }
+  location.hash = p;
+});
+document.getElementById("go").addEventListener("click", () => {
+  const from = document.getElementById("from").value, to = document.getElementById("to").value;
+  if (from && to) location.hash = `range:${from <= to ? from : to}:${from <= to ? to : from}`;
+});
+window.addEventListener("hashchange", load);
+
+async function load() {
+  const p = hashPeriod();
+  showButtons(p);
+  const q = p.period === "range" ? `from=${p.from}&to=${p.to}` : `period=${p.period}`;
+  try {
+    const r = await fetch(`/history.json?${q}`, { cache: "no-store" });
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+    current = await r.json();
+    document.getElementById("error").textContent = "";
+    draw(current);
+  } catch (e) {
+    document.getElementById("error").textContent = `Could not load history: ${e.message}`;
+  }
+}
+
+function stepLabel(s) {
+  if (s < 3600) return `${s / 60}-minute`;
+  if (s < 86400) return s === 3600 ? "hourly" : `${s / 3600}-hour`;
+  return s === 86400 ? "daily" : "weekly";
+}
+
+function width() {
+  return document.getElementById("charts").clientWidth - 30;
+}
+
+function axes(left, right) {
+  const base = { stroke: "#888", grid: { stroke: "#222" }, ticks: { stroke: "#333" } };
+  const a = [{ ...base }, { ...base, label: left, labelSize: 18, size: 55 }];
+  if (right) a.push({ ...base, label: right, labelSize: 18, size: 55, side: 1, scale: "r", grid: { show: false } });
+  return a;
+}
+
+function line(label, color, extra = {}) {
+  return { label, stroke: color, width: 1.5, spanGaps: false, ...extra };
+}
+
+function card(title, el) {
+  const c = document.createElement("div");
+  c.className = "card";
+  c.innerHTML = `<div class="name">${title}</div>`;
+  if (el) c.appendChild(el);
+  document.getElementById("charts").appendChild(c);
+  return c;
+}
+
+function plot(title, opts, data, before) {
+  const c = card(title, before);
+  const holder = document.createElement("div");
+  c.appendChild(holder);
+  plots.push(new uPlot({ width: width(), height: 260, cursor: { drag: { x: true } }, ...opts }, data, holder));
+}
+
+function draw(d) {
+  for (const p of plots) p.destroy();
+  plots.length = 0;
+  document.getElementById("charts").innerHTML = "";
+  const span = d.to - d.from;
+  const fmt = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: span > 2 * 86400 ? undefined : "short" });
+  document.getElementById("written").textContent =
+    `${fmt.format(new Date(d.from * 1000))} – ${fmt.format(new Date(d.to * 1000))} · ${stepLabel(d.step)} averages`;
+
+  const o = d.outdoor, t = d.t;
+
+  plot("Outdoor temperature °F", {
+    axes: axes("°F"),
+    series: [{}, line("Temp", COLORS[0]), line("Low", "#2a5f8f", { width: 1 }), line("High", "#2a5f8f", { width: 1 }),
+             line("Dew point", COLORS[2]), line("Feels like", COLORS[1], { dash: [4, 4] })],
+    bands: [{ series: [3, 2], fill: "rgba(68,170,255,0.12)" }],
+    scales: { x: { time: true } },
+  }, [t, o.temp_f, o.temp_min, o.temp_max, o.dew_point_f, o.feels_like_f]);
+
+  plot("Wind", {
+    axes: axes("mph", "direction °"),
+    series: [{}, line("Speed", COLORS[0]), line("Gust", COLORS[1], { width: 1 }),
+             { label: "From", stroke: COLORS[2], scale: "r", paths: () => null, points: { show: true, size: 4, fill: COLORS[2] } }],
+    scales: { r: { range: [0, 360] } },
+  }, [t, o.wind_mph, o.wind_gust_mph, o.wind_dir_deg]);
+
+  plot("Pressure inHg", {
+    axes: axes("inHg"),
+    series: [{}, line("Pressure", COLORS[0])],
+  }, [t, o.pressure_inhg]);
+
+  const tot = d.rain_totals;
+  const since = tot.since ? new Date(tot.since + "T00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "start";
+  const totals = document.createElement("div");
+  totals.className = "totals";
+  totals.innerHTML = [["Today", tot.today], ["This week", tot.week], ["This month", tot.month],
+                      ["This year", tot.year], [`Since ${since}`, tot.all]]
+    .map(([k, v]) => `<div><span>${k}</span><b>${v.toFixed(2)}″</b></div>`).join("");
+  const per = { 3600: "hour", 86400: "day", 604800: "week" }[d.rain.step] || `${d.rain.step / 3600} hours`;
+  plot(`Rain, inches per ${per}`, {
+    axes: axes("in"),
+    series: [{}, { label: "Rain", stroke: COLORS[0], fill: "rgba(68,170,255,0.5)",
+                   paths: uPlot.paths.bars({ size: [0.8, 40], align: 1 }), points: { show: false } }],
+    scales: { y: { range: (u, min, max) => [0, Math.max(0.1, max * 1.1)] } },
+  }, [d.rain.t, d.rain.in], totals);
+
+  plot("UV and light", {
+    axes: axes("UV index", "lux"),
+    series: [{}, line("UV", COLORS[3]), line("Light", COLORS[4], { scale: "r", width: 1 })],
+    scales: { y: { range: (u, min, max) => [0, Math.max(11, max)] }, r: { range: (u, min, max) => [0, Math.max(1000, max)] } },
+  }, [t, o.uv_index, o.light_lux]);
+
+  const rooms = d.rooms;
+  plot("Indoor temperature °F", {
+    axes: axes("°F"),
+    series: [{}, ...rooms.map((r, i) => line(r.name, COLORS[i % COLORS.length]))],
+  }, [t, ...rooms.map(r => r.temp_f)]);
+
+  plot("Humidity %", {
+    axes: axes("%"),
+    series: [{}, line("Outdoor", "#fff", { width: 1, dash: [4, 4] }),
+             ...rooms.map((r, i) => line(r.name, COLORS[i % COLORS.length]))],
+  }, [t, o.humidity_pct, ...rooms.map(r => r.humidity_pct)]);
+}
+
+let resizeTimer;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => plots.forEach(p => p.setSize({ width: width(), height: 260 })), 150);
+});
+setInterval(() => { if (hashPeriod().period !== "range") load(); }, REFRESH_MS);
+load();
+</script>
+</body>
+</html>

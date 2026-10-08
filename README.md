@@ -16,7 +16,7 @@ to a server named in its settings. CC0AC-Weather is that server:
     sensors ──radio──▶ Access hub ──HTTPS──▶ this program (port 443)
                                               ├─ current.json / current.js / history.csv / weather.db
                                               ├─ relays the reading to AcuRite (optional; their app keeps working)
-                                              └─ web server ──▶ weather.html dashboard
+                                              └─ web server ──▶ weather.html dashboard, charts.html charts
     The hub uploads to Weather Underground itself; that is untouched.
 
 - One burst every 5 minutes, one request per sensor (Atlas, 5-in-1, Iris, towers, …).
@@ -104,6 +104,22 @@ the Sun & moon card; and a banner while any alert is active. Forecasts refresh
 hourly, the airport every 20 minutes, alerts every 10. A failed fetch keeps
 the last good copy and says so on the page.
 
+### Charts
+
+`📈 Charts` on the dashboard opens `charts.html`: every reading from
+`weather.db` on one page — outdoor temperature (with dew point, feels-like and
+the low–high band), wind speed, gusts and direction, pressure, rain, UV and
+light, and temperature and humidity for every room. One row of buttons sets the
+period for all of them: Today, Week, Month, Year, All time, or a Range of dates.
+The period sits in the address (`charts.html#week`), so a view can be
+bookmarked. Rain also shows totals for today, this week, month and year, and
+since recording began.
+
+The page asks `/history.json?period=week` (or `?from=YYYY-MM-DD&to=YYYY-MM-DD`)
+and the server averages the readings into a few hundred points for whatever
+the period is: 5-minute averages for a day, daily ones across years. The charts
+use [uPlot](https://github.com/leeoniya/uPlot), loaded from jsDelivr.
+
 ## Radio capture (no hub)
 
 With an RTL-SDR dongle (~$25) and [rtl_433](https://github.com/merbanan/rtl_433):
@@ -125,6 +141,7 @@ already does that itself).
 | `acurite-capture.py` | The program: hub listener and relay, web server, optional radio capture |
 | `config.ini.example` | Configuration template, every option documented |
 | `weather.html` | Dashboard; reads `current.js` and `forecast.js` |
+| `charts.html` | Charts over any period; reads `/history.json` |
 | `cc0ac-weather@.service` | systemd unit |
 
 ## License
