@@ -154,6 +154,41 @@ def _write_atomic(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
+def _write_snapshot(write_path: Path, sensors: dict, page: dict | None, written: str, hub: str) -> None:
+    """current.json / current.js from _current; the caller holds _current_lock."""
+    snapshot = {"written": written, "hub": hub,
+                **{k: v for k, v in (page or {}).items() if v},
+                **{k: v for k, v in _current_page.items() if v is not None},
+                "sensors": sorted(_current.values(),
+                                  key=lambda e: display_order(sensors, e["sensor_id"], e["name"]))}
+    body = json.dumps(snapshot, indent=1)
+    _write_atomic(write_path / "current.json", body)
+    # current.js lets the dashboard load the data with a <script> tag, which
+    # works from a file:// URL and from any static host without CORS.
+    _write_atomic(write_path / "current.js", f"window.ACURITE_CURRENT = {body};\n")
+
+
+def refresh_snapshot(write_path: Path, sensors: dict, page: dict | None) -> None:
+    """At start, carry the last snapshot's sensors over and write it again with
+    the settings just read. A change in config.ini (buttons, names, sensor
+    order, title) then shows at once rather than at the next reading, and the
+    first reading after a restart doesn't leave the other sensors off the page."""
+    try:
+        old = json.loads((write_path / "current.json").read_text())
+    except (OSError, ValueError):
+        return
+    with _current_lock:
+        for entry in old.get("sensors", []):
+            sid = entry.get("sensor_id") if isinstance(entry, dict) else None
+            if sid and isinstance(entry.get("fields"), dict):
+                entry["name"] = sensors.get(sid, entry.get("name") or f"{entry.get('type', 'unknown')} {sid}")
+                _current.setdefault(sid, entry)
+        if old.get("pressure_change_3h") is not None:
+            _current_page.setdefault("pressure_change_3h", old["pressure_change_3h"])
+        if _current:
+            _write_snapshot(write_path, sensors, page, old.get("written", ""), old.get("hub", ""))
+
+
 def record_reading(reading: Reading, write_path: Path, sensors: dict, page: dict | None = None,
                    db_path: Path | None = None) -> dict:
     """Fold one reading into current.json / current.js, append history.csv,
@@ -177,16 +212,7 @@ def record_reading(reading: Reading, write_path: Path, sensors: dict, page: dict
         entry["type"] = kind
         entry["updated"] = now
         entry["fields"].update(fields)
-        snapshot = {"written": now, "hub": reading.receiver or "",
-                    **{k: v for k, v in (page or {}).items() if v},
-                    **{k: v for k, v in _current_page.items() if v is not None},
-                    "sensors": sorted(_current.values(),
-                                      key=lambda e: display_order(sensors, e["sensor_id"], e["name"]))}
-        body = json.dumps(snapshot, indent=1)
-        _write_atomic(write_path / "current.json", body)
-        # current.js lets the dashboard load the data with a <script> tag, which
-        # works from a file:// URL and from any static host without CORS.
-        _write_atomic(write_path / "current.js", f"window.ACURITE_CURRENT = {body};\n")
+        _write_snapshot(write_path, sensors, page, now, reading.receiver or "")
         history = write_path / "history.csv"
         exists = history.exists()
         with history.open("a", newline="", encoding="utf-8") as f:
@@ -1002,6 +1028,7 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
     # The lower pane is a row of [buttons], each loading its page below; none set, no pane.
     page = {"title": _title(cfg), "lower_buttons": _buttons(cfg), "station": _station(cfg)}
     db_path = _db_path(cfg)
+    refresh_snapshot(write_path, sensors, page)
 
     queues = []
     for output in load_outputs():
