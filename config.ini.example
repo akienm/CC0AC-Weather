@@ -95,6 +95,21 @@ button3 =
 enabled = false
 ; station_key = YOUR_WU_STATION_KEY
 
+[mqtt]
+; Publish every reading to an MQTT broker, for Home Assistant and the like.
+; Each field goes to <topic>/<sensor_id>/<field>, retained. MQTT 3.1.1, no TLS:
+; for a broker on your own network.
+enabled = false
+host =
+port = 1883
+; username =
+; password =
+topic = cc0ac-weather
+; Home Assistant's MQTT discovery: each sensor appears as a device by itself,
+; named as in [sensors], one entity per field.
+discovery = true
+discovery_prefix = homeassistant
+
 [forecast]
 ; Forecast, nearest-airport visibility and clouds, and active alerts from the
 ; US National Weather Service (api.weather.gov; free, no key, US only). Uses

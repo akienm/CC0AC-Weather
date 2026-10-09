@@ -350,6 +350,23 @@ A page gets everything from two addresses on the same server:
     included, up to the latest reading. Weeks start on Sunday.
   - Finished days are kept in the database's `daily` table.
 
+## MQTT and Home Assistant
+
+With `[mqtt] enabled = true` and a broker's `host` (and `username` and
+`password` if it wants them), every reading is published, one topic per field,
+retained:
+
+```
+cc0ac-weather/00001234/temp_f        61.2
+cc0ac-weather/00001234/wind_mph      3.4
+cc0ac-weather/00005678/humidity_pct  44
+```
+
+Home Assistant's MQTT integration finds the sensors by itself (MQTT
+discovery): each one appears as a device named as in `[sensors]`, with an
+entity per field in the right units. Set `discovery = false` to publish only
+the values. Plain MQTT 3.1.1 on your own network; there is no TLS.
+
 ## Radio capture (no hub)
 
 With an RTL-SDR USB radio dongle and [rtl_433](https://github.com/merbanan/rtl_433),
@@ -388,6 +405,7 @@ rtl_433 project, not yet with a dongle on the air.
 | `sources/rtl_433.py` | The radio source: runs rtl_433 and turns its messages into Readings |
 | `outputs/__init__.py` | How to add an output: somewhere readings are sent |
 | `outputs/weather_underground.py` | Uploads readings heard by radio to Weather Underground |
+| `outputs/mqtt.py` | Publishes readings to an MQTT broker, with Home Assistant discovery |
 | `config.ini.example` | Configuration template, every option documented |
 | `weather.html` | Dashboard; reads `current.js` and `forecast.js` |
 | `charts.html` | Charts over any period; reads `/history.json` |
