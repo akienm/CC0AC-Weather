@@ -5,23 +5,22 @@ acurite-capture.py — AcuRite weather sensor capture daemon.
 Two sources, either or both:
   * the AcuRite Access hub: an HTTPS listener the hub reports to, which records
     each reading and relays it on to AcuRite unchanged ([hub], sources/acurite_access.py);
-  * rtl_433 with a USB SDR, decoding the sensors off the air ([capture]).
+  * rtl_433 with a USB radio dongle, decoding the sensors off the air
+    ([capture], sources/rtl_433.py).
 Each source in sources/ turns what it hears into Readings (sources/__init__.py);
-readings land in <write_path>/current.json, current.js, history.csv and the database.
+readings land in <write_path>/current.json, current.js, history.csv and the
+database, and go on to each output switched on in outputs/ (such as Weather
+Underground for a station heard by radio).
 With [forecast] on, the National Weather Service forecast, nearest airport
 observation and active alerts land in <write_path>/forecast.json and forecast.js.
 
-Requirements:
-    sudo apt install rtl-sdr
-    sudo apt install rtl-433          # Ubuntu 22.04+
-    # or build from source: https://github.com/merbanan/rtl_433
-
-    Add your user to the plugdev group for non-root SDR access:
-    sudo usermod -aG plugdev $USER    # log out and back in after
+Requirements: Python 3 only, for the hub. For a radio dongle:
+    sudo apt install rtl-433 rtl-sdr
+    sudo usermod -aG plugdev $USER    # dongle access without root; log in again after
 
 Setup:
     cp config.ini.example ~/.cc0ac-weather/config.ini
-    python3 acurite-capture.py --discover   # find your sensor IDs
+    python3 acurite-capture.py --discover   # with a dongle: find your sensor IDs
     # edit config.ini — add sensor IDs under [sensors]
     python3 acurite-capture.py              # run daemon
 
@@ -38,9 +37,9 @@ import importlib
 import json
 import logging
 import os
+import queue
 import re
 import sqlite3
-import subprocess
 import sys
 import threading
 import time
@@ -51,22 +50,12 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from sources import FIELDS, Reading
+from sources import FIELDS, OUTDOOR_TYPES, Reading
 from sources import acurite_access
 
 log = logging.getLogger("acurite")
 
 DEFAULT_CONFIG = Path.home() / ".cc0ac-weather" / "config.ini"
-DEFAULT_PROTOCOLS = ["40", "78", "112", "191"]
-WU_URL = "https://weatherstation.wunderground.com/weatherstation/updateweatherstation.php"
-
-CSV_FIELDS = [
-    "timestamp", "sensor_id", "sensor_name", "model",
-    "temp_f", "humidity_pct", "wind_mph", "wind_dir_deg",
-    "wind_gust_mph", "rain_in", "pressure_inhg", "dew_point_f",
-    "uv_index", "battery_ok",
-]
-
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -86,116 +75,6 @@ def sensor_map(cfg: configparser.ConfigParser) -> dict[str, str]:
         return {}
     return {k: v for k, v in cfg.items("sensors")}
 
-
-def rtl433_cmd(cfg: configparser.ConfigParser) -> list[str]:
-    protocols = DEFAULT_PROTOCOLS
-    if cfg.has_option("capture", "protocols"):
-        protocols = [p.strip() for p in cfg.get("capture", "protocols").split(",")]
-    device = cfg.get("capture", "device_index", fallback="0")
-    cmd = ["rtl_433", "-d", device, "-F", "json"]
-    for p in protocols:
-        cmd += ["-R", p]
-    return cmd
-
-
-# ── Packet parsing ────────────────────────────────────────────────────────────
-
-def parse_packet(raw: dict) -> dict | None:
-    """Extract standardised fields from an rtl_433 JSON packet.
-
-    Returns None for non-AcuRite packets.
-    rtl_433 field names vary across versions and sensor models — handle all known variants.
-    """
-    model = raw.get("model", "")
-    if "acurite" not in model.lower():
-        return None
-
-    sensor_id = str(raw.get("id", raw.get("sensor_id", ""))).strip()
-    if not sensor_id:
-        return None
-
-    # Temperature — prefer Fahrenheit; convert Celsius if that's what we got
-    temp_f = raw.get("temperature_F", raw.get("temperature_f"))
-    if temp_f is None:
-        temp_c = raw.get("temperature_C", raw.get("temperature_c"))
-        if temp_c is not None:
-            temp_f = round(float(temp_c) * 9 / 5 + 32, 1)
-
-    # Wind speed — prefer mph; convert km/h if needed
-    wind_mph = raw.get("wind_avg_mi_h", raw.get("wind_speed_mph", raw.get("wind_avg_mph")))
-    if wind_mph is None:
-        wind_kph = raw.get("wind_avg_km_h", raw.get("wind_speed_kph"))
-        if wind_kph is not None:
-            wind_mph = round(float(wind_kph) * 0.621371, 1)
-
-    # Wind direction — degrees
-    wind_dir = raw.get("wind_dir_deg", raw.get("wind_direction_deg", raw.get("wind_dir")))
-
-    # Rain — rtl_433 reports cumulative mm; convert to inches
-    rain_in = None
-    rain_mm = raw.get("rain_mm", raw.get("rain_in_raw"))
-    if rain_mm is not None:
-        rain_in = round(float(rain_mm) / 25.4, 3)
-    elif raw.get("rain_in") is not None:
-        rain_in = raw["rain_in"]
-
-    return {
-        "sensor_id": sensor_id,
-        "model": model,
-        "temp_f": temp_f,
-        "humidity_pct": raw.get("humidity"),
-        "wind_mph": wind_mph,
-        "wind_dir_deg": wind_dir,
-        "rain_in": rain_in,
-        "battery_ok": raw.get("battery_ok", raw.get("battery")),
-    }
-
-
-# ── CSV ───────────────────────────────────────────────────────────────────────
-
-def append_csv(path: Path, row: dict) -> None:
-    exists = path.exists()
-    with path.open("a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=CSV_FIELDS, extrasaction="ignore")
-        if not exists:
-            writer.writeheader()
-        writer.writerow(row)
-
-
-# ── Weather Underground ───────────────────────────────────────────────────────
-
-def upload_wu(cfg: configparser.ConfigParser, packet: dict) -> None:
-    if not cfg.getboolean("weather_underground", "enabled", fallback=False):
-        return
-    station_id = cfg.get("weather_underground", "station_id", fallback="").strip()
-    station_key = cfg.get("weather_underground", "station_key", fallback="").strip()
-    if not station_id or not station_key:
-        log.warning("WU upload enabled but station_id / station_key not set in config")
-        return
-
-    params: dict[str, str] = {
-        "ID": station_id,
-        "PASSWORD": station_key,
-        "dateutc": "now",
-        "action": "updateraw",
-    }
-    if packet.get("temp_f") is not None:
-        params["tempf"] = str(round(float(packet["temp_f"]), 1))
-    if packet.get("humidity_pct") is not None:
-        params["humidity"] = str(int(packet["humidity_pct"]))
-    if packet.get("wind_mph") is not None:
-        params["windspeedmph"] = str(round(float(packet["wind_mph"]), 1))
-    if packet.get("wind_dir_deg") is not None:
-        params["winddir"] = str(int(packet["wind_dir_deg"]))
-    if packet.get("rain_in") is not None:
-        params["rainin"] = str(round(float(packet["rain_in"]), 3))
-
-    url = WU_URL + "?" + urllib.parse.urlencode(params)
-    try:
-        with urllib.request.urlopen(url, timeout=10) as resp:
-            log.info("WU upload OK: %s", resp.read().decode().strip())
-    except Exception as exc:
-        log.warning("WU upload failed: %s", exc)
 
 
 # ── Recording ─────────────────────────────────────────────────────────────────
@@ -400,13 +279,17 @@ def _history_bounds(q: dict, first: float, now: datetime) -> tuple[float, float,
     return midnight.timestamp(), now.timestamp(), "today"
 
 
+# For SQL: the outdoor sensor types, as ('Atlas', 'Iris', '5N1').
+OUTDOOR = "(" + ", ".join(f"'{t}'" for t in OUTDOOR_TYPES) + ")"
+
+
 def _local_days(con: sqlite3.Connection, lo: float | None = None, hi: float | None = None) -> list:
-    """[(local date 'YYYY-MM-DD', that day's rain)] from the Atlas's dailyrainin."""
+    """[(local date 'YYYY-MM-DD', that day's rain)] from the outdoor sensor's dailyrainin."""
     where, args = "", []
     if lo is not None:
         where, args = "AND received_utc >= ? AND received_utc < ?", [_iso(lo), _iso(hi)]
     return con.execute(f"""SELECT date(received_utc, 'localtime') AS d, max(rain_day_in)
-        FROM readings WHERE type = 'Atlas' AND rain_day_in IS NOT NULL {where}
+        FROM readings WHERE type IN {OUTDOOR} AND rain_day_in IS NOT NULL {where}
         GROUP BY d ORDER BY d""", args).fetchall()
 
 
@@ -439,10 +322,10 @@ def _rain_buckets(con: sqlite3.Connection, lo: float, hi: float, step: int, off:
             day = datetime.strptime(d, "%Y-%m-%d").astimezone().timestamp()
             buckets[key(day)] = buckets.get(key(day), 0) + (rain or 0)
     else:
-        rows = con.execute("""SELECT received_utc, rain_day_in FROM readings
-            WHERE type = 'Atlas' AND rain_day_in IS NOT NULL AND received_utc < ?
+        rows = con.execute(f"""SELECT received_utc, rain_day_in FROM readings
+            WHERE type IN {OUTDOOR} AND rain_day_in IS NOT NULL AND received_utc < ?
               AND received_utc >= (SELECT coalesce(max(received_utc), '') FROM readings
-                                   WHERE type = 'Atlas' AND rain_day_in IS NOT NULL AND received_utc < ?)
+                                   WHERE type IN {OUTDOOR} AND rain_day_in IS NOT NULL AND received_utc < ?)
             ORDER BY received_utc""", [_iso(hi), _iso(lo)]).fetchall()
         prev = None
         for stamp, total in rows:
@@ -486,11 +369,11 @@ def history(db_path: Path, sensors: dict, q: dict) -> dict:
                 avg(dew_point_f), avg(feels_like_f), avg(humidity_pct), avg(wind_mph), max(wind_gust_mph),
                 (degrees(atan2(avg(sin(radians(wind_dir_deg))), avg(cos(radians(wind_dir_deg))))) + 360) % 360,
                 avg(pressure_inhg), max(uv_index), avg(light_lux)
-            FROM readings WHERE type = 'Atlas' AND received_utc >= :lo AND received_utc < :hi
+            FROM readings WHERE type IN {OUTDOOR} AND received_utc >= :lo AND received_utc < :hi
             GROUP BY b""", span).fetchall()
         rooms = []
-        for sid, kind in con.execute("""SELECT DISTINCT sensor_id, type FROM readings
-                WHERE type != 'Atlas' AND received_utc >= ? AND received_utc < ?""", [_iso(lo), _iso(hi)]):
+        for sid, kind in con.execute(f"""SELECT DISTINCT sensor_id, type FROM readings
+                WHERE type NOT IN {OUTDOOR} AND received_utc >= ? AND received_utc < ?""", [_iso(lo), _iso(hi)]):
             temp, hum = column(con.execute(f"""SELECT {bucket} AS b, avg(temp_f), avg(humidity_pct)
                 FROM readings WHERE sensor_id = :sid AND received_utc >= :lo AND received_utc < :hi
                 GROUP BY b""", {**span, "sid": sid}).fetchall(), 2)
@@ -778,92 +661,60 @@ def run_web_server(cfg: configparser.ConfigParser, write_path: Path) -> None:
     servers[0].serve_forever()
 
 
-# ── Discover mode ─────────────────────────────────────────────────────────────
-
-def run_discover(cfg: configparser.ConfigParser, duration_s: int = 300) -> None:
-    """Print all AcuRite sensors in range for duration_s seconds then exit."""
-    cmd = rtl433_cmd(cfg)
-    print(f"\n{'─'*60}")
-    print(f"DISCOVER MODE — listening {duration_s}s for AcuRite sensors")
-    print(f"rtl_433: {' '.join(cmd)}")
-    print(f"{'─'*60}\n")
-
-    deadline = time.monotonic() + duration_s
-    seen: dict[str, dict] = {}
-
-    try:
-        proc = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
-        )
-        while time.monotonic() < deadline:
-            line = proc.stdout.readline()
-            if not line:
-                break
-            try:
-                raw = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            packet = parse_packet(raw)
-            if packet is None:
-                continue
-            sid = packet["sensor_id"]
-            if sid not in seen:
-                seen[sid] = packet
-                print(f"  Sensor ID : {sid}")
-                print(f"  Model     : {packet['model']}")
-                if packet.get("temp_f") is not None:
-                    print(f"  Temp      : {packet['temp_f']}°F")
-                if packet.get("humidity_pct") is not None:
-                    print(f"  Humidity  : {packet['humidity_pct']}%")
-                if packet.get("wind_mph") is not None:
-                    print(f"  Wind      : {packet['wind_mph']} mph @ {packet.get('wind_dir_deg', '?')}°")
-                if packet.get("rain_in") is not None:
-                    print(f"  Rain      : {packet['rain_in']}\"")
-                print()
-    except KeyboardInterrupt:
-        print("\n(stopped early)")
-    finally:
-        proc.terminate()
-        proc.wait()
-
-    print(f"{'─'*60}")
-    print(f"Found {len(seen)} sensor(s). Add to ~/.cc0ac-weather/config.ini under [sensors]:\n")
-    for sid, p in seen.items():
-        print(f"  {sid} = My {p['model']}")
-    print(f"\n{'─'*60}\n")
-
-
 # ── Daemon ────────────────────────────────────────────────────────────────────
 
+def _plugins(folder: str) -> list:
+    """Every module in a plug-in folder (sources/, outputs/) beside this script."""
+    here = Path(__file__).resolve().parent / folder
+    return [importlib.import_module(f"{folder}.{p.stem}")
+            for p in sorted(here.glob("*.py")) if not p.name.startswith("_")]
+
+
 def load_sources() -> list:
-    """Every source module in the sources/ folder beside this script."""
-    folder = Path(__file__).resolve().parent / "sources"
-    return [importlib.import_module(f"sources.{p.stem}")
-            for p in sorted(folder.glob("*.py")) if not p.name.startswith("_")]
+    return _plugins("sources")
+
+
+def load_outputs() -> list:
+    return _plugins("outputs")
+
+
+def _run_output(cfg: configparser.ConfigParser, output, todo: queue.Queue) -> None:
+    """Hand each reading to one output, in order; a failure loses that reading only."""
+    while True:
+        reading = todo.get()
+        try:
+            output.send(cfg, reading)
+        except Exception as exc:
+            log.warning("%s output failed: %s", output.NAME, exc)
 
 
 def run_daemon(cfg: configparser.ConfigParser) -> None:
     write_path = Path(cfg.get("device", "write_path")).expanduser()
     write_path.mkdir(parents=True, exist_ok=True)
-    csv_path = write_path / "weather.csv"
-
     sensors = sensor_map(cfg)
-    whitelist = set(sensors.keys()) if sensors else None
 
     # The dashboard reads these settings from current.json; it cannot read config.ini.
     # The lower pane is a row of [buttons], each loading its page below; none set, no pane.
     page = {"title": _title(cfg), "lower_buttons": _buttons(cfg), "station": _station(cfg)}
     db_path = _db_path(cfg)
 
-    def emit(reading: Reading) -> dict:
-        return record_reading(reading, write_path, sensors, page, db_path)
+    queues = []
+    for output in load_outputs():
+        if output.enabled(cfg):
+            todo: queue.Queue = queue.Queue(maxsize=1000)
+            threading.Thread(target=_run_output, args=(cfg, output, todo), daemon=True,
+                             name=output.NAME).start()
+            queues.append((output.NAME, todo))
+            log.info("Output on: %s", output.NAME)
 
-    source_threads = []
-    for source in load_sources():
-        if source.enabled(cfg):
-            thread = threading.Thread(target=source.run, args=(cfg, emit), daemon=True, name=source.NAME)
-            thread.start()
-            source_threads.append(thread)
+    def emit(reading: Reading) -> dict:
+        entry = record_reading(reading, write_path, sensors, page, db_path)
+        for name, todo in queues:
+            try:
+                todo.put_nowait(reading)
+            except queue.Full:
+                log.warning("%s output is behind; dropped a reading", name)
+        return entry
 
     if cfg.getboolean("web", "enabled", fallback=False):
         threading.Thread(target=run_web_server, args=(cfg, write_path), daemon=True).start()
@@ -871,82 +722,28 @@ def run_daemon(cfg: configparser.ConfigParser) -> None:
     if cfg.getboolean("forecast", "enabled", fallback=False):
         threading.Thread(target=run_forecast, args=(cfg, write_path), daemon=True).start()
 
-    if not cfg.getboolean("capture", "enabled", fallback=False):
-        log.info("Radio capture off ([capture] enabled = false) — hub relay only")
-        for thread in source_threads:
-            thread.join()
-        return
-
-    cmd = rtl433_cmd(cfg)
-    log.info("Starting — writing to %s", csv_path)
-    if whitelist:
-        log.info("Sensor whitelist: %s", sorted(whitelist))
-    else:
-        log.info("No [sensors] configured — capturing all AcuRite sensors (consider adding IDs to suppress neighbor noise)")
-
-    while True:
-        try:
-            proc = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
-            )
-            log.info("rtl_433 started (pid %d)", proc.pid)
-            for line in proc.stdout:
-                try:
-                    raw = json.loads(line.strip())
-                except json.JSONDecodeError:
-                    continue
-
-                packet = parse_packet(raw)
-                if packet is None:
-                    continue
-
-                sid = packet["sensor_id"]
-                if whitelist and sid not in whitelist:
-                    log.debug("Skipping unknown sensor %s", sid)
-                    continue
-
-                now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                row = {
-                    "timestamp": now,
-                    "sensor_id": sid,
-                    "sensor_name": sensors.get(sid, sid),
-                    "model": packet["model"],
-                    "temp_f": packet.get("temp_f"),
-                    "humidity_pct": packet.get("humidity_pct"),
-                    "wind_mph": packet.get("wind_mph"),
-                    "wind_dir_deg": packet.get("wind_dir_deg"),
-                    "wind_gust_mph": packet.get("wind_gust_mph"),
-                    "rain_in": packet.get("rain_in"),
-                    "pressure_inhg": packet.get("pressure_inhg"),
-                    "dew_point_f": packet.get("dew_point_f"),
-                    "uv_index": packet.get("uv_index"),
-                    "battery_ok": packet.get("battery_ok"),
-                }
-                append_csv(csv_path, row)
-                log.info(
-                    "sensor=%s name=%r temp_f=%s humidity=%s wind_mph=%s",
-                    sid, sensors.get(sid, sid),
-                    packet.get("temp_f"), packet.get("humidity_pct"), packet.get("wind_mph"),
-                )
-
-                threading.Thread(
-                    target=upload_wu, args=(cfg, packet), daemon=True
-                ).start()
-
-            ret = proc.wait()
-            log.warning("rtl_433 exited (code %d) — restarting in 10s", ret)
-            time.sleep(10)
-
-        except Exception as exc:
-            log.error("Daemon error: %s — restarting in 10s", exc)
-            time.sleep(10)
+    source_threads = []
+    for source in load_sources():
+        if source.enabled(cfg):
+            thread = threading.Thread(target=source.run, args=(cfg, emit), daemon=True, name=source.NAME)
+            thread.start()
+            source_threads.append(thread)
+            log.info("Source on: %s", source.NAME)
+    if not source_threads:
+        log.warning("No source switched on ([hub] or [capture] enabled); nothing to record")
+    for thread in source_threads:
+        thread.join()
+    # A source reading recordings ([capture] read) finishes; let the outputs drain.
+    for _, todo in queues:
+        while not todo.empty():
+            time.sleep(0.2)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="AcuRite weather sensor capture — writes weather.csv for cloud sync"
+        description="AcuRite weather sensor capture"
     )
     parser.add_argument(
         "--config", type=Path, default=DEFAULT_CONFIG,
@@ -954,7 +751,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--discover", action="store_true",
-        help="Print all AcuRite sensors in range for --discover-time seconds and exit",
+        help="With a radio dongle: print every sensor heard for --discover-time seconds and exit",
     )
     parser.add_argument(
         "--discover-time", type=int, default=300,
@@ -978,7 +775,8 @@ def main() -> None:
     if args.import_raw:
         import_raw(cfg)
     elif args.discover:
-        run_discover(cfg, args.discover_time)
+        from sources import rtl_433
+        rtl_433.discover(cfg, args.discover_time)
     else:
         run_daemon(cfg)
 

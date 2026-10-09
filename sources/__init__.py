@@ -19,7 +19,11 @@ current.json (a dict with name, type and fields), which a source may log.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
+
+# Sensor types that measure outdoors; every other type is a room.
+OUTDOOR_TYPES = ("Atlas", "Iris", "5N1")
 
 # Every field a reading can carry, in fixed units. A source converts to these;
 # a value it doesn't have is left out. These are also the database's columns.
@@ -61,3 +65,38 @@ class Reading:
     fields: dict = field(default_factory=dict)   # FIELDS names → values
     receiver: str | None = None    # the hub or radio that heard it
     sensor_utc: str | None = None  # the time the sensor or hub gave the reading, if any
+
+
+def derive(fields: dict) -> dict:
+    """Fill in dew point, heat index, wind chill and feels-like from temperature,
+    humidity and wind, where the source didn't send them (the hub works these out
+    itself; a sensor heard by radio sends only what it measures). NWS formulas."""
+    t, rh, v = fields.get("temp_f"), fields.get("humidity_pct"), fields.get("wind_mph")
+    if not isinstance(t, (int, float)):
+        return fields
+    out = dict(fields)
+    if isinstance(rh, (int, float)) and rh > 0:
+        c = (t - 32) * 5 / 9
+        g = math.log(rh / 100) + 17.625 * c / (243.04 + c)
+        out.setdefault("dew_point_f", round(243.04 * g / (17.625 - g) * 9 / 5 + 32, 1))
+        hi = 0.5 * (t + 61 + (t - 68) * 1.2 + rh * 0.094)
+        if (hi + t) / 2 >= 80:
+            hi = (-42.379 + 2.04901523 * t + 10.14333127 * rh - 0.22475541 * t * rh
+                  - 6.83783e-3 * t * t - 5.481717e-2 * rh * rh + 1.22874e-3 * t * t * rh
+                  + 8.5282e-4 * t * rh * rh - 1.99e-6 * t * t * rh * rh)
+            if rh < 13 and 80 <= t <= 112:
+                hi -= (13 - rh) / 4 * math.sqrt((17 - abs(t - 95)) / 17)
+            elif rh > 85 and 80 <= t <= 87:
+                hi += (rh - 85) / 10 * (87 - t) / 5
+        out.setdefault("heat_index_f", round(hi, 1))
+    chill = None
+    if isinstance(v, (int, float)) and t <= 50 and v >= 3:
+        chill = round(35.74 + 0.6215 * t - 35.75 * v ** 0.16 + 0.4275 * t * v ** 0.16, 1)
+        out.setdefault("wind_chill_f", chill)
+    if chill is not None:
+        out.setdefault("feels_like_f", chill)
+    elif "heat_index_f" in out and t >= 80:
+        out.setdefault("feels_like_f", out["heat_index_f"])
+    elif isinstance(v, (int, float)) or isinstance(rh, (int, float)):
+        out.setdefault("feels_like_f", t)
+    return out

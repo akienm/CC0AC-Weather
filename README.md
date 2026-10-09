@@ -340,25 +340,42 @@ A page gets everything from two addresses on the same server:
 
 ## Radio capture (no hub)
 
-With an RTL-SDR dongle (~$25) and [rtl_433](https://github.com/merbanan/rtl_433):
+With an RTL-SDR USB radio dongle and [rtl_433](https://github.com/merbanan/rtl_433),
+the program hears the sensors itself, no hub needed:
 
 ```bash
 sudo apt install rtl-sdr rtl-433
 sudo usermod -aG plugdev $USER          # log out and back in
+rtl_test -t                             # the dongle is found and tuned
 python3 acurite-capture.py --discover   # lists sensor IDs in range
 ```
 
-Then set `[capture] enabled = true` in config.ini. `[weather_underground]
-enabled = true` with a station key uploads to WU from this path (a hub
-already does that itself).
+Name the sensors you want under `[sensors]` (neighbours' are heard too) and
+set `[capture] enabled = true`. AcuRite sensors get the same IDs and names the
+hub gives them, so a hub and a dongle can share one `[sensors]` list. Dew
+point, heat index, wind chill and feels-like are worked out from what the
+sensors send, and rain today and in the last hour from the rain gauge's
+running total, as the hub does. `[weather_underground] enabled = true` with a
+station key uploads readings heard by radio (a hub already uploads its own).
+
+**The RTL-SDR Blog V4 dongle** needs a newer driver than some distributions
+ship: if `rtl_test` doesn't find its R828D tuner, install the driver from
+[rtl-sdr-blog](https://github.com/rtlsdrblog/rtl-sdr-blog) (see their V4
+quick-start guide).
+
+**Status:** decoding is tested against recordings of AcuRite sensors from the
+rtl_433 project, not yet with a dongle on the air.
 
 ## Files
 
 | File | Purpose |
 |---|---|
-| `acurite-capture.py` | The program: recording, database, web server, forecast, optional radio capture |
+| `acurite-capture.py` | The program: recording, database, web server, forecast; runs the sources and outputs |
 | `sources/__init__.py` | The Reading every source produces, its fields and units, and how to add a source |
 | `sources/acurite_access.py` | The Access hub source: listener, relay to AcuRite, raw log |
+| `sources/rtl_433.py` | The radio source: runs rtl_433 and turns its messages into Readings |
+| `outputs/__init__.py` | How to add an output: somewhere readings are sent |
+| `outputs/weather_underground.py` | Uploads readings heard by radio to Weather Underground |
 | `config.ini.example` | Configuration template, every option documented |
 | `weather.html` | Dashboard; reads `current.js` and `forecast.js` |
 | `charts.html` | Charts over any period; reads `/history.json` |
