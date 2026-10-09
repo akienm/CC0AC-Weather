@@ -233,7 +233,9 @@ are answered locally.
 ### The dashboard
 
 `http://THIS_BOX:12345/` (port set by `[web] port`; several comma-separated
-ports allowed). To share it, forward that port on your router. The
+ports allowed). To share it, forward that port on your router. Visitors from
+outside your network get the dashboard and the charts and nothing else (see
+[Settings in the browser](#settings-in-the-browser)). The
 `[buttons]` section puts a row of buttons in a pane at the bottom, each loading
 a page that allows framing (a radar map such as Weather Underground's WunderMap,
 a forecast, a webcam): `buttonN = Label | URL`. Blank buttons are not shown, and
@@ -274,6 +276,25 @@ The page asks `/history.json?period=week` (or `?from=YYYY-MM-DD&to=YYYY-MM-DD`)
 and the server averages the readings into a few hundred points for whatever
 the period is: 5-minute averages for a day, daily ones across years. The charts
 use [uPlot](https://github.com/leeoniya/uPlot), loaded from jsDelivr.
+
+### Settings in the browser
+
+`http://THIS_BOX:12345/config.cgi` shows config.ini in one large pane, with
+Save and Revert. Save checks the text still reads as an ini file (a missing
+section header, a repeated section or option, or a broken `%(name)s` is refused
+with the line it's on), keeps the old file as `config.ini.previous`, writes the
+new one and restarts the service, so a change takes effect at once. Revert
+throws away edits you haven't saved.
+
+The page answers only addresses on your own network and the box itself; there
+is **no password yet**, so anyone on your network can open it, and it shows
+every password in the file. From outside (through the router's port forward)
+it, like everything but the dashboard and the charts, is a 404. Outside
+visitors get `/`, `weather.html`, `charts.html`, `theme.css` and the data those
+pages load (`current.js`, `forecast.js`, `/history.json`); your own pages,
+`/current.json`, `/summaries.json` and `history.csv` are for your network only.
+Use the box's own address (`http://10.0.0.x:12345/`), not your outside name: a
+router that loops your outside name back to you makes you look like a visitor.
 
 ### Making it yours
 
@@ -409,6 +430,7 @@ rtl_433 project, not yet with a dongle on the air.
 | `config.ini.example` | Configuration template, every option documented |
 | `weather.html` | Dashboard; reads `current.js` and `forecast.js` |
 | `charts.html` | Charts over any period; reads `/history.json` |
+| `config.html` | The settings page served at `/config.cgi` (your network only) |
 | `theme.css` | Colors and font for every page |
 | `examples/my-page.html` | A short page of your own to start from |
 | `cc0ac-weather@.service` | systemd unit |

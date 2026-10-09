@@ -55,8 +55,10 @@ relay_url = https://atlasapi.myacurite.com
 
 [web]
 ; Built-in web server for the dashboard: serves weather.html, charts.html,
-; theme.css and the data files, read-only, nothing else. To reach it from
-; outside, forward a port on your router to this one (e.g. outside 80 -> 12345).
+; theme.css and the data files, and on your own network /config.cgi, a page for
+; editing this file (no password yet). To reach it from outside, forward a port
+; on your router to this one (e.g. outside 80 -> 12345); outside visitors get
+; only the dashboard and the charts.
 ; Several ports are allowed, comma-separated: routers that can only forward a
 ; port to the same number (Xfinity) need 80 listed here, e.g. port = 12345, 80
 enabled = false

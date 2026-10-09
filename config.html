@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CC0AC Weather Config</title>
+<style>
+  :root {
+    --bg: #000;
+    --surface: #111;
+    --border: #333;
+    --text: #e8e8e8;
+    --muted: #888;
+    --accent: #4af;
+    --warn: #f44;
+    --font: "Helvetica Neue", Helvetica, Arial, Roboto, "Liberation Sans", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; padding: 16px;
+         display: flex; flex-direction: column; gap: 10px; }
+  h1 { font-size: 16px; color: var(--muted); letter-spacing: 1px; }
+  h1 a { color: var(--accent); text-decoration: none; font-size: 14px; margin-left: 12px; letter-spacing: 0; }
+  .buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .buttons button { font: inherit; font-size: 13px; color: var(--text); background: var(--bg);
+                    border: 1px solid var(--border); padding: 6px 12px; cursor: pointer; }
+  .buttons button:hover:not(:disabled) { border-color: var(--accent); }
+  .buttons button:disabled { color: var(--muted); cursor: default; }
+  #status { color: var(--muted); font-size: 13px; margin-left: 8px; white-space: pre-wrap; }
+  #status.error { color: var(--warn); }
+  textarea { flex: 1; width: 100%; min-height: 300px; resize: none; background: var(--surface); color: var(--text);
+             border: 1px solid var(--border); padding: 10px; font: 13px/1.45 ui-monospace, Menlo, Consolas, monospace;
+             tab-size: 4; }
+  textarea:focus { outline: none; border-color: var(--accent); }
+</style>
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<h1>CONFIG.INI<a href="weather.html">Dashboard</a></h1>
+<div class="buttons">
+  <button id="save" disabled>Save</button>
+  <button id="revert" disabled>Revert</button>
+  <span id="status">Loading…</span>
+</div>
+<textarea id="text" spellcheck="false" autocomplete="off"></textarea>
+<script>
+// Save sends the whole file. The server checks that it reads as an ini file,
+// keeps the old one as config.ini.previous, writes it, and restarts so it takes
+// effect. Revert throws away unsaved edits and shows the file as it is on disk.
+const text = document.getElementById("text"), status = document.getElementById("status");
+const save = document.getElementById("save"), revert = document.getElementById("revert");
+let onDisk = "";
+
+function say(msg, error) { status.textContent = msg; status.className = error ? "error" : ""; }
+function edited() { const dirty = text.value !== onDisk; save.disabled = revert.disabled = !dirty; return dirty; }
+
+async function load(msg) {
+  const r = await fetch("config.cgi?raw=1", {cache: "no-store"});
+  if (!r.ok) throw new Error(`could not read config.ini (${r.status})`);
+  onDisk = text.value = await r.text();
+  edited();
+  say(msg || "");
+}
+
+async function waitForRestart() {
+  // The service is down for a few seconds while it restarts.
+  for (let i = 0; i < 30; i++) {
+    await new Promise(ok => setTimeout(ok, 2000));
+    try { await load("Saved; running with the new settings."); return; } catch (e) {}
+  }
+  say("Saved, but the service has not come back yet. Check its log.", true);
+}
+
+text.addEventListener("input", () => { if (edited()) say("Edited, not saved."); else say(""); });
+revert.onclick = () => load("Reverted to the file on disk.").catch(e => say(e.message, true));
+save.onclick = async () => {
+  save.disabled = revert.disabled = true;
+  say("Saving…");
+  try {
+    const r = await fetch("config.cgi", {method: "POST", body: text.value,
+                                         headers: {"Content-Type": "text/plain; charset=utf-8", "X-CC0AC-Config": "save"}});
+    const answer = await r.text();
+    if (!r.ok) { edited(); say(answer, true); return; }
+    onDisk = text.value;
+    say("Saved; restarting…");
+    await waitForRestart();
+  } catch (e) { edited(); say(e.message, true); }
+};
+window.addEventListener("beforeunload", e => { if (edited()) e.preventDefault(); });
+load().catch(e => say(e.message, true));
+</script>
+</body>
+</html>

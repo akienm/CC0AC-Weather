@@ -34,11 +34,13 @@ import argparse
 import configparser
 import csv
 import importlib
+import ipaddress
 import json
 import logging
 import os
 import queue
 import re
+import shutil
 import sqlite3
 import sys
 import threading
@@ -739,6 +741,86 @@ DATA_FILES = {"/current.js": "application/javascript", "/current.json": "applica
               "/history.csv": "text/csv"}
 
 
+# From outside your network (anything through the router's port forward) only the
+# dashboard and the charts are served, with what those two pages load; everything
+# else answers 404. Your own network gets every page, the data files and /config.cgi.
+OUTSIDE_PATHS = {"/", "/weather.html", "/charts.html", "/theme.css",
+                 "/current.js", "/forecast.js", "/history.json"}
+
+# /config.cgi edits config.ini in the browser: one pane, Save and Revert. It is
+# answered only for addresses on your own network (and this machine); a request
+# through the router's port forward comes from an outside address and gets a 404.
+# There is no password yet, so anyone on your network can use it. Save checks the
+# file reads as an ini file, keeps the old one as config.ini.previous, writes the
+# new one and restarts the service so it takes effect.
+
+CONFIG_MAX_BYTES = 1_000_000
+
+
+def _local_client(address: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    if ip.version == 6 and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    return ip.is_loopback or ip.is_private or ip.is_link_local
+
+
+def _local_host(host: str) -> bool:
+    """The address the browser asked for: an address on your network, localhost,
+    or a bare or .local machine name. Another site's name pointed at this machine
+    (DNS rebinding) is refused."""
+    if host.startswith("["):                       # [IPv6]:port
+        name = host[1:].split("]", 1)[0]
+    else:
+        name = host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+    name = name.rstrip(".").lower()
+    if not name:
+        return False
+    if name == "localhost" or name.endswith(".local") or "." not in name and ":" not in name:
+        return True
+    return _local_client(name)
+
+
+def check_config(text: str) -> str | None:
+    """Why this text can't be config.ini, or None if it reads cleanly."""
+    cfg = configparser.ConfigParser()
+    try:
+        cfg.read_string(text, source="config.ini")
+        for section in cfg.sections():
+            cfg.items(section)          # a broken %(name)s shows up only when read
+    except configparser.Error as e:
+        return f"Not saved: {e}"
+    return None
+
+
+def save_config(config_path: Path, text: str) -> None:
+    """Keep the old file as config.ini.previous, then replace it in one step,
+    with the same permissions (it holds passwords)."""
+    mode = config_path.stat().st_mode & 0o777 if config_path.exists() else 0o600
+    if config_path.exists():
+        shutil.copy2(config_path, config_path.with_name(config_path.name + ".previous"))
+    tmp = config_path.with_name(config_path.name + ".saving")
+    tmp.write_text(text)
+    tmp.chmod(mode)
+    tmp.replace(config_path)
+
+
+def restart_soon(delay: float = 1.0) -> None:
+    """Restart the whole program once the browser has its answer. Under systemd
+    the service exits and systemd starts it again (Restart=always), which also
+    ends a running rtl_433; run by hand, it starts itself over in place."""
+    def restart():
+        time.sleep(delay)
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        if os.environ.get("INVOCATION_ID"):
+            os._exit(0)
+        os.execv(sys.executable, [sys.executable, str(Path(sys.argv[0]).resolve()), *sys.argv[1:]])
+    threading.Thread(target=restart, daemon=True).start()
+
+
 def _find_page(name: str, own_dir: Path | None, page_dir: Path) -> Path | None:
     """The file to serve for /<name>: yours first, then the shipped one."""
     if not PAGE_NAME.fullmatch(name) or Path(name).suffix.lower() not in PAGE_TYPES:
@@ -749,7 +831,8 @@ def _find_page(name: str, own_dir: Path | None, page_dir: Path) -> Path | None:
 
 
 def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: dict | None = None,
-                      own_dir: Path | None = None, title: str = DEFAULT_TITLE):
+                      own_dir: Path | None = None, title: str = DEFAULT_TITLE,
+                      config_path: Path | None = None):
     page_dir = Path(__file__).resolve().parent
 
     class WebHandler(BaseHTTPRequestHandler):
@@ -759,6 +842,12 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
         def do_GET(self):
             url = urllib.parse.urlparse(self.path)
             path = url.path
+            if path not in OUTSIDE_PATHS and not _local_client(self.client_address[0]):
+                self.send_error(404)
+                return
+            if path == "/config.cgi":
+                self._config_page(dict(urllib.parse.parse_qsl(url.query)))
+                return
             if path in ("/history.json", "/summaries.json"):
                 self._query(history if path == "/history.json" else summaries,
                             dict(urllib.parse.parse_qsl(url.query)))
@@ -777,6 +866,63 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
                 self.send_error(404, "No data yet")
                 return
             self._send(body, ctype)
+
+        def _config_allowed(self) -> bool:
+            if (config_path is not None and _local_client(self.client_address[0])
+                    and _local_host(self.headers.get("Host", ""))):
+                return True
+            self.send_error(404)
+            return False
+
+        def _config_page(self, q: dict):
+            if not self._config_allowed():
+                return
+            if q.get("raw"):
+                self._send(config_path.read_bytes(), "text/plain; charset=utf-8")
+            else:
+                self._send((page_dir / "config.html").read_bytes(), PAGE_TYPES[".html"])
+
+        def do_POST(self):
+            if urllib.parse.urlparse(self.path).path != "/config.cgi":
+                self.send_error(404)
+                return
+            if not self._config_allowed():
+                return
+            # Only the page's own script sends this header; a form on another
+            # site can't, so it can't save over your config from your browser.
+            if self.headers.get("X-CC0AC-Config") != "save":
+                self.send_error(403)
+                return
+            length = int(self.headers.get("Content-Length") or 0)
+            if not 0 < length <= CONFIG_MAX_BYTES:
+                self._answer(400, "Not saved: empty, or too big for a config file.")
+                return
+            try:
+                text = self.rfile.read(length).decode("utf-8")
+            except UnicodeDecodeError:
+                self._answer(400, "Not saved: the text isn't UTF-8.")
+                return
+            problem = check_config(text)
+            if problem:
+                self._answer(400, problem)
+                return
+            try:
+                save_config(config_path, text)
+            except OSError as e:
+                log.error("Saving %s failed: %s", config_path, e)
+                self._answer(500, f"Not saved: {e}")
+                return
+            log.info("config.ini saved from %s; restarting", self.client_address[0])
+            self._answer(200, "Saved; restarting.")
+            restart_soon()
+
+        def _answer(self, code: int, message: str):
+            body = message.encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
 
         def _query(self, answer, q: dict):
             if db_path is None or not db_path.exists():
@@ -804,7 +950,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
     return WebHandler
 
 
-def run_web_server(cfg: configparser.ConfigParser, write_path: Path) -> None:
+def run_web_server(cfg: configparser.ConfigParser, write_path: Path, config_path: Path | None = None) -> None:
     # One or more ports, comma-separated: e.g. "12345, 80" when a router can only
     # forward 80 to 80 but the inside address should stay easy to remember.
     ports = [int(p) for p in cfg.get("web", "port", fallback="12345").split(",") if p.strip()]
@@ -812,7 +958,7 @@ def run_web_server(cfg: configparser.ConfigParser, write_path: Path) -> None:
     own_dir = Path(own).expanduser() if own else None
     if own_dir is not None and not own_dir.is_dir():
         log.warning("[web] pages folder %s not found; serving the shipped pages only", own_dir)
-    handler = _make_web_handler(write_path, _db_path(cfg), sensor_map(cfg), own_dir, _title(cfg))
+    handler = _make_web_handler(write_path, _db_path(cfg), sensor_map(cfg), own_dir, _title(cfg), config_path)
     servers = [ThreadingHTTPServer(("", port), handler) for port in ports]
     for port, server in zip(ports[1:], servers[1:]):
         threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -847,7 +993,7 @@ def _run_output(cfg: configparser.ConfigParser, output, todo: queue.Queue) -> No
             log.warning("%s output failed: %s", output.NAME, exc)
 
 
-def run_daemon(cfg: configparser.ConfigParser) -> None:
+def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) -> None:
     write_path = Path(cfg.get("device", "write_path")).expanduser()
     write_path.mkdir(parents=True, exist_ok=True)
     sensors = sensor_map(cfg)
@@ -876,7 +1022,7 @@ def run_daemon(cfg: configparser.ConfigParser) -> None:
         return entry
 
     if cfg.getboolean("web", "enabled", fallback=False):
-        threading.Thread(target=run_web_server, args=(cfg, write_path), daemon=True).start()
+        threading.Thread(target=run_web_server, args=(cfg, write_path, config_path), daemon=True).start()
 
     if cfg.getboolean("forecast", "enabled", fallback=False):
         threading.Thread(target=run_forecast, args=(cfg, write_path), daemon=True).start()
@@ -937,7 +1083,7 @@ def main() -> None:
         from sources import rtl_433
         rtl_433.discover(cfg, args.discover_time)
     else:
-        run_daemon(cfg)
+        run_daemon(cfg, args.config.expanduser().resolve())
 
 
 if __name__ == "__main__":
