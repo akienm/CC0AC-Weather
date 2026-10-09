@@ -356,7 +356,9 @@ already does that itself).
 
 | File | Purpose |
 |---|---|
-| `acurite-capture.py` | The program: hub listener and relay, web server, optional radio capture |
+| `acurite-capture.py` | The program: recording, database, web server, forecast, optional radio capture |
+| `sources/__init__.py` | The Reading every source produces, its fields and units, and how to add a source |
+| `sources/acurite_access.py` | The Access hub source: listener, relay to AcuRite, raw log |
 | `config.ini.example` | Configuration template, every option documented |
 | `weather.html` | Dashboard; reads `current.js` and `forecast.js` |
 | `charts.html` | Charts over any period; reads `/history.json` |

@@ -4,9 +4,10 @@ acurite-capture.py — AcuRite weather sensor capture daemon.
 
 Two sources, either or both:
   * the AcuRite Access hub: an HTTPS listener the hub reports to, which records
-    each reading and relays it on to AcuRite unchanged ([hub]);
+    each reading and relays it on to AcuRite unchanged ([hub], sources/acurite_access.py);
   * rtl_433 with a USB SDR, decoding the sensors off the air ([capture]).
-Hub readings land in <write_path>/current.json, current.js and history.csv.
+Each source in sources/ turns what it hears into Readings (sources/__init__.py);
+readings land in <write_path>/current.json, current.js, history.csv and the database.
 With [forecast] on, the National Weather Service forecast, nearest airport
 observation and active alerts land in <write_path>/forecast.json and forecast.js.
 
@@ -33,23 +34,25 @@ from __future__ import annotations
 import argparse
 import configparser
 import csv
+import importlib
 import json
 import logging
 import os
 import re
 import sqlite3
-import ssl
 import subprocess
 import sys
 import threading
 import time
-import urllib.error
 import urllib.parse
 import urllib.request
 from collections import deque
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+from sources import FIELDS, Reading
+from sources import acurite_access
 
 log = logging.getLogger("acurite")
 
@@ -195,35 +198,13 @@ def upload_wu(cfg: configparser.ConfigParser, packet: dict) -> None:
         log.warning("WU upload failed: %s", exc)
 
 
-# ── Hub relay (AcuRite Access 09155M) ────────────────────────────────────────
+# ── Recording ─────────────────────────────────────────────────────────────────
 #
-# The Access sends one HTTPS GET per sensor reading to the server named on its
-# local page (Server Name, default atlasapi.myacurite.com):
-#   /weatherstation/updateweatherstation?id=<MAC>&mt=<Atlas|tower|...>&sensor=<id>&tempf=...
-# We record the reading, then pass the request on to AcuRite unchanged and hand
-# AcuRite's answer back to the hub, so AcuRite keeps working while we listen.
-# The hub uploads to Weather Underground on its own; nothing here touches that.
+# Every source (see sources/) hands its readings to record_reading(), which
+# folds each one into current.json / current.js, appends it to history.csv and
+# stores it in the database. Nothing here knows which source a reading came from.
 
-ACCESS_RELAY_URL = "https://atlasapi.myacurite.com"
-HUB_UPDATE_PATH = "/weatherstation/updateweatherstation"
-
-# Hub query keys → our field names. Every key also lands in the raw log.
-HUB_FIELDS = {
-    "tempf": "temp_f", "indoortempf": "temp_f",
-    "humidity": "humidity_pct", "indoorhumidity": "humidity_pct",
-    "dewptf": "dew_point_f", "heatindex": "heat_index_f",
-    "feelslike": "feels_like_f", "windchill": "wind_chill_f",
-    "windspeedmph": "wind_mph", "windspeedavgmph": "wind_avg_mph",
-    "windgustmph": "wind_gust_mph", "winddir": "wind_dir_deg",
-    "windgustdir": "wind_gust_dir_deg",
-    "rainin": "rain_hour_in", "dailyrainin": "rain_day_in",
-    "baromin": "pressure_inhg", "uvindex": "uv_index",
-    "lightintensity": "light_lux", "measured_light_seconds": "light_seconds",
-    "strikecount": "strike_count", "last_strike_distance": "last_strike_mi",
-    "last_strike_ts": "last_strike_ts", "interference": "interference",
-    "sensorbattery": "battery", "rssi": "signal", "hubbattery": "hub_battery",
-}
-HISTORY_FIELDS = ["timestamp", "sensor_id", "sensor_name", "type"] + sorted(set(HUB_FIELDS.values()))
+HISTORY_FIELDS = ["timestamp", "sensor_id", "sensor_name", "type"] + sorted(FIELDS)
 
 _current: dict[str, dict] = {}
 _current_lock = threading.Lock()
@@ -267,33 +248,24 @@ def _pressure_change(now: float, value: float) -> float | None:
     return round(value - then[-1], 2) if then else None
 
 
-def _hub_value(v: str):
-    """Numbers as numbers; anything else (battery 'normal'/'low', timestamps) as text."""
-    try:
-        f = float(v)
-    except ValueError:
-        return v
-    return int(f) if f.is_integer() and "." not in v else f
-
-
 def _write_atomic(path: Path, text: str) -> None:
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(text, encoding="utf-8")
     os.replace(tmp, path)
 
 
-def record_hub_reading(params: dict, write_path: Path, sensors: dict, page: dict | None = None,
-                       query: str = "", db_path: Path | None = None) -> dict:
-    """Fold one hub reading into current.json / current.js, append history.csv,
-    and store it in the database at db_path (query: the hub's query string as sent).
+def record_reading(reading: Reading, write_path: Path, sensors: dict, page: dict | None = None,
+                   db_path: Path | None = None) -> dict:
+    """Fold one reading into current.json / current.js, append history.csv,
+    and store it in the database at db_path. Returns the sensor's current entry.
 
     page: settings the dashboard reads from the data file (it cannot read
     config.ini), e.g. {"lower_buttons": [{"label": ..., "url": ...}]}; empty values are left out."""
     global _pressure_seeded, _db
-    sensor_id = params.get("sensor", "")
-    kind = params.get("mt", "unknown")
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    fields = {HUB_FIELDS[k]: _hub_value(v) for k, v in params.items() if k in HUB_FIELDS and v != ""}
+    sensor_id = reading.sensor_id
+    kind = reading.type or "unknown"
+    now = reading.received_utc
+    fields = reading.fields
     with _current_lock:
         if not _pressure_seeded:
             _seed_pressure(write_path / "history.csv", _epoch(now))
@@ -305,7 +277,7 @@ def record_hub_reading(params: dict, write_path: Path, sensors: dict, page: dict
         entry["type"] = kind
         entry["updated"] = now
         entry["fields"].update(fields)
-        snapshot = {"written": now, "hub": params.get("id", ""),
+        snapshot = {"written": now, "hub": reading.receiver or "",
                     **{k: v for k, v in (page or {}).items() if v},
                     **{k: v for k, v in _current_page.items() if v is not None},
                     "sensors": list(_current.values())}
@@ -326,21 +298,22 @@ def record_hub_reading(params: dict, write_path: Path, sensors: dict, page: dict
             try:
                 if _db is None:
                     _db = open_db(db_path)
-                store_reading(_db, now, query)
+                store_reading(_db, reading)
             except sqlite3.Error as exc:
-                log.error("HUB store failed: %s (query=%s)", exc, query)
+                log.error("Store failed: %s (%s raw=%s)", exc, reading.source, reading.raw)
     return entry
 
 
 # ── Long-term store (SQLite) ──────────────────────────────────────────────────
 #
-# One row per hub reading, kept for good: our field names as columns for
-# querying and charting, plus the hub's whole query string so no field it sends
-# is ever lost, even ones we don't map yet. history.csv stays as a plain-text
-# copy. A reading the hub sends twice (it resends whatever AcuRite refused)
-# carries the same query string, so it is stored once.
+# One row per reading, kept for good: the reading's fields as columns for
+# querying and charting, plus exactly what the source heard (for the hub, its
+# whole query string) so nothing it sends is ever lost, even fields we don't map
+# yet. history.csv stays as a plain-text copy. A reading the hub sends twice (it
+# resends whatever AcuRite refused) is heard the same both times, so it is
+# stored once.
 
-DB_COLUMNS = sorted(set(HUB_FIELDS.values()))
+DB_COLUMNS = sorted(FIELDS)
 _db: sqlite3.Connection | None = None   # guarded by _current_lock
 
 
@@ -363,15 +336,11 @@ def open_db(path: Path) -> sqlite3.Connection:
     return con
 
 
-def store_reading(con: sqlite3.Connection, received_utc: str, query: str) -> bool:
-    """Insert one hub reading; False if that exact reading was already stored."""
-    params = dict(urllib.parse.parse_qsl(query))
-    hub_utc = params.get("dateutc", "")
-    row = {"received_utc": received_utc,
-           "hub_utc": hub_utc + "Z" if len(hub_utc) == 19 else (hub_utc or None),
-           "hub_id": params.get("id"), "sensor_id": params.get("sensor", ""), "type": params.get("mt"),
-           **{HUB_FIELDS[k]: _hub_value(v) for k, v in params.items() if k in HUB_FIELDS and v != ""},
-           "query": query}
+def store_reading(con: sqlite3.Connection, reading: Reading) -> bool:
+    """Insert one reading; False if that exact reading was already stored."""
+    row = {"received_utc": reading.received_utc, "hub_utc": reading.sensor_utc,
+           "hub_id": reading.receiver, "sensor_id": reading.sensor_id, "type": reading.type,
+           **reading.fields, "query": reading.raw}
     cur = con.execute(f"INSERT OR IGNORE INTO readings ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})",
                       list(row.values()))
     con.commit()
@@ -381,23 +350,15 @@ def store_reading(con: sqlite3.Connection, received_utc: str, query: str) -> boo
 def import_raw(cfg: configparser.ConfigParser) -> None:
     """Load every reading in the raw hub logs into the store. Safe to run again:
     readings already there are skipped."""
-    raw_dir = Path(cfg.get("hub", "raw_dir", fallback=str(DEFAULT_CONFIG.parent / "hub-raw"))).expanduser()
-    hub_id = cfg.get("hub", "hub_id", fallback="").strip().upper()
     con = open_db(_db_path(cfg))
     added = skipped = other = 0
-    for log_file in sorted(raw_dir.glob("*.log")):
-        for line in log_file.read_text(encoding="utf-8", errors="replace").splitlines():
-            stamp, _, request = line.partition("\t")
-            target = request.split(" ")[1] if request.count(" ") else ""
-            path, _, query = target.partition("?")
-            params = dict(urllib.parse.parse_qsl(query))
-            # The same test the live listener applies before it records a reading.
-            if path != HUB_UPDATE_PATH or (hub_id and params.get("id", "").upper() != hub_id):
-                other += 1
-            elif store_reading(con, stamp, query):
-                added += 1
-            else:
-                skipped += 1
+    for reading in acurite_access.raw_readings(cfg):
+        if reading is None:
+            other += 1
+        elif store_reading(con, reading):
+            added += 1
+        else:
+            skipped += 1
     total = con.execute("SELECT count(*) FROM readings").fetchone()[0]
     print(f"{added} readings added, {skipped} already stored, {other} other requests left out; "
           f"{total} readings in {_db_path(cfg)}")
@@ -544,32 +505,6 @@ def history(db_path: Path, sensors: dict, q: dict) -> dict:
         con.close()
 
 
-def _log_raw(raw_dir: Path, path_and_query: str) -> None:
-    raw_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc)
-    with (raw_dir / f"{stamp:%Y-%m-%d}.log").open("a", encoding="utf-8") as f:
-        f.write(f"{stamp:%Y-%m-%dT%H:%M:%SZ}\t{path_and_query}\n")
-
-
-def _relay(relay_url: str, path_and_query: str, method: str = "GET", body: bytes | None = None,
-           ctype: str | None = None, agent: str | None = None) -> tuple[int, str, bytes] | None:
-    req = urllib.request.Request(relay_url + path_and_query, data=body, method=method)
-    if ctype:
-        req.add_header("Content-Type", ctype)
-    if agent:
-        # AcuRite answers "Invalid checkin data" to anything not calling itself Atlas/<fw>.
-        req.add_header("User-Agent", agent)
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return resp.status, resp.headers.get("Content-Type", "application/json"), resp.read()
-    except urllib.error.HTTPError as exc:
-        # AcuRite answered; hand its answer to the hub exactly as given.
-        return exc.code, exc.headers.get("Content-Type", "application/json"), exc.read()
-    except Exception as exc:
-        log.warning("Relay to %s failed: %s", relay_url, exc)
-        return None
-
-
 def _station(cfg: configparser.ConfigParser) -> dict:
     """[station] latitude/longitude/elevation_ft, for the page's sun and moon.
     Empty (and the sun/moon card hidden) unless latitude and longitude are set."""
@@ -607,141 +542,6 @@ def _buttons(cfg: configparser.ConfigParser) -> list[dict]:
         if label and url:
             numbered.append((int(key[6:]), button))
     return [b for _, b in sorted(numbered, key=lambda n: n[0])]
-
-
-def _make_hub_handler(cfg: configparser.ConfigParser, write_path: Path, sensors: dict):
-    relay_on = cfg.getboolean("hub", "relay", fallback=True)
-    relay_url = cfg.get("hub", "relay_url", fallback=ACCESS_RELAY_URL).rstrip("/")
-    # If set, only readings from this hub (its Device ID / MAC) are recorded;
-    # anything else is relayed but not kept. Matters once 443 faces the internet.
-    hub_id = cfg.get("hub", "hub_id", fallback="").strip().upper()
-    raw_dir = Path(cfg.get("hub", "raw_dir", fallback=str(DEFAULT_CONFIG.parent / "hub-raw"))).expanduser()
-    # The dashboard's lower pane: a row of [buttons], each loading its page below.
-    # None set, and there is no pane.
-    page = {"title": _title(cfg), "lower_buttons": _buttons(cfg), "station": _station(cfg)}
-    db_path = _db_path(cfg)
-
-    class HubHandler(BaseHTTPRequestHandler):
-        protocol_version = "HTTP/1.1"
-
-        def log_message(self, fmt, *args):  # silence default access log
-            pass
-
-        def _answer(self, status: int, ctype: str, body: bytes):
-            self.send_response(status)
-            self.send_header("Content-Type", ctype)
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def _handle(self, method: str, body: bytes | None):
-            # The Access sends its readings in the query string; firmware 051 uses POST.
-            _log_raw(raw_dir, f"{method} {self.path}" + (f" {body[:500]!r}" if body else ""))
-            parsed = urllib.parse.urlparse(self.path)
-            if parsed.path == HUB_UPDATE_PATH:
-                query = parsed.query
-                if body and "form-urlencoded" in self.headers.get("Content-Type", ""):
-                    query += "&" + body.decode(errors="replace")
-                params = dict(urllib.parse.parse_qsl(query))
-                if hub_id and params.get("id", "").upper() != hub_id:
-                    log.warning("HUB reading from unknown id %r not recorded", params.get("id"))
-                    self._answer(403, "application/json", b'{"error":"unknown hub"}')
-                    return
-                try:
-                    e = record_hub_reading(params, write_path, sensors, page, query, db_path)
-                    log.info("HUB %s %s %s", e["type"], e["name"],
-                             {k: e["fields"].get(k) for k in ("temp_f", "humidity_pct", "wind_mph") if k in e["fields"]})
-                except Exception as exc:
-                    log.error("HUB record failed: %s (query=%s)", exc, parsed.query)
-            else:
-                # Only the upload path is the hub's; with 443 open to the internet,
-                # everything else is scanners and gets nothing, not a relay.
-                log.info("HUB other path refused: %s %s from %s", method, self.path, self.client_address[0])
-                self._answer(404, "text/plain", b"not found")
-                return
-
-            answer = (_relay(relay_url, self.path, method, body, self.headers.get("Content-Type"),
-                             self.headers.get("User-Agent"))
-                      if relay_on else None)
-            if answer is not None and answer[0] >= 300:
-                # AcuRite refused it. Passing the refusal on makes the Access resend the
-                # same reading forever, so log it and answer as if no relay were set.
-                log.warning("Relay: AcuRite answered %d %r; headers sent were %s",
-                            answer[0], answer[2][:200], dict(self.headers))
-                answer = None
-            if answer is None:
-                # What the Access accepts when AcuRite is not answering (per acuparse).
-                offset = datetime.now().astimezone().strftime("%z")
-                answer = (200, "application/json",
-                          json.dumps({"timezone": f"{offset[:3]}:{offset[3:]}"}).encode())
-            self._answer(*answer)
-
-        def do_GET(self):
-            self._handle("GET", None)
-
-        def do_POST(self):
-            length = int(self.headers.get("Content-Length", 0))
-            self._handle("POST", self.rfile.read(length) if length else b"")
-
-    return HubHandler
-
-
-def _hub_tls_context(cfg: configparser.ConfigParser) -> ssl.SSLContext:
-    cert_dir = Path(cfg.get("hub", "cert_dir", fallback=str(DEFAULT_CONFIG.parent))).expanduser()
-    crt, key = cert_dir / "hub.crt", cert_dir / "hub.key"
-    if not crt.exists() or not key.exists():
-        log.info("Generating self-signed hub certificate in %s", cert_dir)
-        subprocess.run(
-            ["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "3650",
-             "-subj", "/CN=atlasapi.myacurite.com", "-keyout", str(key), "-out", str(crt)],
-            check=True, capture_output=True,
-        )
-    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    # The Access speaks TLS 1.1; modern OpenSSL refuses that by default.
-    ctx.minimum_version = ssl.TLSVersion.TLSv1
-    ctx.set_ciphers("DEFAULT:@SECLEVEL=0")
-    ctx.load_cert_chain(crt, key)
-    return ctx
-
-
-class _HubServer(ThreadingHTTPServer):
-    """Does the TLS handshake in each connection's own thread, under a timeout.
-
-    Wrapping the listening socket instead puts the handshake inside accept(),
-    in the one serving thread: a single client that connects and says nothing
-    stalls every connection after it. Internet scanners do exactly that, and
-    the hub went unheard for an hour (2026-10-04).
-    """
-    request_queue_size = 64
-    tls_context = None
-
-    def finish_request(self, request, client_address):
-        request.settimeout(CONNECTION_TIMEOUT)
-        if self.tls_context is not None:
-            request = self.tls_context.wrap_socket(request, server_side=True)
-        super().finish_request(request, client_address)
-
-    def handle_error(self, request, client_address):
-        log.debug("Hub connection from %s dropped: %s", client_address[0], sys.exc_info()[1])
-
-
-CONNECTION_TIMEOUT = 15  # seconds a client may stall before its connection is dropped
-
-
-def run_hub_listener(cfg: configparser.ConfigParser, write_path: Path, sensors: dict) -> None:
-    port = cfg.getint("hub", "port", fallback=443)
-    handler = _make_hub_handler(cfg, write_path, sensors)
-    try:
-        server = _HubServer(("", port), handler)
-    except PermissionError:
-        log.error("Hub listener: cannot bind port %d — run with CAP_NET_BIND_SERVICE "
-                  "(see weather_monitor.service) or use a port above 1024", port)
-        return
-    if cfg.getboolean("hub", "tls", fallback=True):
-        server.tls_context = _hub_tls_context(cfg)
-    log.info("Hub listener on port %d (tls=%s, relay=%s)", port,
-             cfg.getboolean("hub", "tls", fallback=True), cfg.getboolean("hub", "relay", fallback=True))
-    server.serve_forever()
 
 
 # ── Forecast, airport observation and alerts (National Weather Service) ───────
@@ -1035,6 +835,13 @@ def run_discover(cfg: configparser.ConfigParser, duration_s: int = 300) -> None:
 
 # ── Daemon ────────────────────────────────────────────────────────────────────
 
+def load_sources() -> list:
+    """Every source module in the sources/ folder beside this script."""
+    folder = Path(__file__).resolve().parent / "sources"
+    return [importlib.import_module(f"sources.{p.stem}")
+            for p in sorted(folder.glob("*.py")) if not p.name.startswith("_")]
+
+
 def run_daemon(cfg: configparser.ConfigParser) -> None:
     write_path = Path(cfg.get("device", "write_path")).expanduser()
     write_path.mkdir(parents=True, exist_ok=True)
@@ -1043,12 +850,20 @@ def run_daemon(cfg: configparser.ConfigParser) -> None:
     sensors = sensor_map(cfg)
     whitelist = set(sensors.keys()) if sensors else None
 
-    hub_thread = None
-    if cfg.has_section("hub"):
-        hub_thread = threading.Thread(
-            target=run_hub_listener, args=(cfg, write_path, sensors), daemon=True
-        )
-        hub_thread.start()
+    # The dashboard reads these settings from current.json; it cannot read config.ini.
+    # The lower pane is a row of [buttons], each loading its page below; none set, no pane.
+    page = {"title": _title(cfg), "lower_buttons": _buttons(cfg), "station": _station(cfg)}
+    db_path = _db_path(cfg)
+
+    def emit(reading: Reading) -> dict:
+        return record_reading(reading, write_path, sensors, page, db_path)
+
+    source_threads = []
+    for source in load_sources():
+        if source.enabled(cfg):
+            thread = threading.Thread(target=source.run, args=(cfg, emit), daemon=True, name=source.NAME)
+            thread.start()
+            source_threads.append(thread)
 
     if cfg.getboolean("web", "enabled", fallback=False):
         threading.Thread(target=run_web_server, args=(cfg, write_path), daemon=True).start()
@@ -1058,8 +873,8 @@ def run_daemon(cfg: configparser.ConfigParser) -> None:
 
     if not cfg.getboolean("capture", "enabled", fallback=False):
         log.info("Radio capture off ([capture] enabled = false) — hub relay only")
-        if hub_thread:
-            hub_thread.join()
+        for thread in source_threads:
+            thread.join()
         return
 
     cmd = rtl433_cmd(cfg)
