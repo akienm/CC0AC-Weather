@@ -549,7 +549,7 @@ function drawCurrent() {
     document.title = data.title;
   }
   const sk = sky(data.station);
-  const sensors = [...data.sensors].sort((x, y) => x.name.localeCompare(y.name));
+  const sensors = data.sensors;   // in display order ([sensor_order] in config.ini)
   pane('p-outdoor', data.written,
        sensors.filter(s => OUTDOOR.includes(s.type)).map(s => outdoorCard(s, data, sk)).join(''));
   pane('p-rooms', data.written,

@@ -59,7 +59,7 @@ cp ~/dev/src/CC0AC-Weather/config.ini.example ~/.cc0ac-weather/config.ini
 ```
 
 Edit `~/.cc0ac-weather/config.ini`: `write_path`, your sensor names under
-`[sensors]`, `hub_id` under `[hub]` (the hub's MAC, from its local web page),
+`[sensors]` (and the order to show them in under `[sensor_order]`), `hub_id` under `[hub]` (the hub's MAC, from its local web page),
 and `[web] enabled = true`. Then install the service:
 
 ```bash
@@ -338,7 +338,7 @@ A page gets everything from two addresses on the same server:
   - `rain` is a separate list per hour, day or week (`t`, `in`).
   - `rain_totals` has `today`, `week`, `month`, `year`, `all` and `since`.
 - **`/summaries.json`**: each sensor's days, weeks, months and years.
-  - `sensors` lists each sensor (outdoor first) with `id`, `name`, `type`,
+  - `sensors` lists each sensor (in display order) with `id`, `name`, `type`,
     `outdoor`, and lists `days` (each with `day`), and `weeks`, `months` and
     `years` (each with `start`, and `days`: how many days it has readings for).
   - Every entry has `readings`, `temp_min`, `temp_max`, `temp_avg`,

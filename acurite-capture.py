@@ -70,10 +70,29 @@ def load_config(path: Path) -> configparser.ConfigParser:
 
 
 def sensor_map(cfg: configparser.ConfigParser) -> dict[str, str]:
-    """Return {sensor_id_str: display_name} from [sensors] section."""
+    """{sensor_id: display name} from [sensors], in display order: the sensors
+    listed in [sensor_order] by their numbers, then the rest by name."""
     if not cfg.has_section("sensors"):
         return {}
-    return {k: v for k, v in cfg.items("sensors")}
+    names = dict(cfg.items("sensors"))
+    ordered = []
+    if cfg.has_section("sensor_order"):
+        slots = sorted(cfg.items("sensor_order"),
+                       key=lambda kv: (0, int(kv[0]), "") if kv[0].isdigit() else (1, 0, kv[0]))
+        for _, sid in slots:
+            sid = sid.strip().lower()
+            if sid not in names:
+                log.warning("[sensor_order] lists %s, which isn't in [sensors]; left out", sid)
+            elif sid not in ordered:
+                ordered.append(sid)
+    rest = sorted((s for s in names if s not in ordered), key=lambda s: names[s].lower())
+    return {s: names[s] for s in ordered + rest}
+
+
+def display_order(sensors: dict, sensor_id: str, name: str) -> tuple:
+    """Sort key: sensors in sensor_map's order, then any others by name."""
+    position = list(sensors).index(sensor_id) if sensor_id in sensors else len(sensors)
+    return position, name.lower()
 
 
 
@@ -159,7 +178,8 @@ def record_reading(reading: Reading, write_path: Path, sensors: dict, page: dict
         snapshot = {"written": now, "hub": reading.receiver or "",
                     **{k: v for k, v in (page or {}).items() if v},
                     **{k: v for k, v in _current_page.items() if v is not None},
-                    "sensors": list(_current.values())}
+                    "sensors": sorted(_current.values(),
+                                      key=lambda e: display_order(sensors, e["sensor_id"], e["name"]))}
         body = json.dumps(snapshot, indent=1)
         _write_atomic(write_path / "current.json", body)
         # current.js lets the dashboard load the data with a <script> tag, which
@@ -389,7 +409,7 @@ def history(db_path: Path, sensors: dict, q: dict) -> dict:
                 FROM readings WHERE sensor_id = :sid AND received_utc >= :lo AND received_utc < :hi
                 GROUP BY b""", {**span, "sid": sid}).fetchall(), 2)
             rooms.append({"id": sid, "name": sensors.get(sid, f"{kind} {sid}"), "temp_f": temp, "humidity_pct": hum})
-        rooms.sort(key=lambda r: r["name"])
+        rooms.sort(key=lambda r: display_order(sensors, r["id"], r["name"]))
         return {"period": period, "from": lo, "to": hi, "step": step, "t": t,
                 "outdoor": dict(zip(out_names, column(outdoor, len(out_names)))),
                 "rooms": rooms,
@@ -561,7 +581,7 @@ def summaries(db_path: Path, sensors: dict, q: dict) -> dict:
             entry[period] = [{"start": k, "days": len(g), **{c: _combine(c, [r[c] for r in g]) for c in DAILY}}
                              for k, g in groups.items()]
         out.append(entry)
-    out.sort(key=lambda e: (not e["outdoor"], e["name"]))
+    out.sort(key=lambda e: display_order(sensors, e["id"], e["name"]))
     return {"today": today, "sensors": out}
 
 

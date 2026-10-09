@@ -14,6 +14,12 @@ write_path = ~/AcuRite
 ; 5678 = Garage
 ; 9012 = Roof
 
+[sensor_order]
+; The order sensors are shown in, on every page: number = sensor ID.
+; Sensors not listed come after, by name.
+; 1 = 5678
+; 2 = 1234
+
 [hub]
 ; AcuRite Access 09155M hub relay. The hub reports each reading over HTTPS to
 ; the "Server Name" on its local page (http://<hub IP>/). Point that at this
