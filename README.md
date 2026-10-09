@@ -337,6 +337,18 @@ A page gets everything from two addresses on the same server:
   - A slot with no readings holds `null`.
   - `rain` is a separate list per hour, day or week (`t`, `in`).
   - `rain_totals` has `today`, `week`, `month`, `year`, `all` and `since`.
+- **`/summaries.json`**: each sensor's days, weeks, months and years.
+  - `sensors` lists each sensor (outdoor first) with `id`, `name`, `type`,
+    `outdoor`, and lists `days` (each with `day`), and `weeks`, `months` and
+    `years` (each with `start`, and `days`: how many days it has readings for).
+  - Every entry has `readings`, `temp_min`, `temp_max`, `temp_avg`,
+    `humidity_min`, `humidity_max`, `humidity_avg`, `dew_point_avg`,
+    `feels_like_min`, `feels_like_max`, `wind_avg`, `wind_gust_max`, `rain_in`,
+    `pressure_min`, `pressure_max`, `pressure_avg`, `uv_max` and `light_max`.
+    A longer period's average is the average of its days'; its rain, their sum.
+  - The latest 400 days are listed; ask `?days=N` for more or fewer. Today is
+    included, up to the latest reading. Weeks start on Sunday.
+  - Finished days are kept in the database's `daily` table.
 
 ## Radio capture (no hub)
 

@@ -140,7 +140,7 @@ def record_reading(reading: Reading, write_path: Path, sensors: dict, page: dict
 
     page: settings the dashboard reads from the data file (it cannot read
     config.ini), e.g. {"lower_buttons": [{"label": ..., "url": ...}]}; empty values are left out."""
-    global _pressure_seeded, _db
+    global _pressure_seeded, _db, _rolled_through
     sensor_id = reading.sensor_id
     kind = reading.type or "unknown"
     now = reading.received_utc
@@ -178,6 +178,13 @@ def record_reading(reading: Reading, write_path: Path, sensors: dict, page: dict
                 if _db is None:
                     _db = open_db(db_path)
                 store_reading(_db, reading)
+                # The first reading of a new day sums up the days just finished.
+                day = _local_day(_epoch(now))
+                if day != _rolled_through:
+                    n = roll_up(_db, _epoch(now))
+                    if n:
+                        log.info("Daily summaries: %d day(s) summed up", n)
+                    _rolled_through = day
             except sqlite3.Error as exc:
                 log.error("Store failed: %s (%s raw=%s)", exc, reading.source, reading.raw)
     return entry
@@ -194,6 +201,7 @@ def record_reading(reading: Reading, write_path: Path, sensors: dict, page: dict
 
 DB_COLUMNS = sorted(FIELDS)
 _db: sqlite3.Connection | None = None   # guarded by _current_lock
+_rolled_through: str | None = None      # local day daily summaries were last brought up to
 
 
 def open_db(path: Path) -> sqlite3.Connection:
@@ -212,6 +220,7 @@ def open_db(path: Path) -> sqlite3.Connection:
     )""")
     con.execute("CREATE INDEX IF NOT EXISTS readings_by_sensor ON readings (sensor_id, received_utc)")
     con.execute("CREATE INDEX IF NOT EXISTS readings_by_time ON readings (received_utc)")
+    open_daily(con)
     return con
 
 
@@ -238,7 +247,9 @@ def import_raw(cfg: configparser.ConfigParser) -> None:
             added += 1
         else:
             skipped += 1
+    days = roll_up(con, time.time(), rebuild=True)
     total = con.execute("SELECT count(*) FROM readings").fetchone()[0]
+    print(f"{days} days summed up; ", end="")
     print(f"{added} readings added, {skipped} already stored, {other} other requests left out; "
           f"{total} readings in {_db_path(cfg)}")
 
@@ -427,6 +438,133 @@ def _buttons(cfg: configparser.ConfigParser) -> list[dict]:
     return [b for _, b in sorted(numbered, key=lambda n: n[0])]
 
 
+# ── Daily summaries ───────────────────────────────────────────────────────────
+#
+# One row per sensor per local day in the `daily` table: lows, highs, averages
+# and the day's rain. A day is summed up once it is over (when the first reading
+# of the next day arrives); today is worked out from the readings when asked.
+# Weeks (starting Sunday), months and years are worked out from the days.
+
+DAILY = {   # column → SQL over that day's readings
+    "readings": "count(*)",
+    "temp_min": "min(temp_f)", "temp_max": "max(temp_f)", "temp_avg": "avg(temp_f)",
+    "humidity_min": "min(humidity_pct)", "humidity_max": "max(humidity_pct)",
+    "humidity_avg": "avg(humidity_pct)",
+    "dew_point_avg": "avg(dew_point_f)",
+    "feels_like_min": "min(feels_like_f)", "feels_like_max": "max(feels_like_f)",
+    "wind_avg": "avg(wind_mph)", "wind_gust_max": "max(wind_gust_mph)",
+    "rain_in": "max(rain_day_in)",
+    "pressure_min": "min(pressure_inhg)", "pressure_max": "max(pressure_inhg)",
+    "pressure_avg": "avg(pressure_inhg)",
+    "uv_max": "max(uv_index)", "light_max": "max(light_lux)",
+}
+# How a longer period combines its days' values, by column-name ending.
+_COMBINE = {"_min": min, "_max": max, "_avg": lambda v: sum(v) / len(v), "rain_in": sum, "readings": sum}
+
+
+def _combine(name: str, values: list):
+    values = [v for v in values if v is not None]
+    if not values:
+        return None
+    how = next(f for end, f in _COMBINE.items() if name.endswith(end))
+    return int(how(values)) if name == "readings" else round(how(values), 2)
+
+
+def open_daily(con: sqlite3.Connection) -> None:
+    con.execute(f"""CREATE TABLE IF NOT EXISTS daily (
+        day TEXT NOT NULL,           -- local date, YYYY-MM-DD
+        sensor_id TEXT NOT NULL,
+        type TEXT,
+        {", ".join(f"{c} {'INTEGER' if c == 'readings' else 'REAL'}" for c in DAILY)},
+        PRIMARY KEY (day, sensor_id)
+    )""")
+
+
+def _local_day(epoch: float) -> str:
+    return datetime.fromtimestamp(epoch).strftime("%Y-%m-%d")
+
+
+def _day_bounds(day: str) -> list[str]:
+    """A local date's start and end as UTC times, as received_utc is stored."""
+    start = datetime.strptime(day, "%Y-%m-%d")
+    end = datetime.fromordinal(start.toordinal() + 1)
+    return [_iso(start.astimezone().timestamp()), _iso(end.astimezone().timestamp())]
+
+
+def _day_rows(con: sqlite3.Connection, day: str) -> list[dict]:
+    rows = con.execute(f"""SELECT sensor_id, max(type), {", ".join(DAILY.values())} FROM readings
+        WHERE received_utc >= ? AND received_utc < ? GROUP BY sensor_id""", _day_bounds(day)).fetchall()
+    return [{"day": day, "sensor_id": r[0], "type": r[1],
+             **{c: None if v is None else round(v, 2) for c, v in zip(DAILY, r[2:])}} for r in rows]
+
+
+def roll_up(con: sqlite3.Connection, now: float, rebuild: bool = False) -> int:
+    """Sum up every finished day not yet in `daily` (every day, with rebuild).
+    Returns how many days were summed up."""
+    open_daily(con)
+    if rebuild:
+        con.execute("DELETE FROM daily")
+    last = con.execute("SELECT max(day) FROM daily").fetchone()[0]
+    first = con.execute("SELECT min(received_utc) FROM readings").fetchone()[0]
+    if first is None:
+        con.commit()
+        return 0
+    start = (datetime.strptime(last, "%Y-%m-%d").toordinal() + 1 if last
+             else datetime.strptime(_local_day(_epoch(first)), "%Y-%m-%d").toordinal())
+    today = datetime.strptime(_local_day(now), "%Y-%m-%d").toordinal()
+    done = 0
+    for n in range(start, today):
+        rows = _day_rows(con, datetime.fromordinal(n).strftime("%Y-%m-%d"))
+        for r in rows:
+            con.execute(f"INSERT OR REPLACE INTO daily ({', '.join(r)}) VALUES ({', '.join('?' * len(r))})",
+                        list(r.values()))
+        done += bool(rows)
+    con.commit()
+    return done
+
+
+def _period_start(day: str, period: str) -> str:
+    if period == "weeks":   # weeks start on Sunday, as rain_totals has them
+        d = datetime.strptime(day, "%Y-%m-%d").date()
+        return datetime.fromordinal(d.toordinal() - d.isoweekday() % 7).strftime("%Y-%m-%d")
+    return day[:7] if period == "months" else day[:4]
+
+
+def summaries(db_path: Path, sensors: dict, q: dict) -> dict:
+    """Days, weeks, months and years for every sensor. q: days=N, how many of the
+    latest days to list (default 400); weeks, months and years are listed in full."""
+    try:
+        keep = max(int(q.get("days", 400)), 1)
+    except ValueError:
+        raise ValueError("days must be a number")
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
+    try:
+        today = _local_day(time.time())
+        stored = []
+        if con.execute("SELECT 1 FROM sqlite_master WHERE name = 'daily'").fetchone():
+            stored = [dict(zip(["day", "sensor_id", "type", *DAILY], r)) for r in con.execute(
+                f"SELECT day, sensor_id, type, {', '.join(DAILY)} FROM daily WHERE day < ? ORDER BY day", [today])]
+        days = stored + _day_rows(con, today)
+    finally:
+        con.close()
+    out = []
+    for sid in sorted({r["sensor_id"] for r in days}):
+        mine = [r for r in days if r["sensor_id"] == sid]
+        kind = mine[-1]["type"]
+        entry = {"id": sid, "name": sensors.get(sid, f"{kind} {sid}"), "type": kind,
+                 "outdoor": kind in OUTDOOR_TYPES,
+                 "days": [{k: v for k, v in r.items() if k not in ("sensor_id", "type")} for r in mine[-keep:]]}
+        for period in ("weeks", "months", "years"):
+            groups: dict[str, list] = {}
+            for r in mine:
+                groups.setdefault(_period_start(r["day"], period), []).append(r)
+            entry[period] = [{"start": k, "days": len(g), **{c: _combine(c, [r[c] for r in g]) for c in DAILY}}
+                             for k, g in groups.items()]
+        out.append(entry)
+    out.sort(key=lambda e: (not e["outdoor"], e["name"]))
+    return {"today": today, "sensors": out}
+
+
 # ── Forecast, airport observation and alerts (National Weather Service) ───────
 #
 # api.weather.gov: free, no key, US only. It asks every caller to name itself
@@ -601,8 +739,9 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
         def do_GET(self):
             url = urllib.parse.urlparse(self.path)
             path = url.path
-            if path == "/history.json":
-                self._history(dict(urllib.parse.parse_qsl(url.query)))
+            if path in ("/history.json", "/summaries.json"):
+                self._query(history if path == "/history.json" else summaries,
+                            dict(urllib.parse.parse_qsl(url.query)))
                 return
             if path in DATA_FILES:
                 target, ctype = write_path / path.lstrip("/"), DATA_FILES[path]
@@ -619,17 +758,17 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
                 return
             self._send(body, ctype)
 
-        def _history(self, q: dict):
+        def _query(self, answer, q: dict):
             if db_path is None or not db_path.exists():
                 self.send_error(404, "No database yet")
                 return
             try:
-                data = {"title": title, **history(db_path, sensors or {}, q)}
+                data = {"title": title, **answer(db_path, sensors or {}, q)}
             except ValueError as e:
                 self.send_error(400, str(e))
                 return
             except sqlite3.Error as e:
-                log.error("history query failed: %s", e)
+                log.error("%s query failed: %s", answer.__name__, e)
                 self.send_error(500, "Database error")
                 return
             self._send(json.dumps(data, separators=(",", ":")).encode(), "application/json")
