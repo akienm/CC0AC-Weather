@@ -179,6 +179,15 @@ with yours; any private range works.
    }
 
    table ip cc0ac_nat {
+       chain prerouting {
+           type nat hook prerouting priority dstnat;
+           # The hub sometimes ignores the DNS server DHCP gave it and asks 8.8.8.8,
+           # then uploads straight to AcuRite. These send its DNS and its uploads
+           # to the Pi whatever server or address it picked.
+           iifname "eth0" udp dport 53 dnat to 192.168.77.1
+           iifname "eth0" tcp dport 53 dnat to 192.168.77.1
+           iifname "eth0" tcp dport 443 dnat to 192.168.77.1
+       }
        chain postrouting {
            type nat hook postrouting priority srcnat;
            oifname "wlan0" masquerade
