@@ -130,6 +130,35 @@ enabled = false
 ; them (sent in the User-Agent). A website or an email address.
 contact = github.com/akienm/CC0AC-Weather
 
+[alerts]
+; A message when readings stop, and another when they come back. Checked every
+; 5 minutes by its own timer (cc0ac-weather-check.timer, which setup/install-pi.sh
+; installs; or run  python3 acurite-capture.py --check  from cron), so it still
+; speaks up if this program itself has died. The setup page (/setup) fills
+; this in; test with  python3 acurite-capture.py --test-alert
+enabled = false
+; How long without a reading before a message goes out (the hub sends every 5).
+quiet_minutes = 30
+;
+; ntfy (ntfy.sh): a free phone app. Subscribe in the app to a topic nobody else
+; would guess, and put the same name here.
+; ntfy_topic = weather-3f9a51c07e2d
+; ntfy_server = https://ntfy.sh
+;
+; Email, through a mail server that takes a login. For Gmail: smtp.gmail.com,
+; port 587, and an app password (not your normal one).
+; email_to = you@example.com
+; email_from =
+; smtp_host = smtp.gmail.com
+; smtp_port = 587
+; smtp_user = you@gmail.com
+; smtp_password =
+;
+; A dead-man's switch such as healthchecks.io, for when the whole Pi goes off,
+; which nothing on the Pi can report: pinged while readings come in, and
+; <url>/fail when they stop. When the pings stop, the service tells you.
+; healthcheck_url = https://hc-ping.com/your-check-id
+
 [capture]
 ; Radio capture with a USB SDR and rtl_433. Off unless you have the dongle.
 enabled = false

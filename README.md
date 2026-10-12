@@ -31,7 +31,72 @@ to a server named in its settings. CC0AC-Weather is that server:
 No hub? The older path still works: an RTL-SDR dongle and rtl_433 receive the
 sensors directly (see *Radio capture* below).
 
-## Setup with an Access hub
+## The easy way: a ready-made Raspberry Pi card
+
+No programming and no router settings. You put a ready-made card in a
+Raspberry Pi, plug the hub's network cable into the Pi instead of your router,
+and answer one page in your web browser. The Pi then sits between the hub and
+the internet: it keeps every reading and passes each one on, so the AcuRite app
+and Weather Underground carry on as before.
+
+**You need:**
+
+- A Raspberry Pi with **both** a network port and Wi-Fi: Pi 3 B+, Pi 4, Pi 400
+  or Pi 5 (not a Pi Zero, which has no network port). Its power supply.
+- A microSD card, 16 GB or more (it gets erased).
+- A computer to write the card from, and your Wi-Fi name and password.
+- Your AcuRite Access hub and its network cable.
+
+**Steps:**
+
+1. Download `cc0ac-weather-<date>.img.xz` from this project's
+   [Releases page](https://github.com/akienm/CC0AC-Weather/releases/latest).
+2. Install **Raspberry Pi Imager** from <https://www.raspberrypi.com/software/>
+   and open it.
+3. *Choose Device*: your Pi. *Choose OS*: scroll to the bottom, **Use custom**,
+   and pick the file you downloaded. *Choose Storage*: the microSD card.
+4. Press **Next**. When it asks about OS customisation, choose **Edit settings**:
+   - Make up a username and password (you'll rarely need them).
+   - Tick *Configure wireless LAN*: your Wi-Fi name, password and country.
+   - Set your time zone.
+   - Leave the hostname as it is (`cc0ac-weather`).
+
+   Save, then **Yes** to write the card. It takes a few minutes.
+5. Put the card in the Pi. Unplug the hub's cable from your router and plug it
+   into the Pi's network port. Power the Pi on.
+6. Wait about five minutes (the first start is the slowest), then on a computer
+   or phone on your Wi-Fi open **<http://cc0ac-weather.local/>**. The setup
+   page finds the hub and lists your sensors. Name them, paste in your
+   location, set up a phone alert if you like, and press **Save**.
+
+That's it: the dashboard is at the same address, and the charts are linked from it.
+
+**If <http://cc0ac-weather.local/> doesn't open:** some Android phones and
+older Windows PCs don't understand `.local` names. Look in your router's list
+of connected devices for `cc0ac-weather` and open its address instead (for
+example `http://192.168.1.37/`).
+
+**If something goes wrong,** plug the hub's cable back into your router. The
+hub works exactly as before; nothing on it was changed.
+
+**Phone alerts.** The setup page can send a message to your phone (through the
+free ntfy app) or an email when readings stop, and another when they're back.
+To hear about the Pi itself losing power, add a free healthchecks.io check on
+the same page.
+
+**Already have a Pi running Raspberry Pi OS?** One command does the same setup
+on it (it takes over the Pi's network port for the hub):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/akienm/CC0AC-Weather/main/setup/install-pi.sh | sudo bash
+```
+
+**Want a helper?** If you use Claude Code or another AI coding assistant on the
+Pi, point it at [SETUP-FOR-CLAUDE.md](SETUP-FOR-CLAUDE.md).
+
+To build the card image yourself: `sudo setup/build-image.sh` on a 64-bit Pi.
+
+## Setup with an Access hub, by hand
 
 There are two ways to get the hub's readings to this program. Install the
 program first; it is the same for both.
@@ -440,6 +505,12 @@ rtl_433 project, not yet with a dongle on the air.
 | `weather.html` | Dashboard; reads `current.js` and `forecast.js` |
 | `charts.html` | Charts over any period; reads `/history.json` |
 | `config.html` | The settings page served at `/config.cgi` (your network only) |
+| `setup.html` | The first-run setup page at `/setup` (your network only) |
+| `wizard.py` | Finds the hub, reads its page, writes the setup page's answers into the settings |
+| `alerts.py` | Sends a message when readings stop and when they're back (`--check`, `--test-alert`) |
+| `setup/install-pi.sh` | Sets up a Pi from scratch: packages, service, the hub's cable port, firewall |
+| `setup/build-image.sh` | Builds the ready-made SD card image |
+| `SETUP-FOR-CLAUDE.md` | Setup notes for an AI assistant helping someone install it |
 | `theme.css` | Colors and font for every page |
 | `examples/my-page.html` | A short page of your own to start from |
 | `cc0ac-weather@.service` | systemd unit |
