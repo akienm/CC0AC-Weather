@@ -34,7 +34,7 @@ say() { printf '\n== %s\n' "$*"; }
 MNT=$OUT/mnt LOOP=""
 cleanup() {
     set +e
-    for m in boot/firmware dev/pts dev proc sys run ""; do
+    for m in boot/firmware dev/pts dev proc sys ""; do
         mountpoint -q "$MNT/$m" && umount -l "$MNT/$m"
     done
     [ -n "$LOOP" ] && losetup -d "$LOOP"
@@ -65,7 +65,7 @@ say "Installing into the image"
 mkdir -p "$MNT"
 mount "${LOOP}p2" "$MNT"
 mount "${LOOP}p1" "$MNT/boot/firmware"
-for m in dev dev/pts proc sys run; do mount --bind "/$m" "$MNT/$m"; done
+for m in dev dev/pts proc sys; do mount --bind "/$m" "$MNT/$m"; done
 # apt inside the image needs this machine's name servers while it runs.
 mv "$MNT/etc/resolv.conf" "$MNT/etc/resolv.conf.cc0ac-saved" 2>/dev/null || true
 cp -L /etc/resolv.conf "$MNT/etc/resolv.conf"
