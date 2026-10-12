@@ -1,0 +1,227 @@
+"""
+The first-run setup page (/setup): finds the hub, reads its page, and writes the
+answers into config.ini.
+
+With the hub plugged into the Pi (README, method B), the Pi hands the hub its
+address, so the hub is whatever dnsmasq last leased. The hub's own page
+(http://<hub>/) shows its ID, its Weather Underground station, its elevation and
+every sensor it hears; the setup page fills itself in from that, and asks only
+what the hub can't know: what to call each sensor, and where the station is.
+
+The answers are written into config.ini as it stands, comments and all: a key
+already there is replaced in place, a missing one is added to its section, and
+[sensors] and [sensor_order] are rewritten whole.
+
+The hub's Weather Underground password is on its page too. It is never read.
+"""
+
+from __future__ import annotations
+
+import configparser
+import json
+import re
+import urllib.request
+from pathlib import Path
+
+LEASES = Path("/var/lib/misc/dnsmasq.leases")
+HUB_FIELDS = {"Mac": "hub_id", "Ver": "firmware", "Ser": "server", "ID": "wu_station",
+              "Dev": "wu_sensor", "Ele": "elevation_ft"}       # never "PS": the WU password
+_HUB_VALUE = re.compile(r"\$\('txt(Mac|Ver|Ser|ID|Dev|Ele)'\)\.value\s*=\s*'([^'<>]*)'")
+_HUB_SENSOR = re.compile(r"<tr><td>\s*(\d+)\s*</td><td>\s*([^<]*?)\s*</td><td>\s*([0-9A-Fa-f]+)\s*</td>"
+                         r"<td>\s*([^<]*?)\s*</td><td>\s*(\d*)\s*</td><td>\s*([^<]*?)\s*</td></tr>")
+_HUB_PRESSURE = re.compile(r"PRESSURE:\s*([\d.]+)")
+
+
+def hub_addresses(leases: Path = LEASES) -> list[dict]:
+    """Everything dnsmasq has leased on the hub's cable, newest lease first."""
+    try:
+        lines = leases.read_text().splitlines()
+    except OSError:
+        return []
+    found = []
+    for line in lines:
+        parts = line.split()
+        if len(parts) >= 4:
+            found.append({"expires": int(parts[0]) if parts[0].isdigit() else 0,
+                          "mac": parts[1], "ip": parts[2], "name": "" if parts[3] == "*" else parts[3]})
+    return sorted(found, key=lambda f: -f["expires"])
+
+
+def parse_hub_page(html: str) -> dict:
+    """The hub's settings and sensors from its local page."""
+    hub = {HUB_FIELDS[k]: v for k, v in _HUB_VALUE.findall(html)}
+    hub["sensors"] = [{"slot": int(n), "type": kind, "id": sid, "last_utc": last,
+                       "signal": int(sig) if sig else None, "battery": batt}
+                      for n, kind, sid, last, sig, batt in _HUB_SENSOR.findall(html)]
+    m = _HUB_PRESSURE.search(html)
+    if m:
+        hub["pressure_inhg"] = float(m.group(1))
+    return hub
+
+
+def find_hub(leases: Path = LEASES, timeout: float = 5.0) -> dict:
+    """The hub on the cable, read from its own page: {"found": True, "ip", ...}
+    or {"found": False, "why": ...} saying what to check."""
+    addresses = hub_addresses(leases)
+    if not addresses:
+        return {"found": False, "why": "Nothing on the cable port has asked the Pi for an address yet. "
+                                       "Check the hub's cable is in the Pi's network port and the hub has power; "
+                                       "it can take a minute after plugging in."}
+    tried = []
+    for lease in addresses:
+        try:
+            with urllib.request.urlopen(f"http://{lease['ip']}/", timeout=timeout) as r:
+                html = r.read(200_000).decode("utf-8", "replace")
+        except OSError as e:
+            tried.append(f"{lease['ip']}: {e}")
+            continue
+        hub = parse_hub_page(html)
+        if hub.get("hub_id") or hub["sensors"]:
+            return {"found": True, "ip": lease["ip"], "lease_name": lease["name"], **hub}
+        tried.append(f"{lease['ip']}: answered, but not with an AcuRite Access page")
+    return {"found": False, "why": "Something is on the cable port but its page didn't open: " + "; ".join(tried)}
+
+
+# ── Editing config.ini without losing its comments ────────────────────────────
+
+_SECTION = re.compile(r"^\s*\[([^\]]+)\]\s*$")
+
+
+def _key_of(line: str) -> str | None:
+    s = line.strip()
+    if not s or s[0] in ";#[" or "=" not in s:
+        return None
+    return s.split("=", 1)[0].strip().lower()
+
+
+def _section_spans(lines: list[str]) -> dict[str, tuple[int, int]]:
+    """section name -> (header line index, index after its last line)."""
+    spans, name, start = {}, None, 0
+    for i, line in enumerate(lines):
+        m = _SECTION.match(line)
+        if m:
+            if name is not None:
+                spans[name] = (start, i)
+            name, start = m.group(1).strip(), i
+    if name is not None:
+        spans[name] = (start, len(lines))
+    return spans
+
+
+def _insert_at(lines: list[str], start: int, end: int) -> int:
+    """Where a new key goes in a section: after its last non-blank line."""
+    at = end
+    while at - 1 > start and not lines[at - 1].strip():
+        at -= 1
+    return at
+
+
+def set_values(text: str, section: str, values: dict[str, str]) -> str:
+    """Set keys in one section: replaced where they stand, else added at the end
+    of the section (the section is added if missing). A value of None removes the key."""
+    lines = text.splitlines()
+    spans = _section_spans(lines)
+    if section not in spans:
+        if lines and lines[-1].strip():
+            lines.append("")
+        lines.append(f"[{section}]")
+        spans[section] = (len(lines) - 1, len(lines))
+    start, end = spans[section]
+    todo = dict(values)
+    out = lines[:start + 1]
+    for line in lines[start + 1:end]:
+        key = _key_of(line)
+        if key is not None and key in {k.lower() for k in todo}:
+            name = next(k for k in todo if k.lower() == key)
+            value = todo.pop(name)
+            if value is not None:
+                out.append(f"{name} = {value}")
+            continue
+        out.append(line)
+    at = _insert_at(out, start, len(out))
+    out[at:at] = [f"{k} = {v}" for k, v in todo.items() if v is not None]
+    out += lines[end:]
+    return "\n".join(out) + "\n"
+
+
+def replace_entries(text: str, section: str, values: dict[str, str]) -> str:
+    """Make a section's keys exactly these (comments kept), e.g. [sensors]."""
+    cfg = configparser.ConfigParser()
+    cfg.optionxform = str
+    try:
+        cfg.read_string(text)
+        old = list(cfg[section]) if cfg.has_section(section) else []
+    except configparser.Error:
+        old = []
+    return set_values(text, section, {**{k: None for k in old}, **values})
+
+
+def apply_setup(text: str, answers: dict) -> str:
+    """config.ini with the setup page's answers written in.
+
+    answers: {"sensors": [{"id", "name"}, ...] in display order,
+              "station": {"name", "latitude", "longitude", "elevation_ft"},
+              "forecast": bool, "alerts": {"ntfy_topic", "email_to", ...}}"""
+    sensors = [s for s in answers.get("sensors", []) if str(s.get("id", "")).strip()]
+    for s in sensors:
+        if not re.fullmatch(r"[0-9A-Za-z]{1,16}", str(s["id"]).strip()):
+            raise ValueError(f"not a sensor ID: {s['id']!r}")
+    names = {str(s["id"]).strip(): _one_line(s.get("name")) or f"Sensor {s['id']}" for s in sensors}
+    text = replace_entries(text, "sensors", names)
+    text = replace_entries(text, "sensor_order", {str(n): sid for n, sid in enumerate(names, 1)})
+    station = answers.get("station") or {}
+    values = {"name": _one_line(station.get("name")) or None}
+    for key, lo, hi in (("latitude", -90, 90), ("longitude", -180, 180), ("elevation_ft", -1500, 30000)):
+        v = station.get(key)
+        if v in (None, ""):
+            values[key] = None
+            continue
+        f = float(v)
+        if not lo <= f <= hi:
+            raise ValueError(f"{key} {v} is out of range")
+        values[key] = f"{f:g}"
+    text = set_values(text, "station", values)
+    if "forecast" in answers:
+        text = set_values(text, "forecast", {"enabled": "true" if answers["forecast"] else "false"})
+    alerts = answers.get("alerts")
+    if alerts is not None:
+        keep = {k: _one_line(alerts.get(k)) or None for k in ALERT_KEYS if k in alerts}
+        if not keep.get("smtp_password"):   # the page never shows it; blank means keep it
+            keep.pop("smtp_password", None)
+        text = set_values(text, "alerts", keep)
+        cfg = configparser.ConfigParser()
+        cfg.read_string(text)
+        on = any(cfg.get("alerts", k, fallback="").strip() for k in ("ntfy_topic", "email_to", "healthcheck_url"))
+        keep = {"enabled": "true" if on else "false"}
+        text = set_values(text, "alerts", keep)
+    return text
+
+
+ALERT_KEYS = ("quiet_minutes", "ntfy_topic", "ntfy_server", "email_to", "email_from",
+              "smtp_host", "smtp_port", "smtp_user", "smtp_password", "healthcheck_url")
+
+
+def _one_line(v) -> str:
+    return re.sub(r"[\r\n]+", " ", str(v or "")).strip()
+
+
+def needs_setup(cfg: configparser.ConfigParser) -> bool:
+    """No sensor named yet: the first visit from home goes to /setup."""
+    return not (cfg.has_section("sensors") and list(cfg["sensors"]))
+
+
+def setup_state(cfg: configparser.ConfigParser, leases: Path = LEASES) -> dict:
+    """What the setup page shows: the hub as found, and the settings now."""
+    current = {
+        "sensors": dict(cfg["sensors"]) if cfg.has_section("sensors") else {},
+        "sensor_order": dict(cfg["sensor_order"]) if cfg.has_section("sensor_order") else {},
+        "station": {k: cfg.get("station", k, fallback="") for k in ("name", "latitude", "longitude", "elevation_ft")},
+        "forecast": cfg.getboolean("forecast", "enabled", fallback=False),
+        "alerts": {k: ("" if k == "smtp_password" else cfg.get("alerts", k, fallback="")) for k in ALERT_KEYS},
+        "smtp_password_set": bool(cfg.get("alerts", "smtp_password", fallback="").strip()),
+    }
+    return {"hub": find_hub(leases), "current": current}
+
+
+if __name__ == "__main__":       # python3 wizard.py: what the setup page would find
+    print(json.dumps(find_hub(), indent=1))

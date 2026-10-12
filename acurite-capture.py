@@ -54,6 +54,8 @@ from pathlib import Path
 
 from sources import FIELDS, OUTDOOR_TYPES, Reading
 from sources import acurite_access
+import alerts
+import wizard
 
 log = logging.getLogger("acurite")
 
@@ -874,6 +876,17 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
             if path == "/config.cgi":
                 self._config_page(dict(urllib.parse.parse_qsl(url.query)))
                 return
+            if path in ("/setup", "/setup.json"):
+                self._setup_page(path)
+                return
+            # Not set up yet: a visit from home goes to the setup page first.
+            if (path in ("/", "/weather.html") and config_path is not None
+                    and _local_host(self.headers.get("Host", "")) and self._unconfigured()):
+                self.send_response(302)
+                self.send_header("Location", "/setup")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             if path in ("/history.json", "/summaries.json"):
                 self._query(history if path == "/history.json" else summaries,
                             dict(urllib.parse.parse_qsl(url.query)))
@@ -908,8 +921,24 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
             else:
                 self._send((page_dir / "config.html").read_bytes(), PAGE_TYPES[".html"])
 
+        def _unconfigured(self) -> bool:
+            try:
+                return wizard.needs_setup(load_config(config_path))
+            except SystemExit:
+                return False
+
+        def _setup_page(self, path: str):
+            if not self._config_allowed():
+                return
+            if path == "/setup":
+                self._send((page_dir / "setup.html").read_bytes(), PAGE_TYPES[".html"])
+                return
+            state = wizard.setup_state(load_config(config_path))
+            self._send(json.dumps(state).encode(), "application/json")
+
         def do_POST(self):
-            if urllib.parse.urlparse(self.path).path != "/config.cgi":
+            target = urllib.parse.urlparse(self.path).path
+            if target not in ("/config.cgi", "/setup.cgi"):
                 self.send_error(404)
                 return
             if not self._config_allowed():
@@ -928,6 +957,10 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
             except UnicodeDecodeError:
                 self._answer(400, "Not saved: the text isn't UTF-8.")
                 return
+            if target == "/setup.cgi":
+                text = self._setup_answers(text)
+                if text is None:
+                    return
             problem = check_config(text)
             if problem:
                 self._answer(400, problem)
@@ -941,6 +974,27 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
             log.info("config.ini saved from %s; restarting", self.client_address[0])
             self._answer(200, "Saved; restarting.")
             restart_soon()
+
+        def _setup_answers(self, body: str) -> str | None:
+            """The setup page's answers as the new config.ini text; or None,
+            the reply already sent (a test message, or a refusal)."""
+            try:
+                answers = json.loads(body)
+                if not isinstance(answers, dict):
+                    raise ValueError("expected an object")
+                text = wizard.apply_setup(config_path.read_text(), answers)
+            except (ValueError, TypeError, KeyError, OSError) as e:
+                self._answer(400, f"Not saved: {e}")
+                return None
+            if answers.get("test_alert"):
+                cfg = configparser.ConfigParser()
+                cfg.read_string(text)
+                problems = alerts.send(cfg, f"{_title(cfg)}: test", "A test message from the weather station's setup page.")
+                if not cfg.get("alerts", "ntfy_topic", fallback="").strip() and not cfg.get("alerts", "email_to", fallback="").strip():
+                    problems.append("no ntfy topic or email address to send to")
+                self._answer(200 if not problems else 502, "Sent." if not problems else "Not sent: " + "; ".join(problems))
+                return None
+            return text
 
         def _answer(self, code: int, message: str):
             body = message.encode()
@@ -1094,6 +1148,11 @@ def main() -> None:
         "--import-raw", action="store_true",
         help="Load every reading in the raw hub logs into the database and exit (safe to re-run)",
     )
+    parser.add_argument(
+        "--check", action="store_true",
+        help="Alert if no reading has come in for [alerts] quiet_minutes, or that they're back; for a timer",
+    )
+    parser.add_argument("--test-alert", action="store_true", help="Send a test message every way [alerts] sets up")
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
 
@@ -1104,7 +1163,13 @@ def main() -> None:
 
     cfg = load_config(args.config)
 
-    if args.import_raw:
+    if args.check:
+        print(alerts.check(cfg, Path(cfg.get("device", "write_path")).expanduser()))
+    elif args.test_alert:
+        problems = alerts.send(cfg, f"{_title(cfg)}: test", "A test message from the weather station.")
+        print("Sent." if not problems else "Not sent: " + "; ".join(problems))
+        sys.exit(1 if problems else 0)
+    elif args.import_raw:
         import_raw(cfg)
     elif args.discover:
         from sources import rtl_433

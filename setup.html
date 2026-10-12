@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weather Station Setup</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+<style>
+  :root {
+    --bg: #000;
+    --surface: #111;
+    --border: #333;
+    --text: #e8e8e8;
+    --muted: #888;
+    --accent: #4af;
+    --warn: #f44;
+    --good: #6d6;
+    --font: "Helvetica Neue", Helvetica, Arial, Roboto, "Liberation Sans", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 15px; line-height: 1.45;
+         padding: 16px; max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  h1 a { color: var(--accent); text-decoration: none; font-size: 14px; margin-left: 12px; font-weight: normal; }
+  h2 { font-size: 16px; margin-bottom: 8px; }
+  h2 .n { color: var(--accent); margin-right: 6px; }
+  section { background: var(--surface); border: 1px solid var(--border); padding: 14px; margin-top: 14px; }
+  p, .help { color: var(--muted); font-size: 14px; margin: 6px 0; }
+  .good { color: var(--good); } .bad { color: var(--warn); }
+  label { display: block; margin: 10px 0 4px; }
+  input[type=text], input[type=email], input[type=password], input[type=number] {
+    width: 100%; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); padding: 7px 9px; }
+  input:focus { outline: none; border-color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; color: var(--muted); font-weight: normal; font-size: 13px; padding: 4px; }
+  td { padding: 4px; vertical-align: middle; }
+  td.id { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; color: var(--muted); }
+  td.move button { width: 28px; padding: 3px 0; }
+  button { font: inherit; font-size: 14px; color: var(--text); background: var(--bg); border: 1px solid var(--border);
+           padding: 7px 14px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button.main { border-color: var(--accent); color: var(--accent); font-size: 16px; padding: 10px 22px; }
+  button:disabled { color: var(--muted); cursor: default; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .row > div { flex: 1; min-width: 180px; }
+  details summary { cursor: pointer; color: var(--accent); margin-top: 10px; }
+  #status { margin-top: 10px; white-space: pre-wrap; }
+  .check { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+  @media (max-width: 520px) { td.type, th.type { display: none; } }
+</style>
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<h1>Weather station setup<a href="weather.html">Dashboard</a></h1>
+<p>Answer what's below and press <b>Save</b>. You can come back here any time: the address is this page's address.</p>
+
+<section>
+  <h2><span class="n">1</span>The hub</h2>
+  <div id="hub">Looking for the hub…</div>
+  <div class="row" style="margin-top:8px"><button id="recheck">Look again</button></div>
+</section>
+
+<section>
+  <h2><span class="n">2</span>Name your sensors</h2>
+  <p>Each sensor the hub hears is listed with the ID printed on it (open the battery cover). Give each one a name,
+     like <i>Kitchen</i> or <i>Back porch</i>. The arrows set the order they're shown in.</p>
+  <table>
+    <thead><tr><th class="type">Type</th><th>ID</th><th>Name</th><th></th></tr></thead>
+    <tbody id="sensors"></tbody>
+  </table>
+  <p id="nosensors" hidden>No sensors yet. They show up once the hub is found; a new sensor can take a few minutes to be heard.</p>
+</section>
+
+<section>
+  <h2><span class="n">3</span>Where is the station?</h2>
+  <label for="name">Station name (shown at the top of every page)</label>
+  <input type="text" id="name" placeholder="My Weather">
+  <label for="where">Location: latitude, longitude</label>
+  <input type="text" id="where" placeholder="40.7128, -74.0060">
+  <p class="help">Easiest way: open Google Maps, right-click your house, and click the numbers at the top of the menu
+     that pops up. That copies them; paste them here. They're used for sunrise, sunset and the forecast.</p>
+  <label for="elev">Elevation (feet)</label>
+  <input type="number" id="elev" step="1">
+  <p class="help" id="elevhelp"></p>
+  <div class="check"><input type="checkbox" id="forecast"><label for="forecast" style="margin:0">Show the National Weather Service forecast and alerts (US only)</label></div>
+</section>
+
+<section>
+  <h2><span class="n">4</span>Tell me when it stops</h2>
+  <p>If readings stop coming in for a while, the station sends you a message, and another when they're back.
+     The simplest way is the free <b>ntfy</b> app on your phone:</p>
+  <p>1. Install <b>ntfy</b> from the App Store or Google Play.<br>
+     2. In the app, press <b>+</b> and subscribe to the topic name below (it's random so nobody else gets your messages).<br>
+     3. Press <b>Send a test</b>.</p>
+  <label for="ntfy_topic">ntfy topic</label>
+  <input type="text" id="ntfy_topic">
+  <label for="quiet_minutes">Send a message after this many quiet minutes</label>
+  <input type="number" id="quiet_minutes" min="10" step="5" placeholder="30">
+  <details id="emailbox">
+    <summary>Or by email</summary>
+    <label for="email_to">Send to</label><input type="email" id="email_to">
+    <div class="row">
+      <div><label for="smtp_host">Mail server</label><input type="text" id="smtp_host" placeholder="smtp.gmail.com"></div>
+      <div><label for="smtp_port">Port</label><input type="number" id="smtp_port" placeholder="587"></div>
+    </div>
+    <label for="smtp_user">Mail login</label><input type="text" id="smtp_user">
+    <label for="smtp_password">Mail password</label><input type="password" id="smtp_password" autocomplete="new-password">
+    <p class="help">For Gmail, make an <i>app password</i> (Google account → Security → App passwords) and use it here,
+       not your normal password. <span id="pwset"></span></p>
+    <label for="email_from">From address (blank: the login)</label><input type="email" id="email_from">
+  </details>
+  <details id="hcbox">
+    <summary>And if the whole Pi goes off</summary>
+    <p>Nothing on the Pi can tell you it lost power. A free service like healthchecks.io can: make a check there with a
+       10-minute period, and paste its ping address here. The station pings it every few minutes; when the pings stop,
+       the service emails you.</p>
+    <label for="healthcheck_url">Ping address</label>
+    <input type="text" id="healthcheck_url" placeholder="https://hc-ping.com/…">
+  </details>
+  <div class="row" style="margin-top:12px"><button id="test">Send a test</button><span id="teststatus"></span></div>
+</section>
+
+<section>
+  <div class="row"><button class="main" id="save">Save</button><span id="status"></span></div>
+  <p>Saving restarts the station, which takes a few seconds. Then the dashboard shows each sensor as its next reading
+     comes in (the hub sends every five minutes).</p>
+</section>
+
+<script>
+const $ = id => document.getElementById(id);
+const ALERT_KEYS = ["quiet_minutes", "ntfy_topic", "email_to", "email_from", "smtp_host", "smtp_port",
+                    "smtp_user", "smtp_password", "healthcheck_url"];
+let rows = [];   // [{id, type, name}], in display order
+
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"})[c]); }
+
+function randomTopic() {
+  const a = new Uint8Array(6); crypto.getRandomValues(a);
+  return "weather-" + Array.from(a, b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function showHub(hub) {
+  if (!hub.found) { $("hub").innerHTML = `<span class="bad">Not found yet.</span> ${esc(hub.why)}`; return; }
+  const bits = [`<span class="good">Found</span> at ${esc(hub.ip)}`];
+  if (hub.hub_id) bits.push(`hub ID ${esc(hub.hub_id)}`);
+  if (hub.wu_station) bits.push(`Weather Underground station ${esc(hub.wu_station)}`);
+  bits.push(`hears ${hub.sensors.length} sensor${hub.sensors.length == 1 ? "" : "s"}`);
+  $("hub").innerHTML = bits.join(", ") + ".";
+}
+
+function drawSensors() {
+  $("nosensors").hidden = rows.length > 0;
+  $("sensors").innerHTML = rows.map((r, i) => `<tr>
+    <td class="type">${esc(r.type || "")}</td><td class="id">${esc(r.id)}</td>
+    <td><input type="text" data-i="${i}" value="${esc(r.name || "")}" placeholder="${esc(r.type === "Atlas" ? "Outside" : "Name")}"></td>
+    <td class="move"><button data-up="${i}" ${i ? "" : "disabled"}>↑</button> <button data-down="${i}" ${i < rows.length - 1 ? "" : "disabled"}>↓</button></td>
+  </tr>`).join("");
+}
+
+$("sensors").addEventListener("input", e => { if (e.target.dataset.i) rows[+e.target.dataset.i].name = e.target.value; });
+$("sensors").addEventListener("click", e => {
+  const up = e.target.dataset.up, down = e.target.dataset.down;
+  const i = up !== undefined ? +up : down !== undefined ? +down + 1 : null;
+  if (i === null) return;
+  [rows[i - 1], rows[i]] = [rows[i], rows[i - 1]];
+  drawSensors();
+});
+
+async function load() {
+  $("hub").textContent = "Looking for the hub…";
+  const r = await fetch("setup.json", {cache: "no-store"});
+  if (!r.ok) { $("hub").innerHTML = `<span class="bad">Couldn't ask the station (${r.status}).</span>`; return null; }
+  return r.json();
+}
+
+function merge(state) {
+  const cur = state.current, hub = state.hub;
+  const order = Object.entries(cur.sensor_order).sort((a, b) => a[0] - b[0]).map(e => e[1].toLowerCase());
+  const known = Object.keys(cur.sensors);
+  const seen = new Map();
+  for (const id of [...order, ...known]) if (!seen.has(id)) seen.set(id, {id, type: "", name: cur.sensors[id] || ""});
+  for (const s of (hub.sensors || [])) {
+    const id = s.id.toLowerCase();
+    if (seen.has(id)) seen.get(id).type = s.type;
+    else seen.set(id, {id, type: s.type, name: s.type === "Atlas" ? "Outside" : ""});
+  }
+  for (const r of rows) if (seen.has(r.id) && r.name) seen.get(r.id).name = r.name;   // keep what's typed
+  rows = [...seen.values()];
+  drawSensors();
+}
+
+async function start(first) {
+  const state = await load();
+  if (!state) return;
+  showHub(state.hub);
+  merge(state);
+  if (!first) return;
+  const st = state.current.station, al = state.current.alerts;
+  $("name").value = st.name || "";
+  if (st.latitude && st.longitude) $("where").value = `${st.latitude}, ${st.longitude}`;
+  $("elev").value = st.elevation_ft || (state.hub.elevation_ft || "");
+  if (!st.elevation_ft && state.hub.elevation_ft) $("elevhelp").textContent = "Filled in from the hub's own setting.";
+  $("forecast").checked = state.current.forecast || !st.latitude;
+  for (const k of ALERT_KEYS) if ($(k)) $(k).value = al[k] || "";
+  if (!al.ntfy_topic && !al.email_to) $("ntfy_topic").value = randomTopic();
+  if (al.email_to) $("emailbox").open = true;
+  if (al.healthcheck_url) $("hcbox").open = true;
+  if (state.current.smtp_password_set) $("pwset").textContent = "A password is saved; leave this blank to keep it.";
+}
+
+function answers() {
+  const where = $("where").value.trim();
+  let latitude = "", longitude = "";
+  if (where) {
+    const m = where.match(/^\s*(-?\d+(?:\.\d+)?)\s*[°]?\s*([NS])?\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*[°]?\s*([EW])?\s*$/i);
+    if (!m) throw new Error("The location should look like 40.7128, -74.0060.");
+    latitude = +m[1] * (/s/i.test(m[2] || "") ? -1 : 1);
+    longitude = +m[3] * (/w/i.test(m[4] || "") ? -1 : 1);
+  }
+  const alerts = {};
+  for (const k of ALERT_KEYS) alerts[k] = $(k).value.trim();
+  return {
+    sensors: rows.map(r => ({id: r.id, name: r.name.trim() || (r.type === "Atlas" ? "Outside" : "")})),
+    station: {name: $("name").value.trim(), latitude, longitude, elevation_ft: $("elev").value.trim()},
+    forecast: $("forecast").checked && latitude !== "",
+    alerts,
+  };
+}
+
+async function post(body) {
+  const r = await fetch("setup.cgi", {method: "POST", headers: {"X-CC0AC-Config": "save", "Content-Type": "application/json"},
+                                      body: JSON.stringify(body)});
+  return {ok: r.ok, text: await r.text()};
+}
+
+function say(el, msg, bad) { $(el).textContent = msg; $(el).className = bad ? "bad" : "good"; }
+
+$("recheck").onclick = () => start(false);
+
+$("test").onclick = async () => {
+  try {
+    say("teststatus", "Sending…");
+    const r = await post({...answers(), test_alert: true});
+    say("teststatus", r.text, !r.ok);
+  } catch (e) { say("teststatus", e.message, true); }
+};
+
+$("save").onclick = async () => {
+  try {
+    const a = answers();
+    if (!a.sensors.length) throw new Error("No sensors to save yet. Find the hub first (step 1).");
+    $("save").disabled = true;
+    say("status", "Saving…");
+    const r = await post(a);
+    if (!r.ok) { say("status", r.text, true); $("save").disabled = false; return; }
+    say("status", "Saved. Restarting the station…");
+    setTimeout(() => { location.href = "weather.html"; }, 6000);
+  } catch (e) { say("status", e.message, true); $("save").disabled = false; }
+};
+
+start(true);
+</script>
+</body>
+</html>
