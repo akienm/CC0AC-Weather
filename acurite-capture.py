@@ -488,6 +488,33 @@ def _buttons(cfg: configparser.ConfigParser) -> list[dict]:
     return [b for _, b in sorted(numbered, key=lambda n: n[0])]
 
 
+# The row names each kind of dashboard card knows (weather.html's OUTDOOR_ROWS and
+# SENSOR_ROWS), so a misspelt one in config.ini is reported rather than ignored.
+CARD_ROWS = {
+    "outdoor_rows": ("feels_like", "humidity", "dew_point", "wind", "gust", "pressure",
+                     "rain_today", "rain_rate", "uv", "light", "lightning", "last_strike"),
+    "sensor_rows": ("humidity", "dew_point"),
+}
+
+
+def _card_rows(cfg: configparser.ConfigParser, section: str) -> list[str]:
+    """[outdoor_rows] / [sensor_rows]: number = row name, the order of the rows on
+    that kind of card. Rows not listed follow in their usual order."""
+    if not cfg.has_section(section):
+        return []
+    numbered = []
+    for key, value in cfg.items(section):
+        name = value.strip().lower()
+        if not key.isdigit():
+            log.warning("[%s] %s: the key should be a number", section, key)
+        elif name not in CARD_ROWS[section]:
+            log.warning("[%s] %s = %s: no such row; the rows are %s",
+                        section, key, value, ", ".join(CARD_ROWS[section]))
+        else:
+            numbered.append((int(key), name))
+    return [n for _, n in sorted(numbered)]
+
+
 # ── Daily summaries ───────────────────────────────────────────────────────────
 #
 # One row per sensor per local day in the `daily` table: lows, highs, averages
@@ -1080,7 +1107,9 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
 
     # The dashboard reads these settings from current.json; it cannot read config.ini.
     # The lower pane is a row of [buttons], each loading its page below; none set, no pane.
-    page = {"title": _title(cfg), "lower_buttons": _buttons(cfg), "station": _station(cfg)}
+    page = {"title": _title(cfg), "lower_buttons": _buttons(cfg), "station": _station(cfg),
+            "outdoor_rows": _card_rows(cfg, "outdoor_rows"),
+            "sensor_rows": _card_rows(cfg, "sensor_rows")}
     db_path = _db_path(cfg)
     refresh_snapshot(write_path, sensors, page)
 

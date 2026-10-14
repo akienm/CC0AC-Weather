@@ -430,33 +430,45 @@ function outdoorCard(s, data, sk) {
       <div><div class="name"><span>${s.name}</span></div><div class="icon">${icon}</div></div>
       <div class="temp" style="color:${tempColor(f.temp_f)}">${num(f.temp_f)}°<small>F</small></div>
     </div>
-    <div class="rows">
-      ${row('🌡️ Feels like', num(f.feels_like_f) + '°')}
-      ${row('💧 Humidity', num(f.humidity_pct, 0) + '%')}
-      ${row('🌫️ Dew point', num(f.dew_point_f) + '°')}
-      ${row('💨 Wind', wind(f))}
-      ${row('🌬️ Gust', num(f.wind_gust_mph) + ' mph')}
-      ${row('⏲️ Pressure', num(f.pressure_inhg, 2) + ' inHg' + trend(data.pressure_change_3h))}
-      ${row('☔ Rain today', num(f.rain_day_in, 2) + ' in')}
-      ${row('🌧️ Rain rate', num(f.rain_hour_in, 2) + ' in/h')}
-      ${row('🔆 UV index', uvLevel(f.uv_index))}
-      ${row('☀️ Light', num(f.light_lux, 0) + ' lux')}
-      ${row('⚡ Lightning', f.strike_count == null ? '—' : `${f.strike_count} strikes`)}
-      ${row('⚡ Last strike', f.last_strike_mi == null ? '—' : `${f.last_strike_mi} mi`)}
-    </div>
+    <div class="rows">${rows(OUTDOOR_ROWS, data.outdoor_rows, f, data)}</div>
     <div style="margin-top:8px">${battery(f)}</div>
   </div>`;
 }
 
-function sensorCard(s) {
+// The rows of each kind of card, by the names [outdoor_rows] and [sensor_rows] in
+// config.ini use, in the order shown when the config doesn't say.
+const OUTDOOR_ROWS = {
+  feels_like:  f => row('🌡️ Feels like', num(f.feels_like_f) + '°'),
+  humidity:    f => row('💧 Humidity', num(f.humidity_pct, 0) + '%'),
+  dew_point:   f => row('🌫️ Dew point', num(f.dew_point_f) + '°'),
+  wind:        f => row('💨 Wind', wind(f)),
+  gust:        f => row('🌬️ Gust', num(f.wind_gust_mph) + ' mph'),
+  pressure:    (f, data) => row('⏲️ Pressure', num(f.pressure_inhg, 2) + ' inHg' + trend(data.pressure_change_3h)),
+  rain_today:  f => row('☔ Rain today', num(f.rain_day_in, 2) + ' in'),
+  rain_rate:   f => row('🌧️ Rain rate', num(f.rain_hour_in, 2) + ' in/h'),
+  uv:          f => row('🔆 UV index', uvLevel(f.uv_index)),
+  light:       f => row('☀️ Light', num(f.light_lux, 0) + ' lux'),
+  lightning:   f => row('⚡ Lightning', f.strike_count == null ? '—' : `${f.strike_count} strikes`),
+  last_strike: f => row('⚡ Last strike', f.last_strike_mi == null ? '—' : `${f.last_strike_mi} mi`),
+};
+const SENSOR_ROWS = {
+  humidity:  f => row('💧 Humidity', num(f.humidity_pct, 0) + '%'),
+  dew_point: f => row('🌫️ Dew point', num(f.dew_point_f) + '°'),
+};
+
+// The rows named in the config first, in its order, then the rest in their usual order.
+function rows(catalog, order, f, data) {
+  const names = (order || []).filter(n => n in catalog);
+  for (const n of Object.keys(catalog)) if (!names.includes(n)) names.push(n);
+  return names.map(n => catalog[n](f, data)).join('');
+}
+
+function sensorCard(s, data) {
   const f = s.fields;
   return `<div class="card">
     <div class="name"><span>${s.name}</span>${ageSpan(s.updated)}</div>
     <div class="big">${num(f.temp_f)}°<small>F</small></div>
-    <div class="rows">
-      ${row('💧 Humidity', num(f.humidity_pct, 0) + '%')}
-      ${row('🌫️ Dew point', num(f.dew_point_f) + '°')}
-    </div>
+    <div class="rows">${rows(SENSOR_ROWS, data.sensor_rows, f, data)}</div>
     <div style="margin-top:8px">${battery(f)}</div>
   </div>`;
 }
@@ -554,7 +566,7 @@ function drawCurrent() {
   pane('p-outdoor', data.written,
        sensors.filter(s => OUTDOOR.includes(s.type)).map(s => outdoorCard(s, data, sk)).join(''));
   pane('p-rooms', data.written,
-       sensors.filter(s => !OUTDOOR.includes(s.type)).map(sensorCard).join(''));
+       sensors.filter(s => !OUTDOOR.includes(s.type)).map(s => sensorCard(s, data)).join(''));
   const w = document.getElementById('written');
   w.innerHTML = `${ageSpan(data.written, 'updated ')} · ${new Date(data.written).toLocaleString()}`;
   document.getElementById('error').textContent = '';
