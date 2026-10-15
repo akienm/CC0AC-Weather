@@ -490,6 +490,16 @@ quick-start guide).
 **Status:** decoding is tested against recordings of AcuRite sensors from the
 rtl_433 project, not yet with a dongle on the air.
 
+## Wall displays: old Android phones as weather kiosks
+
+`kiosk/` turns a spare, freshly reset Android phone into a wall display that shows
+only your weather page. It has no lock screen and no way out, goes dark when idle,
+and wakes at a touch. One command sets it up over USB:
+
+    kiosk/setup-phone.sh --url http://my-pi.local:12345/
+
+See [kiosk/README.md](kiosk/README.md) for the options and how to build it.
+
 ## Files
 
 | File | Purpose |
