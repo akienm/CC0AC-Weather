@@ -891,6 +891,8 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
     page_dir = Path(__file__).resolve().parent
 
     class WebHandler(BaseHTTPRequestHandler):
+        # A visitor that connects and then says nothing would hold its thread forever.
+        timeout = 30
         def log_message(self, fmt, *args):
             pass
 
@@ -1066,6 +1068,9 @@ def run_web_server(cfg: configparser.ConfigParser, write_path: Path, config_path
     if own_dir is not None and not own_dir.is_dir():
         log.warning("[web] pages folder %s not found; serving the shipped pages only", own_dir)
     handler = _make_web_handler(write_path, _db_path(cfg), sensor_map(cfg), own_dir, _title(cfg), config_path)
+    # The stock queue holds 5 waiting connections; a phone opening a page plus its charts
+    # can briefly be more than that, and the kernel then logs it as a SYN flood.
+    ThreadingHTTPServer.request_queue_size = 64
     servers = [ThreadingHTTPServer(("", port), handler) for port in ports]
     for port, server in zip(ports[1:], servers[1:]):
         threading.Thread(target=server.serve_forever, daemon=True).start()
