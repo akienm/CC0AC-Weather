@@ -637,6 +637,16 @@ function loadCurrent() {
 // Missing forecast.js is fine: the forecast panes stay away.
 const loadForecast = () => loadScript('forecast', 'forecast.js', drawForecast);
 
+// Stale readings first try a full reload, which also clears a stuck timer or a page
+// left running across an update. Only when current.js still loads (a reload while the
+// server is unreachable would leave a browser error page that never retries), and at
+// most once per STALE_MINUTES of page life, so a hub that is truly quiet just shows red.
+function reloadIfStale() {
+  if (!lastWritten || Date.now() - lastWritten <= STALE_MINUTES * 60000) return;
+  if (performance.now() < STALE_MINUTES * 60000) return;
+  loadScript('probe', 'current.js', () => location.reload());
+}
+
 // A phone that slept, or a tab left in the background, catches up when looked at.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') { loadCurrent(); loadForecast(); }
@@ -645,7 +655,7 @@ document.addEventListener('visibilitychange', () => {
 loadCurrent();
 loadForecast();
 setInterval(loadForecast, FORECAST_POLL_SECONDS * 1000);
-setInterval(() => { tickAges(); drawForecast(); }, 60 * 1000);
+setInterval(() => { tickAges(); drawForecast(); reloadIfStale(); }, 60 * 1000);
 </script>
 </body>
 </html>
