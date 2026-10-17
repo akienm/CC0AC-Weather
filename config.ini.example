@@ -171,6 +171,25 @@ quiet_minutes = 30
 ; <url>/fail when they stop. When the pings stop, the service tells you.
 ; healthcheck_url = https://hc-ping.com/your-check-id
 
+[console]
+; A station console or WiFi gateway that can upload to a "custom server":
+; Ambient Weather (awnet app, "Customized"), Ecowitt and Fine Offset relabels
+; (WS View app or the gateway's web page, "Customized"), or anything that speaks
+; Weather Underground's upload format. Set the console's server to this
+; machine's address, this port, and any path (Ambient's app wants it to end in
+; "?"); protocol Ecowitt, Ambient Weather or Wunderground all work. The console
+; keeps uploading to its own cloud too. Not yet tested on real hardware: see
+; SUPPORTED.md, and send --diagnostics if it misreads anything.
+enabled = false
+port = 12346
+
+; If set, only uploads from this console are recorded: its MAC, PASSKEY or
+; Weather Underground station ID, as shown in console-raw/ beside this file.
+; station =
+
+; Readings appear as console-outdoor, console-indoor and console-ch1..ch8;
+; name them under [sensors] like any other.
+
 [capture]
 ; Radio capture with a USB SDR and rtl_433. Off unless you have the dongle.
 enabled = false
@@ -183,7 +202,17 @@ device_index = 0
 ; 40 = AcuRite Atlas, Iris, 5-in-1, 3-in-1, 592TXR tower and room sensors,
 ;      515 fridge/freezer, 6045 lightning, 899 rain gauge
 ; 74 = AcuRite 00275rm and 00276rm
+; Other brands: SUPPORTED.md lists their numbers. protocols = all lets rtl_433
+; use its own default set, which is handy with --discover to see what's near.
 protocols = 40,74
+
+; Radio frequency. Unset = 433.92M (AcuRite, and most brands' older or European
+; 433 MHz sensors). North American Ambient/Ecowitt/Fine Offset gear is 915M;
+; European is 868M. With two or more (comma-separated), the radio switches
+; between them every hop_seconds and misses whatever is sent on the other one
+; meanwhile; a second dongle is the clean way to hear two bands.
+; frequency = 915M
+; hop_seconds = 30
 
 ; Decode recordings (.cu8 files, comma-separated) instead of the dongle, then
 ; stop: for testing without the radio. Leave unset for normal use.

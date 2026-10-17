@@ -1,0 +1,123 @@
+"""
+--diagnostics: one file to attach to a problem report.
+
+It bundles what a fix needs and nothing personal: the raw uploads and radio
+lines of the last few days, the service's log, the radio and console settings,
+the sensor IDs, and versions. Passwords, station keys, MACs, public IP
+addresses and sensor names are replaced with ****. Location, alert addresses and
+everything else in config.ini are left out.
+"""
+
+from __future__ import annotations
+
+import configparser
+import io
+import ipaddress
+import json
+import os
+import platform
+import re
+import subprocess
+import sys
+import tarfile
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+CONFIG_DIR = Path.home() / ".cc0ac-weather"
+HERE = Path(__file__).resolve().parent
+RAW_DIRS = ("hub-raw", "console-raw", "radio-raw")
+DAYS = 3
+
+_KEYS = re.compile(r"\b((?:PASSKEY|MAC|ID|id|PASSWORD|hub_id|station)=)[^&\s'\"]+")
+_IPV4 = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
+
+
+def _public(ip: str) -> bool:
+    try:
+        a = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    return not (a.is_private or a.is_loopback or a.is_link_local or a.is_unspecified)
+
+
+def scrub(text: str, names=()) -> str:
+    """The text with station keys, passwords, MACs, public IP addresses and the
+    given sensor names as ****."""
+    for name in sorted((n for n in names if n.strip()), key=len, reverse=True):
+        text = text.replace(name, "****")
+    text = _KEYS.sub(r"\1****", text)
+    return _IPV4.sub(lambda m: "****" if _public(m.group(0)) else m.group(0), text)
+
+
+def _run(cmd: list[str]) -> str:
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        return (p.stdout + p.stderr).strip()
+    except Exception as exc:   # not installed, or not allowed
+        return f"({' '.join(cmd)}: {exc})"
+
+
+def settings(cfg: configparser.ConfigParser) -> str:
+    out = []
+    for section, keys in (("capture", None), ("console", None), ("hub", ("port", "tls", "relay"))):
+        if not cfg.has_section(section):
+            continue
+        out.append(f"[{section}]")
+        for k, v in cfg.items(section, raw=True):
+            if keys is None or k in keys:
+                out.append(f"{k} = {'****' if k in ('station', 'hub_id') and v else v}")
+        out.append("")
+    if cfg.has_section("sensors"):
+        out.append("[sensors] IDs (names left out): " + ", ".join(cfg.options("sensors")))
+    return "\n".join(out) + "\n"
+
+
+def info(cfg: configparser.ConfigParser) -> str:
+    rtl = _run(["rtl_433", "-V"])
+    return "\n".join([
+        f"made: {datetime.now(timezone.utc):%Y-%m-%dT%H:%M:%SZ}",
+        f"commit: {_run(['git', '-C', str(HERE), 'rev-parse', '--short', 'HEAD'])}",
+        f"python: {sys.version.split()[0]}",
+        f"system: {platform.platform()}",
+        f"rtl_433: {rtl.splitlines()[0] if rtl else '?'}",
+        f"usb: \n{_run(['lsusb'])}",
+    ]) + "\n"
+
+
+def recent_raw(days: int = DAYS):
+    """(name in the bundle, path) for each raw log of the last `days` days."""
+    since = f"{datetime.now(timezone.utc) - timedelta(days=days):%Y-%m-%d}"
+    for d in RAW_DIRS:
+        for f in sorted((CONFIG_DIR / d).glob("*.log")):
+            if f.stem >= since:
+                yield f"{d}/{f.name}", f
+
+
+def bundle(cfg: configparser.ConfigParser, out_dir: Path | None = None) -> Path:
+    out_dir = out_dir or Path.home()
+    path = out_dir / f"cc0ac-diagnostics-{datetime.now():%Y%m%d-%H%M}.tar.gz"
+    user = os.environ.get("USER", "")
+    names = [v for _, v in cfg.items("sensors", raw=True)] if cfg.has_section("sensors") else []
+    parts = {
+        "info.txt": info(cfg),
+        "settings.txt": settings(cfg),
+        "service-log.txt": _run(["journalctl", "-u", f"cc0ac-weather@{user}", "-n", "3000", "--no-pager"]),
+    }
+    write_path = Path(cfg.get("device", "write_path", fallback="~/AcuRite")).expanduser()
+    try:
+        # What the readings decoded to, with the sensors' names left out.
+        current = json.loads((write_path / "current.json").read_text())
+        parts["current.json"] = json.dumps([{k: v for k, v in e.items() if k != "name"}
+                                            for e in current.get("sensors", [])], indent=1)
+    except (OSError, ValueError):
+        pass
+    for name, f in recent_raw():
+        parts[name] = f.read_text(errors="replace")
+    with tarfile.open(path, "w:gz") as tar:
+        for name, text in parts.items():
+            data = scrub(text, names).encode()
+            member = tarfile.TarInfo(f"cc0ac-diagnostics/{name}")
+            member.size, member.mtime = len(data), int(time.time())
+            tar.addfile(member, io.BytesIO(data))
+    return path

@@ -55,6 +55,7 @@ from pathlib import Path
 from sources import FIELDS, OUTDOOR_TYPES, Reading
 from sources import acurite_access
 import alerts
+import diagnostics
 import wizard
 
 log = logging.getLogger("acurite")
@@ -1187,6 +1188,8 @@ def main() -> None:
         help="Alert if no reading has come in for [alerts] quiet_minutes, or that they're back; for a timer",
     )
     parser.add_argument("--test-alert", action="store_true", help="Send a test message every way [alerts] sets up")
+    parser.add_argument("--diagnostics", action="store_true",
+                        help="Write one file to attach to a problem report (no passwords, keys or location) and exit")
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
 
@@ -1203,6 +1206,11 @@ def main() -> None:
         problems = alerts.send(cfg, f"{_title(cfg)}: test", "A test message from the weather station.")
         print("Sent." if not problems else "Not sent: " + "; ".join(problems))
         sys.exit(1 if problems else 0)
+    elif args.diagnostics:
+        path = diagnostics.bundle(cfg)
+        print(f"Wrote {path}\nAttach it to an issue at https://github.com/akienm/CC0AC-Weather/issues "
+              "with a line saying what looks wrong. Passwords, station keys, MACs, public IP addresses "
+              "and your location are left out; open it first if you'd like to check.")
     elif args.import_raw:
         import_raw(cfg)
     elif args.discover:

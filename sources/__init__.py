@@ -22,8 +22,9 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-# Sensor types that measure outdoors; every other type is a room.
-OUTDOOR_TYPES = ("Atlas", "Iris", "5N1")
+# Sensor types that measure outdoors; every other type is a room. "outdoor" is
+# what a source gives an outdoor sensor of a brand without names of its own here.
+OUTDOOR_TYPES = ("Atlas", "Iris", "5N1", "outdoor")
 
 # Every field a reading can carry, in fixed units. A source converts to these;
 # a value it doesn't have is left out. These are also the database's columns.

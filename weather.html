@@ -551,7 +551,7 @@ function pane(id, key, html) {
     if (open.includes(d.querySelector('summary span:first-child')?.textContent)) d.open = true;
 }
 
-const OUTDOOR = ['Atlas', 'Iris', '5N1'];
+const OUTDOOR = ['Atlas', 'Iris', '5N1', 'outdoor'];   // sources/__init__.py OUTDOOR_TYPES
 
 function drawCurrent() {
   const data = window.ACURITE_CURRENT;

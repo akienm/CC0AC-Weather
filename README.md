@@ -5,6 +5,11 @@ dashboard, your own data files, Weather Underground uploads unchanged, and no
 dependence on AcuRite's cloud. Built by Claude Code ("cc.0") with Akien
 MacIain; contributions welcome.
 
+**Other brands** (Ambient Weather, Ecowitt, Fine Offset and its relabels,
+Bresser, La Crosse, and more) can feed it too, by console upload or by radio.
+Only AcuRite is tested on real hardware so far; [SUPPORTED.md](SUPPORTED.md)
+says what works how, and how sure we are.
+
 Not affiliated with or endorsed by AcuRite or Chaney Instrument Co. AcuRite is
 their trademark; it is used here only to say which hardware this works with.
 
@@ -487,8 +492,27 @@ ship: if `rtl_test` doesn't find its R828D tuner, install the driver from
 [rtl-sdr-blog](https://github.com/rtlsdrblog/rtl-sdr-blog) (see their V4
 quick-start guide).
 
-**Status:** decoding is tested against recordings of AcuRite sensors from the
-rtl_433 project, not yet with a dongle on the air.
+**Status:** running on the air since 2026-10-14 with an RTL-SDR Blog V4 and
+AcuRite Atlas and tower sensors (stock rtl_433 25.02 found the V4). Other
+brands' sensors work the same way with the right `frequency` and `protocols`;
+see [SUPPORTED.md](SUPPORTED.md). Every line the radio hears is kept for 14
+days in `~/.cc0ac-weather/radio-raw/`.
+
+## Other brands' consoles (no radio)
+
+Ambient Weather, Ecowitt and Fine Offset consoles and gateways can upload to a
+"custom server" as well as their own cloud. Turn on `[console]` in config.ini
+and point the console at this machine, port 12346 (the details for each brand
+are in [SUPPORTED.md](SUPPORTED.md)). Untested on real hardware.
+
+## When something reads wrong
+
+    python3 acurite-capture.py --diagnostics
+
+writes one file holding the raw uploads and radio lines of the last three
+days, the service log, and the radio and console settings. Passwords, station
+keys, MACs, public IP addresses, sensor names and your location are left out.
+Attach it to an [issue](https://github.com/akienm/CC0AC-Weather/issues).
 
 ## Wall displays: old Android phones as weather kiosks
 
@@ -508,6 +532,10 @@ See [kiosk/README.md](kiosk/README.md) for the options and how to build it.
 | `sources/__init__.py` | The Reading every source produces, its fields and units, and how to add a source |
 | `sources/acurite_access.py` | The Access hub source: listener, relay to AcuRite, raw log |
 | `sources/rtl_433.py` | The radio source: runs rtl_433 and turns its messages into Readings |
+| `sources/console_upload.py` | Console uploads: Ambient Weather, Ecowitt and Wunderground formats |
+| `diagnostics.py` | `--diagnostics`: one file to attach to a problem report |
+| `SUPPORTED.md` | Which brands work how, and how sure we are (made by `setup/supported.py`) |
+| `tests/` | `python3 -m unittest discover tests`; `rtl_433_samples.jsonl` is one recorded line per radio model |
 | `outputs/__init__.py` | How to add an output: somewhere readings are sent |
 | `outputs/weather_underground.py` | Uploads readings heard by radio to Weather Underground |
 | `outputs/mqtt.py` | Publishes readings to an MQTT broker, with Home Assistant discovery |

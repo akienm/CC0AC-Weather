@@ -17,7 +17,7 @@
 #   * the cable port gets 192.168.77.1; dnsmasq hands the hub an address and answers
 #     atlasapi.myacurite.com with the Pi; the hub's other traffic (Weather Underground,
 #     its clock) is passed out to the internet over Wi-Fi
-#   * a firewall that lets in only ssh, the dashboard (ports 80 and 12345) and
+#   * a firewall that lets in only ssh, the dashboard (ports 80 and 12345), console uploads (12346) and
 #     mDNS from your network, and the hub's own traffic on the cable
 #   * a timer that checks every 5 minutes that readings are coming in ([alerts])
 #
@@ -221,7 +221,7 @@ table inet cc0ac {
         meta l4proto { icmp, ipv6-icmp } accept
         tcp dport 22 accept comment "ssh"
         udp dport { 68, 546 } accept comment "the Pi's own DHCP replies"
-        iifname != "$HUB_IF" tcp dport { 80, 12345 } accept comment "dashboard and setup page"
+        iifname != "$HUB_IF" tcp dport { 80, 12345, 12346 } accept comment "dashboard, setup page, console uploads"
         iifname != "$HUB_IF" udp dport 5353 accept comment "mDNS: cc0ac-weather.local"
         iifname "$HUB_IF" tcp dport 443 accept comment "the hub's uploads"
         iifname "$HUB_IF" udp dport { 53, 67 } accept comment "the hub's DNS and DHCP"
