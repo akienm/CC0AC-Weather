@@ -498,12 +498,73 @@ brands' sensors work the same way with the right `frequency` and `protocols`;
 see [SUPPORTED.md](SUPPORTED.md). Every line the radio hears is kept for 14
 days in `~/.cc0ac-weather/radio-raw/`.
 
+**Other brands by radio.** Ambient Weather, Ecowitt and Fine Offset gear sold
+in North America transmits on 915 MHz, not AcuRite's 433.92. Set the band and
+the decoders in `[capture]`:
+
+```ini
+[capture]
+enabled = true
+frequency = 915M          # 868M in Europe; 433.92M for AcuRite and older sensors
+protocols = 78, 113, 213  # or "all", then --discover to see what's near
+# frequency = 433.92M, 915M   # two bands on one dongle...
+# hop_seconds = 30            # ...switching every 30 s, missing the other meanwhile
+```
+
+Sensors that send wind, rain, UV, light or lightning get an outdoor card on
+the dashboard; the rest get a room card. One dongle hears one band at a time,
+so for AcuRite and Ambient gear together a second dongle beats hopping.
+
+What we've measured (2026-10-16): 13 real radio recordings from the rtl_433
+project went through rtl_433 25.02 and this program on a Pi and decoded right,
+among them the Ambient F007TH, WH31E and WH31B, the Ecowitt WH40, the Fine
+Offset WH24, WH1050 and WS90, and the Bresser 5-in-1. Recorded rtl_433 output
+for 205 weather models goes through our decoder; [SUPPORTED.md](SUPPORTED.md)
+lists each with what we read from it. All 34 recorded AcuRite lines decode the
+same as before this change.
+
 ## Other brands' consoles (no radio)
 
 Ambient Weather, Ecowitt and Fine Offset consoles and gateways can upload to a
-"custom server" as well as their own cloud. Turn on `[console]` in config.ini
-and point the console at this machine, port 12346 (the details for each brand
-are in [SUPPORTED.md](SUPPORTED.md)). Untested on real hardware.
+"custom server" as well as their own cloud. This program listens along: the
+console keeps sending to Ambient's or Ecowitt's cloud exactly as before, and a
+copy comes here. No radio and no hub needed.
+
+1. In config.ini:
+
+   ```ini
+   [console]
+   enabled = true
+   port = 12346
+   # station = 00:11:22:33:44:55   # optional: only record this console (MAC, passkey or WU ID)
+   ```
+
+   then restart the service (`sudo systemctl restart cc0ac-weather@$USER`).
+   The ready-made Pi card already opens port 12346 in its firewall; on your own
+   machine, open it yourself.
+
+2. Point the console at this machine:
+
+   | Brand | Where | Settings |
+   |---|---|---|
+   | Ambient Weather (WS-2902, WS-2000, WS-5000, their WiFi hubs) | awnet app → your device → Customized | Server: this machine's IP address. Port: 12346. Protocol: Ambient Weather. Path: `/data/report/?` (it must end in `?`). Interval: 60 |
+   | Ecowitt (GW1000, GW1100, GW2000, HP2551, ...) | WS View Plus app, or the gateway's web page → Weather Services → Customized | Protocol: Ecowitt. Server: this machine's IP. Port: 12346. Path: `/data/report/`. Interval: 60 |
+   | Fine Offset relabels (Misol, Froggit, Sainlogic, ...) | as Ecowitt | Ecowitt or Wunderground |
+   | Anything that uploads in Weather Underground format | its own settings | Wunderground; any station ID and key |
+
+3. Within a minute or two the dashboard shows `console-outdoor`,
+   `console-indoor`, and `console-ch1` to `console-ch8` for extra room
+   sensors. Name them under `[sensors]` like any other.
+
+Every upload is kept in `~/.cc0ac-weather/console-raw/` (a Weather Underground
+password shows as ****), and any field the program doesn't read yet is named
+once in the service log, so a new console's oddities show up on the first day.
+
+**Status: untested on real hardware.** The field names come from the published
+formats and from other open-source receivers, and the tests feed it sample
+uploads in all three formats. If you try it, please send a `--diagnostics` file
+(below), working or not. The ready-made Pi card's setup page still assumes an
+AcuRite hub, so for now a console-only setup is config.ini by hand.
 
 ## When something reads wrong
 
