@@ -136,11 +136,30 @@ discovery_prefix = homeassistant
 ; [station] latitude and longitude. Writes forecast.json and forecast.js beside
 ; current.json; the dashboard shows them as an hourly strip, a 7-day list, two
 ; rows on the sun & moon card and a banner while an alert is active.
+; Outside the US the hourly strip and 7-day list come from Open-Meteo
+; (open-meteo.com; free, no key, worldwide); it has no alerts or airport sky.
 enabled = false
+; auto = the Weather Service where it covers the location, else Open-Meteo.
+; Or name one: nws, open-meteo.
+source = auto
 
 ; The Weather Service asks every caller to name itself with a way to reach
 ; them (sent in the User-Agent). A website or an email address.
 contact = github.com/akienm/CC0AC-Weather
+
+[online]
+; Outdoor readings from the internet, for a house with no weather station (a
+; spare tablet on the wall makes a weather display) or as a second opinion. Uses
+; [station] latitude and longitude.
+;   nws        the National Weather Service's nearest observing station, usually
+;              an airport a few miles away (US only); a real measurement, hourly
+;   open-meteo Open-Meteo's current conditions for your exact spot (worldwide);
+;              a weather model's estimate, every 15 minutes
+;   auto       the Weather Service where it covers the location, else Open-Meteo
+; It shows as one more outdoor sensor; name it under [sensors] if you like
+; (its ID is open-meteo, or nws- and the station, e.g. nws-kbjc).
+enabled = false
+source = auto
 
 [alerts]
 ; A message when readings stop, and another when they come back. Checked every

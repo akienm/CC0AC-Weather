@@ -53,7 +53,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from sources import FIELDS, OUTDOOR_TYPES, Reading
-from sources import acurite_access
+from sources import acurite_access, online
 import alerts
 import diagnostics
 import wizard
@@ -211,7 +211,7 @@ def record_reading(reading: Reading, write_path: Path, sensors: dict, page: dict
         if isinstance(fields.get("pressure_inhg"), (int, float)):
             _current_page["pressure_change_3h"] = _pressure_change(_epoch(now), float(fields["pressure_inhg"]))
         entry = _current.setdefault(sensor_id, {"sensor_id": sensor_id, "type": kind, "fields": {}})
-        entry["name"] = sensors.get(sensor_id, entry.get("name") or f"{kind} {sensor_id}")
+        entry["name"] = sensors.get(sensor_id) or reading.name or entry.get("name") or f"{kind} {sensor_id}"
         entry["type"] = kind
         entry["updated"] = now
         entry["fields"].update(fields)
@@ -731,6 +731,9 @@ def run_forecast(cfg: configparser.ConfigParser, write_path: Path) -> None:
         return
     lat, lon = station["latitude"], station["longitude"]
     contact = cfg.get("forecast", "contact", fallback=DEFAULT_CONTACT).strip() or DEFAULT_CONTACT
+    if online.choose(cfg, "forecast", lat, lon) == "open-meteo":
+        run_open_meteo_forecast(lat, lon, contact, write_path)
+        return
     out = {"source": "National Weather Service", "errors": {}}
     due = {"point": 0.0, "forecast": 0.0, "observation": 0.0, "alerts": 0.0}
     point = stations = None
@@ -774,6 +777,26 @@ def run_forecast(cfg: configparser.ConfigParser, write_path: Path) -> None:
             _write_atomic(write_path / "forecast.json", body)
             _write_atomic(write_path / "forecast.js", f"window.ACURITE_FORECAST = {body};\n")
         time.sleep(60)
+
+
+def run_open_meteo_forecast(lat: float, lon: float, contact: str, write_path: Path) -> None:
+    """Outside the US ([forecast] source = auto there, or open-meteo): the hourly and
+    7-day cards from Open-Meteo. It has no alerts and no airport sky."""
+    out = {"source": "Open-Meteo", "errors": {}}
+    while True:
+        try:
+            out.update(online.open_meteo_forecast(lat, lon, contact))
+            out["errors"].pop("forecast", None)
+            wait = FORECAST_EVERY_S
+        except Exception as exc:
+            log.warning("Open-Meteo forecast fetch failed: %s", exc)
+            out["errors"]["forecast"] = f"{datetime.now(timezone.utc).isoformat(timespec='seconds')}: {exc}"
+            wait = 300
+        out["written"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        body = json.dumps(out, indent=2)
+        _write_atomic(write_path / "forecast.json", body)
+        _write_atomic(write_path / "forecast.js", f"window.ACURITE_FORECAST = {body};\n")
+        time.sleep(wait)
 
 
 # ── Web server ───────────────────────────────────────────────────────────────

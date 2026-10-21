@@ -66,6 +66,7 @@ class Reading:
     fields: dict = field(default_factory=dict)   # FIELDS names → values
     receiver: str | None = None    # the hub or radio that heard it
     sensor_utc: str | None = None  # the time the sensor or hub gave the reading, if any
+    name: str | None = None        # a name for a sensor not under [sensors], e.g. an online source's
 
 
 def derive(fields: dict) -> dict:
