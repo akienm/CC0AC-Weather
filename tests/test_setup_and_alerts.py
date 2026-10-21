@@ -105,6 +105,27 @@ class ConfigEditing(unittest.TestCase):
         cfg.read_string(wizard.apply_setup(self.text, self.answers()))
         self.assertFalse(wizard.needs_setup(cfg))
 
+    def test_internet_weather_alone_is_a_finished_setup(self):
+        out = wizard.apply_setup(self.text, self.answers(sensors=[], online=True))
+        cfg = configparser.ConfigParser()
+        cfg.read_string(out)
+        self.assertTrue(cfg.getboolean("online", "enabled"))
+        self.assertFalse(wizard.needs_setup(cfg))
+
+    def test_the_updates_answer(self):
+        cfg = configparser.ConfigParser()
+        cfg.read_string(wizard.apply_setup(self.text, self.answers(updates={"automatic": False, "time": "5:30"})))
+        self.assertEqual((cfg.get("updates", "automatic"), cfg.get("updates", "time")), ("no", "05:30"))
+        with self.assertRaises(ValueError):
+            wizard.apply_setup(self.text, self.answers(updates={"automatic": True, "time": "25:00"}))
+
+    def test_no_hub_means_no_looking_for_one(self):
+        cfg = configparser.ConfigParser()
+        cfg.read_string(wizard.set_values(self.text, "hub", {"enabled": "false"}))
+        state = wizard.setup_state(cfg, leases=Path("/nonexistent"))
+        self.assertTrue(state["hub"]["off"])
+        self.assertTrue(state["current"]["updates"]["automatic"])
+
 
 class AlertCheck(unittest.TestCase):
     def test_one_message_going_quiet_one_coming_back(self):

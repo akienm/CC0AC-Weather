@@ -187,8 +187,8 @@ class Boot:
         return c
 
     def expand(self, path: str) -> Path:
-        """A path from config.ini as the station sees it: ~ is the station user's home."""
-        if path.startswith("~") and self.settings.get("user"):
+        """A path from config.ini as the station sees it: ~ is its home (see station_env)."""
+        if path.startswith("~"):
             return Path(self.settings["home"]) / path[1:].lstrip("/\\")
         return Path(path).expanduser()
 
@@ -200,6 +200,16 @@ class Boot:
             return cmd
         return ["setpriv", f"--reuid={user}", f"--regid={user}", "--init-groups",
                 "--inh-caps=+net_bind_service", "--ambient-caps=+net_bind_service", "--"] + cmd
+
+    def station_env(self) -> dict:
+        """The station's ~ is its home, so its own folder (~/.cc0ac-weather: raw logs, the hub's
+        certificate, alert state) is kept with the readings, whoever starts it."""
+        env = dict(os.environ, CC0AC_BOOTLOADER_ROOT=str(self.root), HOME=self.settings["home"])
+        if os.name == "nt":
+            env["USERPROFILE"] = self.settings["home"]
+        if self.as_station_user([]):
+            env["USER"] = env["LOGNAME"] = self.settings["user"]
+        return env
 
     def station_cmd(self, *extra: str) -> list[str]:
         script = self.version_dir() / "acurite-capture.py"
@@ -317,7 +327,7 @@ class Station:
         return open(path, "ab")
 
     def start(self) -> None:
-        env = dict(os.environ, CC0AC_BOOTLOADER_ROOT=str(self.boot.root))
+        env = self.boot.station_env()
         out = self._output()
         cmd = self.boot.station_cmd()
         log.info("Starting the station: %s", self.boot.state["current"])
@@ -635,7 +645,8 @@ def run(boot: Boot) -> None:
         if time.time() - last_check >= CHECK_EVERY_S:
             last_check = time.time()
             try:
-                out = subprocess.run(boot.station_cmd("--check"), capture_output=True, text=True, timeout=120)
+                out = subprocess.run(boot.station_cmd("--check"), env=boot.station_env(),
+                                     capture_output=True, text=True, timeout=120)
                 line = (out.stdout or out.stderr).strip()
                 if line != last_alert_out:
                     log.info("Readings check: %s", line)
@@ -690,7 +701,8 @@ def main(argv: list[str] | None = None) -> None:
     i.add_argument("--no-hub-network", dest="hub_network", action="store_false",
                    help="Pi/Debian: leave the network port alone (no AcuRite hub on the cable)")
     i.add_argument("--then-run", action="store_true", help="Docker: install if needed, then run")
-    for name, text in (("run", "the service"), ("update", "look for updates now"), ("status", "say what's installed")):
+    for name, text in (("run", "the service"), ("update", "look for updates now"), ("status", "say what's installed"),
+                       ("diagnostics", "make the file to attach to a problem report")):
         s = sub.add_parser(name, help=text)
         s.add_argument("--root", default=str(here))
         if name == "update":
@@ -717,6 +729,11 @@ def main(argv: list[str] | None = None) -> None:
             print(f"Asked the running boot loader to check; see {root / 'updates.log'}")
         else:
             print(check_for_updates(boot, None, what))
+    elif args.cmd == "diagnostics":
+        out = subprocess.run(boot.station_cmd("--diagnostics"), env=boot.station_env(),
+                             cwd=boot.version_dir(), capture_output=True, text=True)
+        print((out.stdout + out.stderr).strip())
+        raise SystemExit(out.returncode)
     elif args.cmd == "status":
         s = boot.state
         automatic, when = policy(boot)

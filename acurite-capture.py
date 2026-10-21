@@ -887,14 +887,14 @@ def save_config(config_path: Path, text: str) -> None:
 
 
 def restart_soon(delay: float = 1.0) -> None:
-    """Restart the whole program once the browser has its answer. Under systemd
-    the service exits and systemd starts it again (Restart=always), which also
-    ends a running rtl_433; run by hand, it starts itself over in place."""
+    """Restart the whole program once the browser has its answer. Under the boot
+    loader or systemd it exits and they start it again, which also ends a running
+    rtl_433; run by hand, it starts itself over in place."""
     def restart():
         time.sleep(delay)
         for handler in logging.getLogger().handlers:
             handler.flush()
-        if os.environ.get("INVOCATION_ID"):
+        if os.environ.get("CC0AC_BOOTLOADER_ROOT") or os.environ.get("INVOCATION_ID"):
             os._exit(0)
         os.execv(sys.executable, [sys.executable, str(Path(sys.argv[0]).resolve()), *sys.argv[1:]])
     threading.Thread(target=restart, daemon=True).start()

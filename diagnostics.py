@@ -27,6 +27,8 @@ from pathlib import Path
 CONFIG_DIR = Path.home() / ".cc0ac-weather"
 HERE = Path(__file__).resolve().parent
 RAW_DIRS = ("hub-raw", "console-raw", "radio-raw")
+# Set by the boot loader (updates/bootloader.py) for the station it starts.
+BOOT_ROOT = Path(os.environ["CC0AC_BOOTLOADER_ROOT"]) if os.environ.get("CC0AC_BOOTLOADER_ROOT") else None
 DAYS = 3
 
 _KEYS = re.compile(r"\b((?:PASSKEY|MAC|ID|id|PASSWORD|hub_id|station)=)[^&\s'\"]+")
@@ -77,7 +79,9 @@ def info(cfg: configparser.ConfigParser) -> str:
     rtl = _run(["rtl_433", "-V"])
     return "\n".join([
         f"made: {datetime.now(timezone.utc):%Y-%m-%dT%H:%M:%SZ}",
-        f"commit: {_run(['git', '-C', str(HERE), 'rev-parse', '--short', 'HEAD'])}",
+        f"version: {_tail(HERE / 'VERSION', 1).strip() or '?'}",
+        f"commit: {_run(['git', '-C', str(HERE), 'rev-parse', '--short', 'HEAD']) if (HERE / '.git').exists() else 'none'}",
+        f"boot loader: {BOOT_ROOT or 'none'}",
         f"python: {sys.version.split()[0]}",
         f"system: {platform.platform()}",
         f"rtl_433: {rtl.splitlines()[0] if rtl else '?'}",
@@ -94,16 +98,34 @@ def recent_raw(days: int = DAYS):
                 yield f"{d}/{f.name}", f
 
 
+def _tail(path: Path, lines: int) -> str:
+    try:
+        return "\n".join(path.read_text(errors="replace").splitlines()[-lines:]) + "\n"
+    except OSError:
+        return ""
+
+
+def service_log() -> str:
+    """The service's own log: systemd's journal, or the file the boot loader keeps where there is none."""
+    if BOOT_ROOT is None:
+        return _run(["journalctl", "-u", f"cc0ac-weather@{os.environ.get('USER', '')}", "-n", "3000", "--no-pager"])
+    if (BOOT_ROOT / "station.log").exists():
+        return _tail(BOOT_ROOT / "station.log", 3000)
+    return _run(["journalctl", "-u", "cc0ac-weather", "-n", "3000", "--no-pager"])
+
+
 def bundle(cfg: configparser.ConfigParser, out_dir: Path | None = None) -> Path:
     out_dir = out_dir or Path.home()
     path = out_dir / f"cc0ac-diagnostics-{datetime.now():%Y%m%d-%H%M}.tar.gz"
-    user = os.environ.get("USER", "")
     names = [v for _, v in cfg.items("sensors", raw=True)] if cfg.has_section("sensors") else []
     parts = {
         "info.txt": info(cfg),
         "settings.txt": settings(cfg),
-        "service-log.txt": _run(["journalctl", "-u", f"cc0ac-weather@{user}", "-n", "3000", "--no-pager"]),
+        "service-log.txt": service_log(),
     }
+    if BOOT_ROOT is not None:
+        parts["updates.log"] = _tail(BOOT_ROOT / "updates.log", 3000)
+        parts["boot-state.json"] = _tail(BOOT_ROOT / "state.json", 200)
     write_path = Path(cfg.get("device", "write_path", fallback="~/AcuRite")).expanduser()
     try:
         # What the readings decoded to, with the sensors' names left out.

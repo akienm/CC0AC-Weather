@@ -82,7 +82,10 @@
   <label for="elev">Elevation (feet)</label>
   <input type="number" id="elev" step="1">
   <p class="help" id="elevhelp"></p>
-  <div class="check"><input type="checkbox" id="forecast"><label for="forecast" style="margin:0">Show the National Weather Service forecast and alerts (US only)</label></div>
+  <div class="check"><input type="checkbox" id="forecast"><label for="forecast" style="margin:0">Show the forecast (and weather alerts, in the US)</label></div>
+  <div class="check"><input type="checkbox" id="online"><label for="online" style="margin:0">Show the internet's weather for this spot too</label></div>
+  <p class="help">No weather station at all? Tick this and you're done: a spare tablet becomes a weather display. In the
+     US it's the nearest Weather Service station, usually an airport; elsewhere it's Open-Meteo's estimate for your spot.</p>
 </section>
 
 <section>
@@ -121,6 +124,15 @@
 </section>
 
 <section>
+  <h2><span class="n">5</span>Updates</h2>
+  <div class="check"><input type="radio" name="updates" id="upd_yes"><label for="upd_yes" style="margin:0"><b>Yes</b>: install security fixes and small repairs by itself</label></div>
+  <div class="check"><input type="radio" name="updates" id="upd_no"><label for="upd_no" style="margin:0"><b>No</b>: leave it alone; never download anything</label></div>
+  <label for="upd_time">Check at this time of day</label>
+  <input type="text" id="upd_time" placeholder="06:00" style="max-width:120px">
+  <p class="help">If an update doesn't work (the station stops, or stops hearing a sensor), it goes back to the version before by itself.</p>
+</section>
+
+<section>
   <div class="row"><button class="main" id="save">Save</button><span id="status"></span></div>
   <p>Saving restarts the station, which takes a few seconds. Then the dashboard shows each sensor as its next reading
      comes in (the hub sends every five minutes).</p>
@@ -140,6 +152,12 @@ function randomTopic() {
 }
 
 function showHub(hub) {
+  if (hub.off) {
+    $("hub").textContent = hub.why + " Readings come from the radio, a console, or the internet.";
+    $("recheck").hidden = true;
+    $("nosensors").textContent = "No sensors yet. A sensor the radio or a console hears shows up here once it reports.";
+    return;
+  }
   if (!hub.found) { $("hub").innerHTML = `<span class="bad">Not found yet.</span> ${esc(hub.why)}`; return; }
   const bits = [`<span class="good">Found</span> at ${esc(hub.ip)}`];
   if (hub.hub_id) bits.push(`hub ID ${esc(hub.hub_id)}`);
@@ -201,6 +219,9 @@ async function start(first) {
   $("elev").value = st.elevation_ft || (state.hub.elevation_ft || "");
   if (!st.elevation_ft && state.hub.elevation_ft) $("elevhelp").textContent = "Filled in from the hub's own setting.";
   $("forecast").checked = state.current.forecast || !st.latitude;
+  $("online").checked = state.current.online || (!st.latitude && state.hub.off && !rows.length);
+  $(state.current.updates.automatic ? "upd_yes" : "upd_no").checked = true;
+  $("upd_time").value = state.current.updates.time || "06:00";
   for (const k of ALERT_KEYS) if ($(k)) $(k).value = al[k] || "";
   if (!al.ntfy_topic && !al.email_to) $("ntfy_topic").value = randomTopic();
   if (al.email_to) $("emailbox").open = true;
@@ -223,7 +244,9 @@ function answers() {
     sensors: rows.map(r => ({id: r.id, name: r.name.trim() || (r.type === "Atlas" ? "Outside" : "")})),
     station: {name: $("name").value.trim(), latitude, longitude, elevation_ft: $("elev").value.trim()},
     forecast: $("forecast").checked && latitude !== "",
+    online: $("online").checked,
     alerts,
+    updates: {automatic: $("upd_yes").checked, time: $("upd_time").value.trim() || "06:00"},
   };
 }
 
@@ -248,7 +271,9 @@ $("test").onclick = async () => {
 $("save").onclick = async () => {
   try {
     const a = answers();
-    if (!a.sensors.length) throw new Error("No sensors to save yet. Find the hub first (step 1).");
+    if (a.online && a.station.latitude === "") throw new Error("The internet's weather needs the location (step 3).");
+    if (!a.sensors.length && !a.online)
+      throw new Error("No sensors to save yet. Find the hub first (step 1), or tick the internet's weather (step 3).");
     $("save").disabled = true;
     say("status", "Saving…");
     const r = await post(a);

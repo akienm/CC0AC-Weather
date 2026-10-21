@@ -161,7 +161,8 @@ def apply_setup(text: str, answers: dict) -> str:
 
     answers: {"sensors": [{"id", "name"}, ...] in display order,
               "station": {"name", "latitude", "longitude", "elevation_ft"},
-              "forecast": bool, "alerts": {"ntfy_topic", "email_to", ...}}"""
+              "forecast": bool, "online": bool, "alerts": {"ntfy_topic", "email_to", ...},
+              "updates": {"automatic": bool, "time": "HH:MM"}}"""
     sensors = [s for s in answers.get("sensors", []) if str(s.get("id", "")).strip()]
     for s in sensors:
         if not re.fullmatch(r"[0-9A-Za-z]{1,16}", str(s["id"]).strip()):
@@ -183,6 +184,16 @@ def apply_setup(text: str, answers: dict) -> str:
     text = set_values(text, "station", values)
     if "forecast" in answers:
         text = set_values(text, "forecast", {"enabled": "true" if answers["forecast"] else "false"})
+    if "online" in answers:
+        text = set_values(text, "online", {"enabled": "true" if answers["online"] else "false"})
+    updates = answers.get("updates")
+    if updates is not None:
+        when = str(updates.get("time") or "06:00").strip()
+        m = re.fullmatch(r"([01]?\d|2[0-3]):([0-5]\d)", when)
+        if not m:
+            raise ValueError(f"not a time of day: {when!r}")
+        text = set_values(text, "updates", {"automatic": "yes" if updates.get("automatic", True) else "no",
+                                            "time": f"{int(m[1]):02d}:{m[2]}"})
     alerts = answers.get("alerts")
     if alerts is not None:
         keep = {k: _one_line(alerts.get(k)) or None for k in ALERT_KEYS if k in alerts}
@@ -206,7 +217,9 @@ def _one_line(v) -> str:
 
 
 def needs_setup(cfg: configparser.ConfigParser) -> bool:
-    """No sensor named yet: the first visit from home goes to /setup."""
+    """No sensor named yet, and no internet weather: the first visit from home goes to /setup."""
+    if cfg.getboolean("online", "enabled", fallback=False):
+        return False
     return not (cfg.has_section("sensors") and list(cfg["sensors"]))
 
 
@@ -217,10 +230,16 @@ def setup_state(cfg: configparser.ConfigParser, leases: Path = LEASES) -> dict:
         "sensor_order": dict(cfg["sensor_order"]) if cfg.has_section("sensor_order") else {},
         "station": {k: cfg.get("station", k, fallback="") for k in ("name", "latitude", "longitude", "elevation_ft")},
         "forecast": cfg.getboolean("forecast", "enabled", fallback=False),
+        "online": cfg.getboolean("online", "enabled", fallback=False),
+        "updates": {"automatic": cfg.getboolean("updates", "automatic", fallback=True),
+                    "time": cfg.get("updates", "time", fallback="06:00")},
         "alerts": {k: ("" if k == "smtp_password" else cfg.get("alerts", k, fallback="")) for k in ALERT_KEYS},
         "smtp_password_set": bool(cfg.get("alerts", "smtp_password", fallback="").strip()),
     }
-    return {"hub": find_hub(leases), "current": current}
+    hub_on = cfg.has_section("hub") and cfg.getboolean("hub", "enabled", fallback=True)
+    hub = find_hub(leases) if hub_on else {"found": False, "off": True, "sensors": [],
+                                           "why": "This computer doesn't take the hub's cable."}
+    return {"hub": hub, "current": current}
 
 
 if __name__ == "__main__":       # python3 wizard.py: what the setup page would find

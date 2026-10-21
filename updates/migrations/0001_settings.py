@@ -5,6 +5,7 @@ import subprocess
 import sys
 
 PLATFORMS = ("pi", "debian", "docker", "windows", "macos")
+GROUPS = ("plugdev", "systemd-journal")
 
 
 def apply(ctx):
@@ -12,6 +13,10 @@ def apply(ctx):
         if subprocess.run(["id", ctx.user], capture_output=True).returncode != 0:
             ctx.run(["useradd", "--system", "--home-dir", str(ctx.home), "--create-home",
                      "--shell", "/usr/sbin/nologin", ctx.user])
+        # plugdev opens the radio dongle; systemd-journal lets diagnostics read the service's log.
+        for group in GROUPS:
+            if subprocess.run(["getent", "group", group], capture_output=True).returncode == 0:
+                ctx.run(["usermod", "--append", "--groups", group, ctx.user])
     readings = ctx.home / ("AcuRite" if ctx.platform in ("pi", "debian") else "readings")
     for d in (ctx.home, ctx.config.parent, readings):
         d.mkdir(parents=True, exist_ok=True)
