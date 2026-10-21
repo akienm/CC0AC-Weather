@@ -89,12 +89,40 @@ free ntfy app) or an email when readings stop, and another when they're back.
 To hear about the Pi itself losing power, add a free healthchecks.io check on
 the same page.
 
-**Already have a Pi running Raspberry Pi OS?** One command does the same setup
-on it (it takes over the Pi's network port for the hub):
+## Other computers: one command
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/akienm/CC0AC-Weather/main/setup/install-pi.sh | sudo bash
-```
+Every installer below sets up the same program and then hands it to a small
+boot loader that starts it and keeps it patched
+([UPDATES.md](UPDATES.md)). Each is safe to run again. When it finishes it
+prints an address: open it and answer the setup page.
+
+| Computer | Run this | Notes |
+|---|---|---|
+| **A Pi already running Raspberry Pi OS** | `curl -fsSL https://raw.githubusercontent.com/akienm/CC0AC-Weather/main/setup/install.sh \| sudo bash` | Takes over the Pi's network port for the hub, unless the Pi itself is plugged into your router there (`--no-hub-network` to be sure) |
+| **Debian or Ubuntu** | the same line | Leaves the network alone; `--hub-network` to give eth0 to the hub |
+| **Mac** | the same line **without** `sudo` | Needs Python 3 from python.org or Homebrew; runs while you're logged in. Untested: no Mac to test on |
+| **Windows 10/11** | in PowerShell: `irm https://raw.githubusercontent.com/akienm/CC0AC-Weather/main/setup/install.ps1 \| iex` | Installs Python if it's missing; starts when you log on. Untested |
+| **Docker** (anything) | `cd setup/docker && docker compose up -d` in a copy of this project | Readings and settings in the volume `cc0ac-weather-data`. Untested |
+
+Only a Pi or a Debian machine with a spare network port can take the hub's
+cable. Everything else uses the radio dongle, a console upload from another
+brand, or the **internet's weather** (no station at all: `[online]` in the
+settings, see [UPDATES.md](UPDATES.md)).
+
+From a copy of the project, add `--source .` (Windows: `-Source .`) to install
+that copy instead of downloading the newest release. The old
+`setup/install-pi.sh` still works and runs `install.sh`.
+
+## Looked after for you
+
+- **Updates.** Setup asks one question: install security fixes and small
+  repairs by itself, or leave it alone. Each new version is tried and rolled
+  back if it doesn't work. [UPDATES.md](UPDATES.md) has the details.
+- **Disks.** Once a day it asks each disk about its own health (SMART) and
+  says so on the dashboard, and by phone alert, when one is failing.
+- **Backup.** Once a week, if you name a folder or a Windows share
+  (`\\server\share\folder`) in setup, it copies the settings and every reading
+  there and keeps the newest 8.
 
 **Want a helper?** If you use Claude Code or another AI coding assistant on the
 Pi, point it at [SETUP-FOR-CLAUDE.md](SETUP-FOR-CLAUDE.md).
@@ -324,6 +352,12 @@ address in your browser. Or add a third part, `Label | URL | Target=wu`, and the
 button opens its page in a browser window of that name instead, where logging
 in works as usual; pressing it again reuses that window. `Target=_blank` opens
 a new tab every time.
+
+**The pictures are emoji.** Every icon on the dashboard (sky, moon phase, wind,
+the buttons) is an emoji character, not an image, so it looks like whatever
+your phone, tablet or computer draws for that emoji. The same page looks a bit
+different on an iPhone, an Android phone and Windows, and a very old device may
+show an empty box where its fonts have no such emoji.
 
 Set `[station] latitude` and `longitude` (and optionally `elevation_ft`) and a
 Sun & moon card appears: sunrise, sunset, daylight and the moon phase, computed
@@ -607,7 +641,12 @@ See [kiosk/README.md](kiosk/README.md) for the options and how to build it.
 | `setup.html` | The first-run setup page at `/setup` (your network only) |
 | `wizard.py` | Finds the hub, reads its page, writes the setup page's answers into the settings |
 | `alerts.py` | Sends a message when readings stop and when they're back (`--check`, `--test-alert`) |
-| `setup/install-pi.sh` | Sets up a Pi from scratch: packages, service, the hub's cable port, firewall |
+| `setup/install.sh` | Installs on a Pi, Debian, Ubuntu or a Mac (`install-pi.sh` is the old name and runs it) |
+| `setup/install.ps1` | Installs on Windows |
+| `setup/docker/` | The Docker image and `compose.yaml` |
+| `updates/bootloader.py` | The boot loader: installs, starts the station, updates and rolls back ([UPDATES.md](UPDATES.md)) |
+| `updates/migrations/` | The install steps, numbered, each for the platforms it names |
+| `upkeep.py` | The daily disk check and the weekly backup |
 | `setup/build-image.sh` | Builds the ready-made SD card image |
 | `SETUP-FOR-CLAUDE.md` | Setup notes for an AI assistant helping someone install it |
 | `theme.css` | Colors and font for every page |

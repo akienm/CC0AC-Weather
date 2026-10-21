@@ -94,11 +94,15 @@ back past it.
 
 | Platform | How to install | What runs it | Tested |
 |---|---|---|---|
-| Raspberry Pi (image) | flash the image | systemd | yes |
-| Raspberry Pi / Debian / Ubuntu | `curl … install.sh \| sudo bash` | systemd | yes |
+| Raspberry Pi (image) | flash the image | systemd | not yet with 1.2.0 |
+| Raspberry Pi / Debian / Ubuntu | `curl … setup/install.sh \| sudo bash` | systemd | not yet with 1.2.0 |
 | Docker | `docker compose up -d` in `setup/docker/` | the container | not yet |
-| Windows 10/11 | one PowerShell line | a scheduled task at logon | not yet |
-| macOS | `curl … install.sh \| bash` | launchd | **no Mac to test on** |
+| Windows 10/11 | `irm … setup/install.ps1 \| iex` in PowerShell | a scheduled task at logon | not yet |
+| macOS | `curl … setup/install.sh \| bash` (no sudo) | launchd | **no Mac to test on** |
+
+"Not yet with 1.2.0": the station itself has run on a Pi for months, and the
+boot loader's install, update and rollback have run in a test folder, but the
+installers themselves have not yet run end to end on a fresh machine.
 
 Only the Pi and Debian can take the AcuRite hub's cable. For that, the Pi
 becomes the hub's network: it runs DHCP and DNS for the hub, and passes the

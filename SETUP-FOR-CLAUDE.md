@@ -26,15 +26,16 @@ with itself. Nothing on the hub is changed, and no router settings are needed.
 2. Run the installer, as root:
 
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/akienm/CC0AC-Weather/main/setup/install-pi.sh | sudo bash
+   curl -fsSL https://raw.githubusercontent.com/akienm/CC0AC-Weather/main/setup/install.sh | sudo bash
    ```
 
    It is safe to run twice. It skips the network part if the Ethernet port was
-   already set up by hand; tell the person if that happens.
+   already set up by hand, or if the Pi reaches the house network through that
+   port; tell the person if that happens. Its log is
+   `/opt/cc0ac-weather/updates.log`.
 3. Ask them to plug the hub's cable into the Pi's Ethernet port (and to power
    the hub, if it isn't). Within a minute `cat /var/lib/misc/dnsmasq.leases`
-   shows the hub, and `python3 /opt/cc0ac-weather/wizard.py` prints what the
-   setup page will find.
+   shows the hub, and the setup page lists it.
 4. Send them to `http://<hostname>.local/` (or the Pi's Wi-Fi address) to
    answer the setup page: sensor names, location, alerts. You can't fill it in
    for them; the names are theirs.
@@ -42,12 +43,14 @@ with itself. Nothing on the hub is changed, and no router settings are needed.
 
 ## Where things are
 
-- Program: `/opt/cc0ac-weather` (a git clone; `sudo git -C /opt/cc0ac-weather pull`
-  then `sudo systemctl restart cc0ac-weather` to update).
+- Program: `/opt/cc0ac-weather`, the boot loader, with each version under
+  `versions/`. It updates itself if the person said yes in setup (UPDATES.md);
+  `sudo python3 /opt/cc0ac-weather/bootloader.py status` says which version runs.
+  Don't `git pull` there: it isn't a clone any more.
 - Settings: `/var/lib/cc0ac-weather/.cc0ac-weather/config.ini` (also editable in
   the browser at `/config.cgi`). Data: `/var/lib/cc0ac-weather/AcuRite/`.
-- Services: `cc0ac-weather` (the program), `cc0ac-weather-check.timer` (alerts),
-  `dnsmasq`, `nftables`.
+- Services: `cc0ac-weather` (the boot loader, which runs the program, the
+  alerts, the disk check and the backup), `dnsmasq`, `nftables`.
 
 ## If it doesn't work
 

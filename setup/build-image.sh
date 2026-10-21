@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build the ready-to-flash SD card image: Raspberry Pi OS Lite (64-bit) with
-# CC0AC-Weather installed by setup/install-pi.sh --image.
+# CC0AC-Weather installed by setup/install.sh --image.
 #
 #   sudo setup/build-image.sh [OUT_DIR]        # default OUT_DIR: ./image-build
 #
@@ -71,7 +71,7 @@ mv "$MNT/etc/resolv.conf" "$MNT/etc/resolv.conf.cc0ac-saved" 2>/dev/null || true
 cp -L /etc/resolv.conf "$MNT/etc/resolv.conf"
 git clone -q "$HERE" "$MNT/tmp/cc0ac-src"
 chroot "$MNT" /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/root \
-    bash /tmp/cc0ac-src/setup/install-pi.sh --image --source /tmp/cc0ac-src
+    bash /tmp/cc0ac-src/setup/install.sh --image --platform pi --source /tmp/cc0ac-src
 rm -rf "$MNT/tmp/cc0ac-src"
 chroot "$MNT" apt-get clean
 rm -f "$MNT/etc/resolv.conf"

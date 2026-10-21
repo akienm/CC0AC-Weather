@@ -1,0 +1,21 @@
+# CC0AC-Weather with Docker:   cd setup/docker && docker compose up -d
+# then open http://localhost:12345/setup (or this computer's address, port 12345).
+# Readings, settings and the versions live in the volume cc0ac-weather-data.
+services:
+  cc0ac-weather:
+    build:
+      context: ../..
+      dockerfile: setup/docker/Dockerfile
+    image: cc0ac-weather
+    restart: unless-stopped
+    stop_grace_period: 40s
+    ports:
+      - "12345:12345"   # dashboard and setup page
+      - "12346:12346"   # console uploads
+    volumes:
+      - cc0ac-weather-data:/data
+    # The radio dongle (rtl_433): uncomment to pass it in.
+    # devices:
+    #   - /dev/bus/usb:/dev/bus/usb
+volumes:
+  cc0ac-weather-data:
