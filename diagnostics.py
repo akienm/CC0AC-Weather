@@ -126,6 +126,8 @@ def bundle(cfg: configparser.ConfigParser, out_dir: Path | None = None) -> Path:
     if BOOT_ROOT is not None:
         parts["updates.log"] = _tail(BOOT_ROOT / "updates.log", 3000)
         parts["boot-state.json"] = _tail(BOOT_ROOT / "state.json", 200)
+        parts["disks.json"] = _tail(BOOT_ROOT / "disks.json", 200)
+    parts["backup.json"] = _tail(CONFIG_DIR / "backup.json", 50)
     write_path = Path(cfg.get("device", "write_path", fallback="~/AcuRite")).expanduser()
     try:
         # What the readings decoded to, with the sensors' names left out.

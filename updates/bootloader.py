@@ -442,6 +442,44 @@ def due(boot: Boot, now: datetime) -> str | None:
     return "all" if now.weekday() == boot.state["weekday"] else "security"
 
 
+def upkeep_due(boot: Boot, now: datetime) -> str | None:
+    """"disks", "disks+backup" (on the station's weekday) or None. Daily, half an hour after
+    the update time, so it never lands in a new version's trial; with updates off too."""
+    if boot.state.get("upkeep_day") == now.date().isoformat():
+        return None
+    _, when = policy(boot)
+    h, m = map(int, when.split(":"))
+    at = now.replace(hour=h, minute=0, second=0, microsecond=0) + timedelta(minutes=m + boot.state["jitter_min"] + 30)
+    if now < at:
+        return None
+    return "disks+backup" if now.weekday() == boot.state["weekday"] else "disks"
+
+
+def upkeep(boot: Boot, what: str) -> list[tuple[str, bool]]:
+    """Run upkeep.py from the current version: the disks as root, the backup as the station's
+    user (it owns the files). Returns (line, worked) per job; a version without it does nothing."""
+    script = boot.version_dir() / "upkeep.py"
+    if not script.exists():
+        return []
+    jobs = []
+    if "disks" in what:
+        jobs.append(("disks", [boot.settings["python"], str(script), "disks", "--out", str(boot.root / "disks.json")], None))
+    if "backup" in what and boot.cfg().get("backup", "path", fallback="").strip():
+        cmd = boot.as_station_user([boot.settings["python"], str(script), "backup", "--config", str(boot.config)])
+        jobs.append(("backup", cmd, boot.station_env()))
+    said = []
+    for name, cmd, env in jobs:
+        try:
+            out = subprocess.run(cmd, env=env, cwd=boot.version_dir(), capture_output=True, text=True, timeout=1800)
+            line = (out.stdout.strip() or out.stderr.strip()[-300:] or f"exit {out.returncode}")
+            worked = out.returncode == 0
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            line, worked = f"didn't run: {exc}", False
+        log.log(logging.INFO if worked else logging.WARNING, "Upkeep, %s: %s", name, line)
+        said.append((f"{name}: {line}", worked))
+    return said
+
+
 def switch(boot: Boot, station: Station | None, new: str, why: str, ran: list[str],
            wait_s: float = HEALTH_WAIT_S) -> bool:
     """Move the station to versions/<new>, prove it, and roll back if it doesn't prove itself."""
@@ -660,6 +698,11 @@ def run(boot: Boot) -> None:
             log.info("Asked by hand to check for updates (%s)", what)
             threading.Thread(target=_scheduled, args=(boot, station, what), daemon=True).start()
             continue
+        chore = upkeep_due(boot, datetime.now())
+        if chore and not boot.lock.locked():
+            boot.state["upkeep_day"] = date.today().isoformat()
+            boot.save()
+            threading.Thread(target=upkeep, args=(boot, chore), daemon=True).start()
         what = due(boot, datetime.now())
         if what and not boot.lock.locked():
             boot.state["last_check"] = date.today().isoformat()
@@ -702,7 +745,8 @@ def main(argv: list[str] | None = None) -> None:
                    help="Pi/Debian: leave the network port alone (no AcuRite hub on the cable)")
     i.add_argument("--then-run", action="store_true", help="Docker: install if needed, then run")
     for name, text in (("run", "the service"), ("update", "look for updates now"), ("status", "say what's installed"),
-                       ("diagnostics", "make the file to attach to a problem report")):
+                       ("diagnostics", "make the file to attach to a problem report"),
+                       ("backup", "back up now"), ("disks", "check the disks now")):
         s = sub.add_parser(name, help=text)
         s.add_argument("--root", default=str(here))
         if name == "update":
@@ -729,6 +773,13 @@ def main(argv: list[str] | None = None) -> None:
             print(f"Asked the running boot loader to check; see {root / 'updates.log'}")
         else:
             print(check_for_updates(boot, None, what))
+    elif args.cmd in ("backup", "disks"):
+        said = upkeep(boot, args.cmd)
+        if not said:
+            said = [("this version has no upkeep.py" if not (boot.version_dir() / "upkeep.py").exists()
+                     else "no [backup] path in config.ini", False)]
+        print("\n".join(line for line, _ in said))
+        sys.exit(0 if all(worked for _, worked in said) else 1)
     elif args.cmd == "diagnostics":
         out = subprocess.run(boot.station_cmd("--diagnostics"), env=boot.station_env(),
                              cwd=boot.version_dir(), capture_output=True, text=True)

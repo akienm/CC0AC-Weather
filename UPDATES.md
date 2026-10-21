@@ -129,3 +129,29 @@ weather gear at all becomes a weather display:
 Open-Meteo when it doesn't. The forecast works the same way (`[forecast] source`),
 so outside the US the hourly and 7-day cards come from Open-Meteo. Open-Meteo has
 no alerts, so the alert banner shows only in the US.
+
+## Looking after the computer: disks and a backup
+
+The boot loader also runs `upkeep.py` once a day, half an hour after the update
+time, whether or not updates are on:
+
+- **Disks, every day.** `smartctl` (smartmontools) asks each disk about its own
+  health. A disk that says it is failing, or has sectors moved to spares,
+  waiting to be moved, or unreadable (SMART 5, 197 and 198), or for NVMe a
+  critical warning or media errors, is a problem. An SD card has no SMART, so a
+  Pi on one reports nothing. Runs as root, because reading a disk's SMART needs
+  it; the result is `disks.json` beside the boot loader.
+- **Backup, once a week**, on the station's day, if `[backup] path` is set:
+  `config.ini`, a consistent copy of the readings database taken while the
+  station runs, and `history.csv`, in one file named
+  `cc0ac-weather-<computer>-<date>.tar.gz`. The newest `keep` (8) of this
+  computer's are kept and its older ones deleted; nothing else in the folder is
+  touched. The path is a folder, or a Windows share (`\\server\share\folder`):
+  on Linux and macOS the share is reached with `smbclient` using `[backup] user`
+  and `password`, which go to smbclient in a file only the station can read,
+  never on its command line; on Windows the share is used directly. The setup
+  page has a **Copy now** button.
+
+A problem shows as a line on the dashboard and goes out as one message by the
+same alerts as "no readings" ("needs looking after"), and one more when it is
+gone ("looked after"). By hand: `bootloader.py disks`, `bootloader.py backup`.

@@ -119,6 +119,18 @@ class ConfigEditing(unittest.TestCase):
         with self.assertRaises(ValueError):
             wizard.apply_setup(self.text, self.answers(updates={"automatic": True, "time": "25:00"}))
 
+    def test_the_backup_answer_keeps_a_saved_password(self):
+        once = wizard.apply_setup(self.text, self.answers(backup={"path": r"\\nas\b", "user": "me", "password": "pw%1", "keep": "8"}))
+        again = wizard.apply_setup(once, self.answers(backup={"path": r"\\nas\b", "user": "me", "password": "", "keep": "4"}))
+        cfg = configparser.ConfigParser()
+        cfg.read_string(again)
+        self.assertEqual((cfg.get("backup", "path"), cfg.get("backup", "password", raw=True), cfg.get("backup", "keep")),
+                         (r"\\nas\b", "pw%1", "4"))
+        self.assertTrue(wizard.setup_state(cfg, leases=Path("/nonexistent"))["current"]["backup"]["password_set"])
+        self.assertNotIn("pw%1", json.dumps(wizard.setup_state(cfg, leases=Path("/nonexistent"))))
+        with self.assertRaises(ValueError):
+            wizard.apply_setup(self.text, self.answers(backup={"path": "x", "keep": "lots"}))
+
     def test_no_hub_means_no_looking_for_one(self):
         cfg = configparser.ConfigParser()
         cfg.read_string(wizard.set_values(self.text, "hub", {"enabled": "false"}))

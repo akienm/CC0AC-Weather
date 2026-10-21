@@ -90,12 +90,14 @@
   #alerts .alert.severe { border-color: var(--warn); background: #300; }
   #alerts summary { cursor: pointer; font-weight: bold; }
   #alerts .text { white-space: pre-wrap; margin-top: 8px; color: var(--text); }
+  #warnings .warning { border: 1px solid #f90; color: #fc6; padding: 8px 14px; margin-bottom: 12px; }
 </style>
 <link rel="stylesheet" href="theme.css">
 </head>
 <body>
 <h1><span id="title">CC0AC Weather</span> <a class="charts" href="/charts.html">📈 Charts</a></h1>
 <div class="ts" id="written">waiting for data…</div>
+<div id="warnings"></div>
 <div id="alerts"></div>
 <div class="grid" id="grid">
   <div class="pane" id="p-outdoor"></div>
@@ -255,6 +257,13 @@ function observationRows(fc) {
       ${row('🌥️ Sky', o.sky || '—')}
       ${row('☁️ Clouds', clouds)}
       <div class="ts" style="grid-column: 1 / -1">visibility and clouds from ${where}; cloud heights are above the airport</div>`;
+}
+
+// The computer itself: a failing disk or a failed backup (upkeep.py).
+function renderWarnings(data) {
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[c]);
+  document.getElementById('warnings').innerHTML =
+    ((data && data.warnings) || []).map(w => `<div class="warning">🛠️ ${esc(w)}</div>`).join('');
 }
 
 function renderAlerts(fc) {
@@ -589,6 +598,8 @@ function drawForecast() {
                  skyCard(data.station, sk));
   const alerts = JSON.stringify(fc.alerts || []);
   if (drawn.alerts !== alerts) { drawn.alerts = alerts; renderAlerts(fc); }
+  const warnings = JSON.stringify((data && data.warnings) || []);
+  if (drawn.warnings !== warnings) { drawn.warnings = warnings; renderWarnings(data); }
 }
 
 // ── Loading ──────────────────────────────────────────────────────────────────

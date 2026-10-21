@@ -162,7 +162,8 @@ def apply_setup(text: str, answers: dict) -> str:
     answers: {"sensors": [{"id", "name"}, ...] in display order,
               "station": {"name", "latitude", "longitude", "elevation_ft"},
               "forecast": bool, "online": bool, "alerts": {"ntfy_topic", "email_to", ...},
-              "updates": {"automatic": bool, "time": "HH:MM"}}"""
+              "updates": {"automatic": bool, "time": "HH:MM"},
+              "backup": {"path", "user", "password", "keep"}}"""
     sensors = [s for s in answers.get("sensors", []) if str(s.get("id", "")).strip()]
     for s in sensors:
         if not re.fullmatch(r"[0-9A-Za-z]{1,16}", str(s["id"]).strip()):
@@ -194,6 +195,14 @@ def apply_setup(text: str, answers: dict) -> str:
             raise ValueError(f"not a time of day: {when!r}")
         text = set_values(text, "updates", {"automatic": "yes" if updates.get("automatic", True) else "no",
                                             "time": f"{int(m[1]):02d}:{m[2]}"})
+    backup = answers.get("backup")
+    if backup is not None:
+        keep = {k: _one_line(backup.get(k)) for k in ("path", "user", "password", "keep") if k in backup}
+        if not keep.get("password"):   # the page never shows it; blank means keep it
+            keep.pop("password", None)
+        if keep.get("keep", "") != "" and not re.fullmatch(r"\d{1,3}", keep["keep"]):
+            raise ValueError(f"not a number of backups: {keep['keep']!r}")
+        text = set_values(text, "backup", {k: v or "" for k, v in keep.items()})
     alerts = answers.get("alerts")
     if alerts is not None:
         keep = {k: _one_line(alerts.get(k)) or None for k in ALERT_KEYS if k in alerts}
@@ -235,6 +244,9 @@ def setup_state(cfg: configparser.ConfigParser, leases: Path = LEASES) -> dict:
                     "time": cfg.get("updates", "time", fallback="06:00")},
         "alerts": {k: ("" if k == "smtp_password" else cfg.get("alerts", k, fallback="")) for k in ALERT_KEYS},
         "smtp_password_set": bool(cfg.get("alerts", "smtp_password", fallback="").strip()),
+        "backup": {"path": cfg.get("backup", "path", fallback=""), "user": cfg.get("backup", "user", fallback=""),
+                   "keep": cfg.get("backup", "keep", fallback="8"),
+                   "password_set": bool(cfg.get("backup", "password", raw=True, fallback="").strip())},
     }
     hub_on = cfg.has_section("hub") and cfg.getboolean("hub", "enabled", fallback=True)
     hub = find_hub(leases) if hub_on else {"found": False, "off": True, "sensors": [],

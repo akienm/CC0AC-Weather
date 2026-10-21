@@ -135,14 +135,41 @@ def check(cfg: configparser.ConfigParser, write_path: Path, now: float | None = 
         problems = send(cfg, f"{name}: no readings",
                         f"No weather readings since {since} ({(now - newest) / 60:.0f} minutes). "
                         "Check that the hub has power and its cable is in the Pi, and that the Pi is on.")
-        state = {"alerted": not problems, "since": newest, "problems": problems}
+        state = {**state, "alerted": not problems, "since": newest, "problems": problems}
         did = "alerted" if not problems else "alert failed: " + "; ".join(problems)
     elif not stale and state.get("alerted"):
         gap = (newest - float(state.get("since") or newest)) / 60
         problems = send(cfg, f"{name}: readings are back",
                         f"Readings are coming in again (newest {since}; quiet for about {gap:.0f} minutes).")
-        state = {"alerted": False} if not problems else state
+        state = {**state, "alerted": False} if not problems else state
         did = "all clear sent" if not problems else "all-clear failed: " + "; ".join(problems)
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = state_path.with_name(state_path.name + ".tmp")
+    tmp.write_text(json.dumps(state))
+    tmp.replace(state_path)
+    return did
+
+
+def check_upkeep(cfg: configparser.ConfigParser, problems: list[str], state_path: Path = STATE_FILE) -> str:
+    """One message when a disk or backup problem appears or gets worse, one when they're all gone."""
+    if not cfg.getboolean("alerts", "enabled", fallback=False):
+        return "alerts off"
+    state = _load_state(state_path)
+    sent = state.get("upkeep", [])
+    name = cfg.get("station", "name", fallback="").strip() or "Weather station"
+    new = [p for p in problems if p not in sent]
+    if new:
+        trouble = send(cfg, f"{name}: needs looking after", "\n".join(new))
+        if trouble:
+            return "upkeep alert failed: " + "; ".join(trouble)
+        did = f"upkeep alerted ({len(new)})"
+    elif sent and not problems:
+        if send(cfg, f"{name}: looked after", "The disk and backup problems are gone."):
+            return "upkeep all-clear failed"
+        did = "upkeep all clear sent"
+    else:
+        did = "upkeep: " + ("same problems" if problems else "fine")
+    state["upkeep"] = problems
     state_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = state_path.with_name(state_path.name + ".tmp")
     tmp.write_text(json.dumps(state))

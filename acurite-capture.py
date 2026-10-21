@@ -56,6 +56,7 @@ from sources import FIELDS, OUTDOOR_TYPES, Reading
 from sources import acurite_access, online
 import alerts
 import diagnostics
+import upkeep
 import wizard
 
 log = logging.getLogger("acurite")
@@ -162,6 +163,7 @@ def _write_snapshot(write_path: Path, sensors: dict, page: dict | None, written:
     snapshot = {"written": written, "hub": hub,
                 **{k: v for k, v in (page or {}).items() if v},
                 **{k: v for k, v in _current_page.items() if v is not None},
+                "warnings": upkeep.problems(diagnostics.BOOT_ROOT),
                 "sensors": sorted(_current.values(),
                                   key=lambda e: display_order(sensors, e["sensor_id"], e["name"]))}
     body = json.dumps(snapshot, indent=1)
@@ -1047,6 +1049,16 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
                     problems.append("no ntfy topic or email address to send to")
                 self._answer(200 if not problems else 502, "Sent." if not problems else "Not sent: " + "; ".join(problems))
                 return None
+            if answers.get("backup_now"):
+                # To the place on the page, of the settings as saved now.
+                cfg = configparser.ConfigParser()
+                cfg.read_string(text)
+                result = upkeep.backup(cfg, config_path)
+                if result["ok"] is not None:
+                    upkeep.write_record(result)
+                self._answer(200 if result["ok"] else 502,
+                             f"Backed up: {result['file']}." if result["ok"] else f"Not backed up: {result['problem']}")
+                return None
             return text
 
         def _answer(self, code: int, message: str):
@@ -1225,6 +1237,7 @@ def main() -> None:
 
     if args.check:
         print(alerts.check(cfg, Path(cfg.get("device", "write_path")).expanduser()))
+        print(alerts.check_upkeep(cfg, upkeep.problems(diagnostics.BOOT_ROOT)))
     elif args.test_alert:
         problems = alerts.send(cfg, f"{_title(cfg)}: test", "A test message from the weather station.")
         print("Sent." if not problems else "Not sent: " + "; ".join(problems))

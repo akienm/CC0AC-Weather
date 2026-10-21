@@ -90,6 +90,19 @@ port = 12345
 automatic = yes
 time = 06:00
 
+[backup]
+; Once a week, at the update time, the settings, the readings database and
+; history.csv are copied to this place as one .tar.gz, and the newest `keep` are
+; kept. Blank: no backup. A folder (/mnt/nas/weather, D:\Backups\weather), or a
+; Windows share: \\server\share\folder. On Linux and macOS a share is reached
+; with smbclient using user and password (user may be DOMAIN\name; blank user:
+; no password). On Windows the share is used directly, as you are logged in.
+; The disks' health is checked every day whether or not this is set.
+path =
+user =
+password =
+keep = 8
+
 [buttons]
 ; A row of buttons in a pane at the bottom of the dashboard. Each loads its page
 ; into the pane: a radar map, a forecast, a webcam, anything that lets itself be

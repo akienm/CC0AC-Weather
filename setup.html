@@ -133,6 +133,23 @@
 </section>
 
 <section>
+  <h2><span class="n">6</span>A copy somewhere else</h2>
+  <p>Once a week, at the update time, the station can copy its settings and every reading to another computer or a
+     network drive, and keep the newest few. Leave this blank for no copy.</p>
+  <label for="bk_path">Copy to (a folder, or a share like <code>\\nas\backups\weather</code>)</label>
+  <input type="text" id="bk_path">
+  <details id="bkbox">
+    <summary>The share needs a login</summary>
+    <label for="bk_user">User (or DOMAIN\user)</label><input type="text" id="bk_user">
+    <label for="bk_password">Password</label><input type="password" id="bk_password" autocomplete="new-password">
+    <p class="help"><span id="bkpwset"></span></p>
+  </details>
+  <label for="bk_keep">Keep this many copies</label>
+  <input type="number" id="bk_keep" min="1" max="999" placeholder="8" style="max-width:120px">
+  <div class="row" style="margin-top:12px"><button id="backupnow">Copy now</button><span id="bkstatus"></span></div>
+</section>
+
+<section>
   <div class="row"><button class="main" id="save">Save</button><span id="status"></span></div>
   <p>Saving restarts the station, which takes a few seconds. Then the dashboard shows each sensor as its next reading
      comes in (the hub sends every five minutes).</p>
@@ -227,6 +244,12 @@ async function start(first) {
   if (al.email_to) $("emailbox").open = true;
   if (al.healthcheck_url) $("hcbox").open = true;
   if (state.current.smtp_password_set) $("pwset").textContent = "A password is saved; leave this blank to keep it.";
+  const bk = state.current.backup;
+  $("bk_path").value = bk.path || "";
+  $("bk_user").value = bk.user || "";
+  $("bk_keep").value = bk.keep || "8";
+  if (bk.user) $("bkbox").open = true;
+  if (bk.password_set) $("bkpwset").textContent = "A password is saved; leave this blank to keep it.";
 }
 
 function answers() {
@@ -247,6 +270,8 @@ function answers() {
     online: $("online").checked,
     alerts,
     updates: {automatic: $("upd_yes").checked, time: $("upd_time").value.trim() || "06:00"},
+    backup: {path: $("bk_path").value.trim(), user: $("bk_user").value.trim(),
+             password: $("bk_password").value, keep: $("bk_keep").value.trim() || "8"},
   };
 }
 
@@ -266,6 +291,15 @@ $("test").onclick = async () => {
     const r = await post({...answers(), test_alert: true});
     say("teststatus", r.text, !r.ok);
   } catch (e) { say("teststatus", e.message, true); }
+};
+
+$("backupnow").onclick = async () => {
+  try {
+    if (!$("bk_path").value.trim()) throw new Error("Say where to copy to first.");
+    say("bkstatus", "Copying…");
+    const r = await post({...answers(), backup_now: true});
+    say("bkstatus", r.text, !r.ok);
+  } catch (e) { say("bkstatus", e.message, true); }
 };
 
 $("save").onclick = async () => {
