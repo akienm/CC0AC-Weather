@@ -54,7 +54,7 @@ CONNECTION_TIMEOUT = 15  # seconds a client may stall before its connection is d
 
 
 def enabled(cfg: configparser.ConfigParser) -> bool:
-    return cfg.has_section("hub")
+    return cfg.has_section("hub") and cfg.getboolean("hub", "enabled", fallback=True)
 
 
 def _hub_value(v: str):
