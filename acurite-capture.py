@@ -134,10 +134,21 @@ def _seed_pressure(history: Path, now: float) -> None:
     """Load the last few hours of pressure from the tail of history.csv."""
     if not history.exists():
         return
-    with history.open("rb") as f:
-        f.seek(0, os.SEEK_END)
-        f.seek(max(0, f.tell() - 256 * 1024))
-        tail = f.read().decode("utf-8", errors="replace").splitlines()[1:]
+    # Read back until the tail reaches past the trend's window: with many sensors
+    # 256 KB is only an hour or two, and the trend would be blank that long.
+    size, chunk = history.stat().st_size, 256 * 1024
+    while True:
+        with history.open("rb") as f:
+            f.seek(max(0, size - chunk))
+            tail = f.read().decode("utf-8", errors="replace").splitlines()[1:]
+        first = next((r["timestamp"] for r in csv.DictReader(tail[:5], fieldnames=HISTORY_FIELDS)), None)
+        try:
+            covered = now - _epoch(first) > PRESSURE_TREND_S * 1.2
+        except (TypeError, ValueError):
+            covered = False
+        if covered or chunk >= size or chunk >= 64 * 1024 * 1024:
+            break
+        chunk *= 4
     for row in csv.DictReader(tail, fieldnames=HISTORY_FIELDS):
         try:
             t, p = _epoch(row["timestamp"]), float(row["pressure_inhg"])

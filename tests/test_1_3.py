@@ -358,5 +358,27 @@ class Import(unittest.TestCase):
                          (61.2, 30.05, 0.05, None))
 
 
+
+class PressureSeed(unittest.TestCase):
+    def test_a_long_tail_still_reaches_three_hours_back(self):
+        # Many sensors: far more than 256 KB written in the last 3 hours.
+        with tempfile.TemporaryDirectory() as d:
+            hist = Path(d) / "history.csv"
+            now = NOW
+            with hist.open("w", encoding="utf-8") as f:
+                f.write(",".join(capture.HISTORY_FIELDS) + "\n")
+                at = {k: i for i, k in enumerate(capture.HISTORY_FIELDS)}
+                for n in range(4 * 3600):              # a row a second for 4 hours
+                    t = now - 4 * 3600 + n
+                    row = [""] * len(capture.HISTORY_FIELDS)
+                    row[at["timestamp"]] = datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    row[at["sensor_id"]], row[at["type"]] = "00001234", "tower"
+                    row[at["pressure_inhg"]] = "30.10" if t < now - 2.5 * 3600 else "30.00"
+                    f.write(",".join(row) + "\n")
+            self.assertGreater(hist.stat().st_size, 512 * 1024)
+            capture._pressure.clear()
+            capture._seed_pressure(hist, now)
+            self.assertEqual(capture._pressure_change(now, 30.0), -0.1)
+
 if __name__ == "__main__":
     unittest.main()
