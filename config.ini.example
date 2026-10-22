@@ -81,6 +81,11 @@ port = 12345
 ; named like a shipped one (theme.css, weather.html, charts.html) replaces it, so
 ; copy theme.css here to change the colors. Updates never touch this folder.
 ; pages = ~/.cc0ac-weather/pages
+;
+; /mcp lets an AI assistant read the station (Claude, ChatGPT, anything that
+; speaks MCP, the Model Context Protocol): current readings, history, records,
+; the forecast. Read-only, and only for your own network, like /config.cgi.
+mcp = true
 
 [updates]
 ; Whether the station installs security fixes and small repairs by itself
@@ -214,6 +219,15 @@ source = auto
 ; them (sent in the User-Agent). A website or an email address.
 contact = github.com/akienm/CC0AC-Weather
 
+[climate]
+; Records (hottest, coldest, highest gust, wettest day; for the day, month, year
+; and all time) and how today compares with normal, written hourly to
+; climate.json and shown on the dashboard. Normals are the 1991-2020 averages
+; for [station] latitude and longitude: NOAA's from a weather station within 35
+; miles (US), else Open-Meteo's history for the spot. Fetched once, kept in
+; normals.json, refreshed twice a year. false = records only, nothing fetched.
+normals = true
+
 [online]
 ; Outdoor readings from the internet, for a house with no weather station (a
 ; spare tablet on the wall makes a weather display) or as a second opinion. Uses
@@ -256,6 +270,14 @@ quiet_minutes = 30
 ; which nothing on the Pi can report: pinged while readings come in, and
 ; <url>/fail when they stop. When the pings stop, the service tells you.
 ; healthcheck_url = https://hc-ping.com/your-check-id
+;
+; Weather alerts, sent the same ways: one message when it starts, one when it's
+; over. Any of: frost (outdoors at or below frost_f), heat (feels like at or
+; above heat_f), storm (the barometer falls pressure_drop_inhg in 3 hours).
+; weather = frost, heat, storm
+; frost_f = 35
+; heat_f = 105
+; pressure_drop_inhg = 0.06
 
 [console]
 ; A station console or WiFi gateway that can upload to a "custom server":

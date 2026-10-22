@@ -88,6 +88,8 @@ hub works exactly as before; nothing on it was changed.
 free ntfy app) or an email when readings stop, and another when they're back.
 To hear about the Pi itself losing power, add a free healthchecks.io check on
 the same page.
+It can also warn about the weather itself: frost, heat, and a falling
+barometer (see [Weather alerts](#weather-alerts)).
 
 ## Other computers: one command
 
@@ -390,6 +392,53 @@ and the server averages the readings into a few hundred points for whatever
 the period is: 5-minute averages for a day, daily ones across years. The charts
 use [uPlot](https://github.com/leeoniya/uPlot), loaded from jsDelivr.
 
+### Records and normals
+
+A Records card on the dashboard sets today against normal: the high and low
+beside the 1991-2020 normals for the date, and the month's rain so far beside
+the normal month-to-date. Below that come the station's records for this month,
+this year and all time: hottest, coldest, highest gust, wettest day and the
+pressure range, each with its date. Records count from the station's first
+reading here, or from older readings brought in with `--import` (see
+[Bringing in older readings](#bringing-in-older-readings)), and the card says
+since when.
+
+The normals need `[station] latitude` and `longitude`. In the US they are
+NOAA's official 1991-2020 daily normals from the nearest weather station within
+35 miles that has them (the card names it). Elsewhere, or with no such
+station, they are averages of Open-Meteo's history for the exact spot over the
+same 30 years. They are fetched once, kept in `normals.json` and refreshed
+twice a year; `[climate] normals = false` keeps records only and fetches
+nothing. Everything is rewritten hourly to `climate.json` and `climate.js`.
+
+### Barometer outlook
+
+The outdoor card has an **Outlook** row: a short forecast such as "Fine,
+becoming less settled" worked out on the spot, with no internet, from the
+barometer, its 3-hour trend, the wind direction and the season. This is the
+Zambretti forecaster, a dial for barometers from the 1910s. It is roughly
+right three times in four for the next 12 hours, and it is often less right
+than a real forecast. It appears once there are 3 hours of pressure readings,
+and south of the equator it reverses the wind and the seasons.
+
+### Putting the dashboard in another page
+
+`weather.html?embed` is the dashboard without the button pane and the charts
+link, made to sit in an `<iframe>` on another page: a home page, a Home
+Assistant dashboard (its Webpage card), a family wiki. Add `&panes=` to show
+only some cards, from `outdoor`, `hourly`, `daily`, `sky`, `rooms` and
+`climate`:
+
+```html
+<iframe src="http://THIS_BOX:12345/weather.html?embed&panes=outdoor,climate"
+        width="420" height="640" style="border:0"></iframe>
+```
+
+A page on the internet can frame it only through your router's port forward
+(see [The dashboard](#the-dashboard)), and then anyone can see what the
+dashboard shows, room temperatures included; `panes=` hides cards, it does not
+keep their readings private.
+
 ### Settings in the browser
 
 `http://THIS_BOX:12345/config.cgi` shows config.ini in one large pane, with
@@ -512,6 +561,48 @@ integration puts the sensors in Apple's Home app, and its Google Assistant and
 Alexa integrations (or Home Assistant Cloud) do the same for theirs. openHAB,
 Node-RED and Homebridge can read the MQTT topics directly.
 
+## Asking an AI assistant (MCP)
+
+The station speaks MCP, the Model Context Protocol, at `/mcp` on the dashboard's
+port. An AI assistant connected to it can read the station when you ask it
+things like "how cold did it get last night?", "is this October wetter than
+usual?" or "will I need a coat this afternoon?". Claude Code:
+
+    claude mcp add --transport http weather http://THIS_BOX:12345/mcp
+
+Any other program that speaks MCP over HTTP ("Streamable HTTP") takes the same
+address. Claude Desktop runs its MCP servers as programs, so give it the
+`mcp-remote` bridge in its `claude_desktop_config.json` (needs Node.js):
+
+```json
+{ "mcpServers": { "weather": { "command": "npx",
+    "args": ["mcp-remote", "http://THIS_BOX:12345/mcp", "--allow-http"] } } }
+```
+
+The assistant gets seven tools:
+
+| Tool | Reads |
+|---|---|
+| `current_conditions` | every sensor's latest readings, the 3-hour pressure change and the barometer outlook |
+| `list_sensors` | the sensors: id, name, type, outdoor or not, when last heard |
+| `forecast` | the forecast, alerts and nearest-airport observation, as on the dashboard |
+| `outlook` | the barometer outlook, and how it is worked out |
+| `records_and_normals` | today against normal, and the records, as on the Records card |
+| `history` | outdoor readings over a period or between two dates, plus room temperatures and rain totals |
+| `daily_summary` | per sensor, per day (or week, month, year): lows, highs, rain, gusts, pressure |
+
+It can only read: nothing an assistant asks for can change a setting or a
+reading. Like the settings page it answers only your own network, and a web
+page from another site cannot use your browser to read it.
+`[web] mcp = false` turns it off. An assistant that connects from the cloud
+(claude.ai's connectors, ChatGPT's) cannot reach a box on your home network,
+and is refused even through a port forward; one running on a computer in the
+house can.
+
+**Status:** checked 2026-10-21 by a test client over the network against this
+station's own data: the handshake, the tool list, and every tool answering.
+Not yet measured from Claude Desktop through mcp-remote.
+
 ## Weather networks
 
 Besides Weather Underground, readings can go to four more networks, each
@@ -533,6 +624,58 @@ A failed upload is logged with the network's reason.
 **Status:** the formats were checked 2026-10-21 against each network's live
 endpoint (each answers a wrong key with its own refusal) and, for CWOP, by an
 APRS parser; an accepted upload with a real account is not yet measured.
+
+## Weather alerts
+
+Besides telling you when readings stop, the station can warn about the
+weather, in the same ways (ntfy, email): one message when it starts and one
+when it's over. In `[alerts]`:
+
+```ini
+weather = frost, heat, storm
+frost_f = 35              ; outdoors at or below this
+heat_f = 105              ; feels-like at or above this
+pressure_drop_inhg = 0.06 ; the barometer falls this much in 3 hours
+```
+
+The station's own outdoor sensor is used when it has been heard lately, and an
+internet one (`[online]`) only when it hasn't. Each alert has a little room
+before it says "over" (2° for frost, 3° for heat, half the drop for a storm),
+so a reading hovering at the line doesn't send a message every few minutes.
+Checked on the same 5-minute timer as the readings-stopped alert.
+
+## Bringing in older readings
+
+Readings from before this station can be brought into `weather.db`, so the
+charts and records reach back further:
+
+```
+python3 acurite-capture.py --import ~/weewx.sdb           # a WeeWX database
+python3 acurite-capture.py --import export.csv            # a CSV file
+python3 acurite-capture.py --import wu --wu-station KXXMYTOWN12 \
+        --wu-api-key YOUR_KEY --from 2023-01-01           # Weather Underground
+```
+
+- **WeeWX:** its SQLite database, read without changing it, in any of WeeWX's
+  unit systems.
+- **CSV:** this program's own `history.csv` (each row keeps its sensor), a
+  Weather Underground table export, or most station software's exports. Columns
+  are recognised by their names (Temperature, Humidity, Wind Speed, Pressure,
+  Dewpoint and the like, with units such as "°F" in the cells allowed). Add
+  `--metric` when the numbers are °C, km/h, hPa and mm.
+- **Weather Underground:** your station's daily summaries, one day per request,
+  with the API key from your Weather Underground account (Member Settings → API
+  Keys). Give `--from` and optionally `--to` (default yesterday).
+
+Everything but your own `history.csv` goes to one sensor: `--sensor <ID>`, or
+else the first outdoor sensor heard here. Only readings from before that sensor's
+first reading of its own are taken, so nothing it measured is overwritten, and
+running the same import twice adds nothing the second time. Impossible values
+(a 150% humidity, a -9999 placeholder) are dropped. The charts show the new
+readings at once; the Records card counts them within the hour.
+
+**Status:** each format is checked by the tests on small sample files; not yet
+measured on a real WeeWX database or a real Weather Underground account.
 
 ## Radio capture (no hub)
 
@@ -673,12 +816,16 @@ See [kiosk/README.md](kiosk/README.md) for the options and how to build it.
 | `outputs/weathercloud.py` | Uploads the station to Weathercloud |
 | `outputs/cwop.py` | Sends the station to CWOP as an APRS weather packet |
 | `config.ini.example` | Configuration template, every option documented |
-| `weather.html` | Dashboard; reads `current.js` and `forecast.js` |
+| `weather.html` | Dashboard; reads `current.js`, `forecast.js` and `climate.js` |
 | `charts.html` | Charts over any period; reads `/history.json` |
 | `config.html` | The settings page served at `/config.cgi` (your network only) |
 | `setup.html` | The first-run setup page at `/setup` (your network only) |
 | `wizard.py` | Finds the hub, reads its page, writes the setup page's answers into the settings |
-| `alerts.py` | Sends a message when readings stop and when they're back (`--check`, `--test-alert`) |
+| `alerts.py` | Sends a message when readings stop and when they're back, and weather alerts (`--check`, `--test-alert`) |
+| `climate.py` | Records and the 1991-2020 normals: `climate.json` and the dashboard's Records card |
+| `zambretti.py` | The barometer outlook on the outdoor card |
+| `mcp_server.py` | The read-only MCP server at `/mcp`, for AI assistants |
+| `importer.py` | `--import`: older readings from WeeWX, CSV files or Weather Underground |
 | `setup/install.sh` | Installs on a Pi, Debian, Ubuntu or a Mac (`install-pi.sh` is the old name and runs it) |
 | `setup/install.ps1` | Installs on Windows |
 | `setup/docker/` | The Docker image and `compose.yaml` |

@@ -150,6 +150,103 @@ def check(cfg: configparser.ConfigParser, write_path: Path, now: float | None = 
     return did
 
 
+# ── Weather alerts ([alerts] weather) ─────────────────────────────────────────
+#
+# No thresholds to work out: frost, dangerous heat, and a barometer falling fast
+# (a storm on its way). Each sends one message when it starts and one when it is
+# over; "over" is a little past the threshold, so a value hovering at it doesn't
+# send a message every check.
+
+ONLINE_IDS = ("open-meteo", "nws-")    # sources/online.py: internet weather, not a station
+
+
+def _setting(cfg: configparser.ConfigParser, key: str, default: float) -> float:
+    try:
+        return float(_get(cfg, key, str(default)) or default)
+    except ValueError:
+        return default
+
+
+def weather_conditions(cfg: configparser.ConfigParser, snapshot: dict, now: float,
+                       was: dict | None = None) -> dict[str, str | None]:
+    """Each weather alert switched on → what is happening now, or None if it isn't.
+    was: which were on at the last check (they end a little past the threshold)."""
+    was = was or {}
+    wanted = {w.strip().lower() for w in _get(cfg, "weather").split(",") if w.strip()}
+    frost, heat = _setting(cfg, "frost_f", 35), _setting(cfg, "heat_f", 105)
+    drop = _setting(cfg, "pressure_drop_inhg", 0.06)
+    fresh = _setting(cfg, "quiet_minutes", DEFAULT_QUIET_MINUTES) * 60
+    outdoor = []
+    for s in snapshot.get("sensors", []):
+        try:
+            age = now - datetime.fromisoformat(s["updated"].replace("Z", "+00:00")).timestamp()
+        except (KeyError, AttributeError, ValueError):
+            continue
+        if s.get("type") in ("Atlas", "Iris", "5N1", "outdoor") and age <= fresh:
+            outdoor.append(s)
+    # A station's own sensors first; internet weather only for a house without one.
+    own = [s for s in outdoor if not str(s.get("sensor_id", "")).startswith(ONLINE_IDS)]
+    outdoor = own or outdoor
+    out: dict[str, str | None] = {}
+    if "frost" in wanted:
+        cold = [(s["fields"]["temp_f"], s["name"]) for s in outdoor
+                if isinstance(s["fields"].get("temp_f"), (int, float))]
+        t, name = min(cold) if cold else (None, "")
+        out["frost"] = (f"Frost risk: {t:.1f}°F at {name}." if t is not None
+                        and (t <= frost or (was.get("frost") and t <= frost + 2)) else None)
+    if "heat" in wanted:
+        hot = [(s["fields"]["feels_like_f"], s["name"]) for s in outdoor
+               if isinstance(s["fields"].get("feels_like_f"), (int, float))]
+        t, name = max(hot) if hot else (None, "")
+        out["heat"] = (f"Dangerous heat: feels like {t:.0f}°F at {name}." if t is not None
+                       and (t >= heat or (was.get("heat") and t >= heat - 3)) else None)
+    if "storm" in wanted:
+        change = snapshot.get("pressure_change_3h")
+        out["storm"] = (f"The barometer has fallen {-change:.2f} inHg in 3 hours: a storm may be coming."
+                        if isinstance(change, (int, float)) and (change <= -drop or (was.get("storm") and change <= -drop / 2))
+                        else None)
+    return out
+
+
+WEATHER_OVER = {"frost": "The frost risk is over.", "heat": "The dangerous heat is over.",
+                "storm": "The barometer has stopped falling fast."}
+
+
+def check_weather(cfg: configparser.ConfigParser, write_path: Path, now: float | None = None,
+                  state_path: Path = STATE_FILE) -> str:
+    """One message when frost, heat or a falling barometer starts, one when it's over."""
+    if not cfg.getboolean("alerts", "enabled", fallback=False) or not _get(cfg, "weather"):
+        return "weather alerts off"
+    now = time.time() if now is None else now
+    try:
+        snapshot = json.loads((write_path / "current.json").read_text())
+    except (OSError, ValueError):
+        return "weather: no current.json yet"
+    state = _load_state(state_path)
+    name = cfg.get("station", "name", fallback="").strip() or "Weather station"
+    sent = dict(state.get("weather") or {})
+    did = []
+    for kind, now_says in weather_conditions(cfg, snapshot, now, sent).items():
+        if now_says and not sent.get(kind):
+            message, title = now_says, f"{name}: {now_says.split(':')[0].lower()}"
+        elif not now_says and sent.get(kind):
+            message, title = WEATHER_OVER[kind], f"{name}: {kind} over"
+        else:
+            continue
+        problems = send(cfg, title, message)
+        if problems:
+            did.append(f"{kind} alert failed: " + "; ".join(problems))
+            continue
+        sent[kind] = bool(now_says)
+        did.append(f"{kind} {'alerted' if now_says else 'over'}")
+    state = {**_load_state(state_path), "weather": sent}
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = state_path.with_name(state_path.name + ".tmp")
+    tmp.write_text(json.dumps(state))
+    tmp.replace(state_path)
+    return "weather: " + (", ".join(did) or "nothing new")
+
+
 def check_upkeep(cfg: configparser.ConfigParser, problems: list[str], state_path: Path = STATE_FILE) -> str:
     """One message when a disk or backup problem appears or gets worse, one when they're all gone."""
     if not cfg.getboolean("alerts", "enabled", fallback=False):

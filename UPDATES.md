@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.2.1)
+# How CC0AC-Weather installs and keeps itself up to date (1.3.0)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -33,8 +33,9 @@ a plain archive, so it doesn't need git.
 
 1.2.0 added this installer and internet weather (below); 1.2.1, shipped before
 any station had installed 1.2.0, added Home Assistant and four weather networks.
-1.2.1 is the last release that adds features. After it there are only security
-fixes and small repairs.
+1.3.0 added weather alerts, records and normals, the barometer outlook, an
+embeddable dashboard, an MCP server for AI assistants, and `--import` for older
+readings. A house that answered Yes takes it at its weekly check.
 
 ## When it checks
 

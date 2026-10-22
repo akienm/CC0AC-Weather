@@ -41,8 +41,8 @@
   .big small { font-size: 18px; color: var(--muted); }
   .rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 4px 20px; margin-top: 10px; }
   .row { display: flex; justify-content: space-between; border-bottom: 1px dotted var(--border); padding: 2px 0; }
-  .row span:first-child { color: var(--muted); white-space: nowrap; margin-right: 12px; }
-  .row span:last-child { text-align: right; }
+  .row > span:first-child { color: var(--muted); white-space: nowrap; margin-right: 12px; }
+  .row > span:last-child { text-align: right; }
   .low { color: var(--warn); }
   .arrow { display: inline-block; font-size: 16px; line-height: 1; }
   .sky { display: flex; align-items: center; gap: 16px; }
@@ -91,6 +91,10 @@
   #alerts summary { cursor: pointer; font-weight: bold; }
   #alerts .text { white-space: pre-wrap; margin-top: 8px; color: var(--text); }
   #warnings .warning { border: 1px solid #f90; color: #fc6; padding: 8px 14px; margin-bottom: 12px; }
+  .above { color: #f96; } .below { color: #6cf; }
+  /* weather.html?embed, for an iframe on another page: no lower pane, no charts link. */
+  .embed .lower, .embed h1 a.charts { display: none !important; }
+  .embed body { padding: 8px; }
 </style>
 <link rel="stylesheet" href="theme.css">
 </head>
@@ -105,6 +109,7 @@
   <div class="pane" id="p-daily"></div>
   <div class="pane" id="p-sky"></div>
   <div class="pane" id="p-rooms"></div>
+  <div class="pane" id="p-climate"></div>
 </div>
 <div id="error"></div>
 
@@ -152,6 +157,7 @@ const FORECAST_POLL_SECONDS = 600;    // the program fetches alerts every 10 min
 const CARDINALS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
 const card = d => CARDINALS[Math.round(Number(d) / 22.5) % 16];
 const num = (v, places = 1) => v == null || v === '' ? '—' : Number(v).toFixed(places);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[c]);
 const clock = d => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
 // ── Forecast, airport observation and alerts: forecast.js (window.ACURITE_FORECAST),
@@ -261,7 +267,6 @@ function observationRows(fc) {
 
 // The computer itself: a failing disk or a failed backup (upkeep.py).
 function renderWarnings(data) {
-  const esc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[c]);
   document.getElementById('warnings').innerHTML =
     ((data && data.warnings) || []).map(w => `<div class="warning">🛠️ ${esc(w)}</div>`).join('');
 }
@@ -453,6 +458,9 @@ const OUTDOOR_ROWS = {
   wind:        f => row('💨 Wind', wind(f)),
   gust:        f => row('🌬️ Gust', num(f.wind_gust_mph) + ' mph'),
   pressure:    (f, data) => row('⏲️ Pressure', num(f.pressure_inhg, 2) + ' inHg' + trend(data.pressure_change_3h)),
+  // Zambretti, worked out from the barometer alone (zambretti.py); shown once there are 3 hours of trend.
+  outlook:     (f, data) => f.pressure_inhg == null || !data.zambretti ? ''
+                 : row('🔮 Outlook', esc(data.zambretti)),
   rain_today:  f => row('☔ Rain today', num(f.rain_day_in, 2) + ' in'),
   rain_rate:   f => row('🌧️ Rain rate', num(f.rain_hour_in, 2) + ' in/h'),
   uv:          f => row('🔆 UV index', uvLevel(f.uv_index)),
@@ -602,7 +610,75 @@ function drawForecast() {
   if (drawn.warnings !== warnings) { drawn.warnings = warnings; renderWarnings(data); }
 }
 
+// ── Records and normals: climate.js (window.ACURITE_CLIMATE), from climate.py ─
+
+const shortDay = d => new Date(d + 'T12:00').toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+
+// How far a value is from the normal, coloured warm or cool.
+function vsNormal(value, normal, places = 0, unit = '°') {
+  if (value == null || normal == null) return '';
+  const d = Number(value) - Number(normal);
+  const cls = Math.abs(d) < 0.5 * 10 ** -places ? '' : d > 0 ? 'above' : 'below';
+  return ` · normal ${num(normal, places)}${unit} <span class="${cls}">(${d >= 0 ? '+' : ''}${d.toFixed(places)})</span>`;
+}
+
+function recordText(r, places = 1, unit = '°') {
+  return r ? `${num(r.value, places)}${unit} <span class="ts">${shortDay(r.day)}</span>` : '—';
+}
+
+// Hottest and coldest this month, this year and ever; a longer period's record
+// that is the same day as a shorter one's is left out (a young station has one).
+function extremes(r) {
+  const out = [];
+  for (const [key, icon, word] of [['hottest', '🔥', 'Hottest'], ['coldest', '🧊', 'Coldest']]) {
+    let shown = null;
+    for (const [period, label] of [['month', 'this month'], ['year', 'this year'], ['all', 'ever']]) {
+      const rec = r[period]?.[key];
+      if (!rec || (shown && rec.day === shown.day && rec.value === shown.value)) continue;
+      out.push(row(`${icon} ${word} ${label}`, recordText(rec)));
+      shown = rec;
+    }
+  }
+  return out.join('');
+}
+
+function climateCard(cl) {
+  // The station's own sensor; internet weather only when there is none.
+  const all = (cl && cl.sensors) || [];
+  const s = all.find(x => !/^(open-meteo|nws-)/.test(x.id)) || all[0];
+  if (!s) return '';
+  const n = cl.normal || {}, r = s.records || {};
+  const where = n.source ? (n.station ? `${n.source}, ${esc(n.station)} (${n.miles} mi)` : n.source) : '';
+  return `<div class="card outdoor">
+    <div class="name"><span>📊 Records &amp; normals · ${esc(s.name)}</span></div>
+    <div class="rows">
+      ${row('🔺 High today', num(s.high) + '°' + vsNormal(s.high, n.high))}
+      ${row('🔻 Low today', num(s.low) + '°' + vsNormal(s.low, n.low))}
+      ${row('☔ Rain this month', num(s.month_rain, 2) + (n.rain_mtd == null ? ' in' : '') + vsNormal(s.month_rain ?? 0, n.rain_mtd, 2, ' in'))}
+      ${extremes(r)}
+      ${row('🌬️ Highest gust', recordText(r.all?.highest_gust, 0, ' mph'))}
+      ${row('🌧️ Wettest day', recordText(r.all?.wettest_day, 2, ' in'))}
+      ${row('⏲️ Pressure range', r.all?.lowest_pressure ? `${num(r.all.lowest_pressure.value, 2)} – ${num(r.all.highest_pressure.value, 2)} inHg` : '—')}
+    </div>
+    <div class="ts" style="margin-top:8px">records since ${s.since ? shortDay(s.since) : '—'}${where ? ' · ' + where : ''}</div>
+  </div>`;
+}
+
+function drawClimate() {
+  const cl = window.ACURITE_CLIMATE;
+  pane('p-climate', JSON.stringify(cl || null), climateCard(cl));
+}
+
 // ── Loading ──────────────────────────────────────────────────────────────────
+
+// weather.html?embed: for an iframe on another page. ?panes=outdoor,daily shows
+// only those panes (outdoor, hourly, daily, sky, rooms, climate).
+const QUERY = new URLSearchParams(location.search);
+if (QUERY.has('embed')) document.documentElement.classList.add('embed');
+if (QUERY.get('panes')) {
+  const keep = QUERY.get('panes').split(',').map(p => 'p-' + p.trim());
+  for (const p of document.querySelectorAll('#grid .pane')) if (!keep.includes(p.id)) p.style.display = 'none';
+}
 
 function loadScript(id, src, onload, onerror) {
   const old = document.getElementById(id);
@@ -647,6 +723,8 @@ function loadCurrent() {
 
 // Missing forecast.js is fine: the forecast panes stay away.
 const loadForecast = () => loadScript('forecast', 'forecast.js', drawForecast);
+// Missing climate.js is fine too; it is rewritten hourly.
+const loadClimate = () => loadScript('climate', 'climate.js', drawClimate);
 
 // Stale readings first try a full reload, which also clears a stuck timer or a page
 // left running across an update. Only when current.js still loads (a reload while the
@@ -660,12 +738,14 @@ function reloadIfStale() {
 
 // A phone that slept, or a tab left in the background, catches up when looked at.
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') { loadCurrent(); loadForecast(); }
+  if (document.visibilityState === 'visible') { loadCurrent(); loadForecast(); loadClimate(); }
 });
 
 loadCurrent();
 loadForecast();
+loadClimate();
 setInterval(loadForecast, FORECAST_POLL_SECONDS * 1000);
+setInterval(loadClimate, FORECAST_POLL_SECONDS * 1000);
 setInterval(() => { tickAges(); drawForecast(); reloadIfStale(); }, 60 * 1000);
 </script>
 </body>

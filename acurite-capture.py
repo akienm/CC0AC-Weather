@@ -52,12 +52,16 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from sources import FIELDS, OUTDOOR_TYPES, Reading
+from sources import FIELDS, OUTDOOR_TYPES, Reading, derive
 from sources import acurite_access, online
 import alerts
+import climate
 import diagnostics
+import importer
+import mcp_server
 import upkeep
 import wizard
+import zambretti
 
 log = logging.getLogger("acurite")
 
@@ -217,6 +221,13 @@ def record_reading(reading: Reading, write_path: Path, sensors: dict, page: dict
         entry["type"] = kind
         entry["updated"] = now
         entry["fields"].update(fields)
+        if isinstance(fields.get("pressure_inhg"), (int, float)):
+            # Wind under 1 mph has no direction worth counting.
+            calm = not (entry["fields"].get("wind_mph") or 0) >= 1
+            _current_page["zambretti"] = zambretti.outlook(
+                float(fields["pressure_inhg"]), _current_page.get("pressure_change_3h"),
+                datetime.now().month, None if calm else entry["fields"].get("wind_dir_deg"),
+                ((page or {}).get("station") or {}).get("latitude", 0) >= 0)
         _write_snapshot(write_path, sensors, page, now, reading.receiver or "")
         history = write_path / "history.csv"
         exists = history.exists()
@@ -305,6 +316,73 @@ def import_raw(cfg: configparser.ConfigParser) -> None:
     print(f"{days} days summed up; ", end="")
     print(f"{added} readings added, {skipped} already stored, {other} other requests left out; "
           f"{total} readings in {_db_path(cfg)}")
+
+
+def import_history(cfg: configparser.ConfigParser, args: argparse.Namespace) -> None:
+    """--import: readings from before this station (importer.py)."""
+    con = open_db(_db_path(cfg))
+    what = args.import_from
+    if what.lower() == "wu":
+        station = args.wu_station or cfg.get("weather_underground", "station_id", fallback="").strip()
+        if not station or not args.wu_api_key or not args.date_from:
+            sys.exit("--import wu needs --wu-station (or [weather_underground] station_id), --wu-api-key and --from")
+        start = datetime.strptime(args.date_from, "%Y-%m-%d").date()
+        end = (datetime.strptime(args.date_to, "%Y-%m-%d").date() if args.date_to
+               else datetime.fromordinal(datetime.now().toordinal() - 1).date())
+        kind, rows = "wu", importer.rows_wu(station, args.wu_api_key, start, end)
+    else:
+        path = Path(what).expanduser()
+        if not path.is_file():
+            sys.exit(f"{path} not found")
+        if path.suffix.lower() in (".sdb", ".db", ".sqlite"):
+            kind, rows = "weewx", importer.rows_weewx(path)
+        else:
+            kind, rows = "csv", importer.rows_csv(path, args.metric)
+    # The sensor it all belongs to: named, or the first outdoor one heard here.
+    target = args.sensor
+    if target is None:
+        found = con.execute(f"SELECT sensor_id FROM readings WHERE type IN {OUTDOOR} AND query NOT LIKE 'import:%' "
+                            "AND sensor_id NOT LIKE 'open-meteo%' AND sensor_id NOT LIKE 'nws-%' "
+                            "ORDER BY received_utc LIMIT 1").fetchone()
+        target = found[0] if found else "imported"
+    target_type = con.execute("SELECT max(type) FROM readings WHERE sensor_id = ?", [target]).fetchone()[0] or "outdoor"
+    first_live: dict[str, float | None] = {}
+
+    def cutoff(sid: str) -> float | None:
+        if sid not in first_live:
+            t = con.execute("SELECT min(received_utc) FROM readings WHERE sensor_id = ? "
+                            "AND query NOT LIKE 'import:%'", [sid]).fetchone()[0]
+            first_live[sid] = _epoch(t) if t else None
+        return first_live[sid]
+
+    added = same = later = empty = 0
+    into: set[str] = set()
+    try:
+        for row in rows:
+            sid = row.get("sensor") if args.sensor is None and row.get("sensor") else target
+            kind_of = (row.get("type") if sid == row.get("sensor") else None) or target_type
+            limit = cutoff(sid)
+            if limit is not None and row["epoch"] >= limit:
+                later += 1
+                continue
+            fields = importer.clean(row["fields"])
+            if not fields:
+                empty += 1
+                continue
+            when = _iso(row["epoch"])
+            reading = Reading(source=f"import-{kind}", sensor_id=sid, type=kind_of, received_utc=when,
+                              raw=f"import:{kind}:{sid}:{when}", fields=derive(fields), receiver="import")
+            into.add(sid)
+            if store_reading(con, reading):
+                added += 1
+            else:
+                same += 1
+    except (ValueError, OSError, sqlite3.Error) as e:
+        sys.exit(f"Import stopped: {e} ({added} readings added before it)")
+    days = roll_up(con, time.time(), rebuild=True)
+    print(f"{added} readings added (sensor {', '.join(sorted(into)) or target}), "
+          f"{same} already there, {later} left out as newer than the station's own readings, "
+          f"{empty} with nothing usable; {days} days summed up. The records card counts them within the hour.")
 
 
 def _db_path(cfg: configparser.ConfigParser) -> Path:
@@ -819,6 +897,7 @@ PAGE_TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "a
 PAGE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 DATA_FILES = {"/current.js": "application/javascript", "/current.json": "application/json",
               "/forecast.js": "application/javascript", "/forecast.json": "application/json",
+              "/climate.js": "application/javascript", "/climate.json": "application/json",
               "/history.csv": "text/csv"}
 
 
@@ -826,7 +905,7 @@ DATA_FILES = {"/current.js": "application/javascript", "/current.json": "applica
 # dashboard and the charts are served, with what those two pages load; everything
 # else answers 404. Your own network gets every page, the data files and /config.cgi.
 OUTSIDE_PATHS = {"/", "/weather.html", "/charts.html", "/theme.css",
-                 "/current.js", "/forecast.js", "/history.json"}
+                 "/current.js", "/forecast.js", "/climate.js", "/history.json"}
 
 # /config.cgi edits config.ini in the browser: one pane, Save and Revert. It is
 # answered only for addresses on your own network (and this machine); a request
@@ -913,8 +992,28 @@ def _find_page(name: str, own_dir: Path | None, page_dir: Path) -> Path | None:
 
 def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: dict | None = None,
                       own_dir: Path | None = None, title: str = DEFAULT_TITLE,
-                      config_path: Path | None = None):
+                      config_path: Path | None = None, mcp: bool = True):
     page_dir = Path(__file__).resolve().parent
+
+    def read_data(name: str) -> dict | None:
+        try:
+            return json.loads((write_path / name).read_text())
+        except (OSError, ValueError):
+            return None
+
+    def query(answer):
+        def run(q: dict) -> dict:
+            if db_path is None or not db_path.exists():
+                raise ValueError("no readings stored yet")
+            return answer(db_path, sensors or {}, q)
+        return run
+
+    try:
+        version = (page_dir / "VERSION").read_text().strip()
+    except OSError:
+        version = "unknown"
+    mcp_server_ = mcp_server.Server(mcp_server.Station(read_data, query(history), query(summaries)),
+                                    version) if mcp else None
 
     class WebHandler(BaseHTTPRequestHandler):
         # A visitor that connects and then says nothing would hold its thread forever.
@@ -930,6 +1029,13 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
                 return
             if path == "/config.cgi":
                 self._config_page(dict(urllib.parse.parse_qsl(url.query)))
+                return
+            if path == "/mcp" and mcp_server_ is not None:
+                # No server-sent stream to open: every answer comes back on its POST.
+                self.send_response(405)
+                self.send_header("Allow", "POST")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
                 return
             if path in ("/setup", "/setup.json"):
                 self._setup_page(path)
@@ -993,6 +1099,9 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
 
         def do_POST(self):
             target = urllib.parse.urlparse(self.path).path
+            if target == "/mcp" and mcp_server_ is not None:
+                self._mcp()
+                return
             if target not in ("/config.cgi", "/setup.cgi"):
                 self.send_error(404)
                 return
@@ -1061,6 +1170,32 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
                 return None
             return text
 
+        def _mcp(self):
+            """/mcp (mcp_server.py): your own network only; a page from another
+            site, which a browser marks with its Origin, is refused."""
+            origin = self.headers.get("Origin")
+            if not _local_client(self.client_address[0]) or (
+                    origin and not _local_host(urllib.parse.urlparse(origin).netloc)):
+                self.send_error(403 if origin else 404)
+                return
+            length = int(self.headers.get("Content-Length") or 0)
+            if not 0 < length <= CONFIG_MAX_BYTES:
+                self.send_error(400, "Empty or too big")
+                return
+            code, reply = mcp_server_.handle(self.rfile.read(length))
+            if reply is None:
+                self.send_response(code)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            body = json.dumps(reply, separators=(",", ":")).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(body)
+
         def _answer(self, code: int, message: str):
             body = message.encode()
             self.send_response(code)
@@ -1103,7 +1238,8 @@ def run_web_server(cfg: configparser.ConfigParser, write_path: Path, config_path
     own_dir = Path(own).expanduser() if own else None
     if own_dir is not None and not own_dir.is_dir():
         log.warning("[web] pages folder %s not found; serving the shipped pages only", own_dir)
-    handler = _make_web_handler(write_path, _db_path(cfg), sensor_map(cfg), own_dir, _title(cfg), config_path)
+    handler = _make_web_handler(write_path, _db_path(cfg), sensor_map(cfg), own_dir, _title(cfg), config_path,
+                                cfg.getboolean("web", "mcp", fallback=True))
     # The stock queue holds 5 waiting connections; a phone opening a page plus its charts
     # can briefly be more than that, and the kernel then logs it as a SYN flood.
     ThreadingHTTPServer.request_queue_size = 64
@@ -1178,6 +1314,14 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
     if cfg.getboolean("forecast", "enabled", fallback=False):
         threading.Thread(target=run_forecast, args=(cfg, write_path), daemon=True).start()
 
+    # Records and normals: climate.json every hour (climate.py).
+    def outdoor_days() -> list[dict]:
+        return [{"id": e["id"], "name": e["name"], "days": e["days"]}
+                for e in summaries(db_path, sensors, {"days": "1000000"})["sensors"] if e["outdoor"]]
+    where = _station(cfg) if cfg.getboolean("climate", "normals", fallback=True) else {}
+    threading.Thread(target=climate.run, args=(where.get("latitude"), where.get("longitude"), write_path,
+                                               outdoor_days), daemon=True, name="climate").start()
+
     source_threads = []
     for source in load_sources():
         if source.enabled(cfg):
@@ -1219,6 +1363,16 @@ def main() -> None:
         help="Load every reading in the raw hub logs into the database and exit (safe to re-run)",
     )
     parser.add_argument(
+        "--import", dest="import_from", metavar="FILE|wu",
+        help="Add older weather: a WeeWX .sdb, a CSV file, or wu (Weather Underground); see importer.py",
+    )
+    parser.add_argument("--sensor", help="With --import: the sensor id it belongs to (default: the first outdoor one)")
+    parser.add_argument("--metric", action="store_true", help="With --import of a CSV: °C, km/h, hPa and mm")
+    parser.add_argument("--wu-station", help="With --import wu: the station ID (default: [weather_underground])")
+    parser.add_argument("--wu-api-key", help="With --import wu: your Weather Underground API key")
+    parser.add_argument("--from", dest="date_from", metavar="YYYY-MM-DD", help="With --import wu: the first day")
+    parser.add_argument("--to", dest="date_to", metavar="YYYY-MM-DD", help="With --import wu: the last day (default: yesterday)")
+    parser.add_argument(
         "--check", action="store_true",
         help="Alert if no reading has come in for [alerts] quiet_minutes, or that they're back; for a timer",
     )
@@ -1237,6 +1391,7 @@ def main() -> None:
 
     if args.check:
         print(alerts.check(cfg, Path(cfg.get("device", "write_path")).expanduser()))
+        print(alerts.check_weather(cfg, Path(cfg.get("device", "write_path")).expanduser()))
         print(alerts.check_upkeep(cfg, upkeep.problems(diagnostics.BOOT_ROOT)))
     elif args.test_alert:
         problems = alerts.send(cfg, f"{_title(cfg)}: test", "A test message from the weather station.")
@@ -1249,6 +1404,8 @@ def main() -> None:
               "and your location are left out; open it first if you'd like to check.")
     elif args.import_raw:
         import_raw(cfg)
+    elif args.import_from:
+        import_history(cfg, args)
     elif args.discover:
         from sources import rtl_433
         rtl_433.discover(cfg, args.discover_time)
