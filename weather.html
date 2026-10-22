@@ -93,7 +93,9 @@
   #warnings .warning { border: 1px solid #f90; color: #fc6; padding: 8px 14px; margin-bottom: 12px; }
   .above { color: #f96; } .below { color: #6cf; }
   /* weather.html?embed, for an iframe on another page: no lower pane, no charts link. */
-  .embed .lower, .embed h1 a.charts { display: none !important; }
+  .embed .lower, .embed h1 a.charts, .embed .credit { display: none !important; }
+  .credit { margin: 24px 0 8px; text-align: center; font-size: 12px; color: var(--muted); }
+  .credit a { color: var(--muted); }
   .embed body { padding: 8px; }
 </style>
 <link rel="stylesheet" href="theme.css">
@@ -137,6 +139,8 @@
   <iframe id="lower-frame" loading="lazy" title="Lower pane"></iframe>
 </div>
 
+<div class="credit">CC0AC Weather <span id="version"></span> · made by Akien MacIain and Claude Code ·
+  free under the MIT License · <a href="https://github.com/akienm/CC0AC-Weather" target="_blank" rel="noopener">source and help</a></div>
 <script>
 // Data arrives as current.js (window.ACURITE_CURRENT = {...}), written beside this
 // page by acurite-capture.py. A <script> tag can load it from a file:// URL or any
@@ -574,6 +578,7 @@ function drawCurrent() {
   const data = window.ACURITE_CURRENT;
   if (!data) return;
   showLowerPane(data.lower_buttons);
+  if (data.version) document.getElementById('version').textContent = data.version;
   if (data.title) {
     document.getElementById('title').textContent = data.title;
     document.title = data.title;

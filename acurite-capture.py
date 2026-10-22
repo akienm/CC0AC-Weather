@@ -992,6 +992,14 @@ def restart_soon(delay: float = 1.0) -> None:
     threading.Thread(target=restart, daemon=True).start()
 
 
+def _version() -> str:
+    """This copy's version, from the VERSION file beside it: shown on the dashboard and to MCP."""
+    try:
+        return (Path(__file__).resolve().parent / "VERSION").read_text().strip()
+    except OSError:
+        return "unknown"
+
+
 def _find_page(name: str, own_dir: Path | None, page_dir: Path) -> Path | None:
     """The file to serve for /<name>: yours first, then the shipped one."""
     if not PAGE_NAME.fullmatch(name) or Path(name).suffix.lower() not in PAGE_TYPES:
@@ -1019,12 +1027,8 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
             return answer(db_path, sensors or {}, q)
         return run
 
-    try:
-        version = (page_dir / "VERSION").read_text().strip()
-    except OSError:
-        version = "unknown"
     mcp_server_ = mcp_server.Server(mcp_server.Station(read_data, query(history), query(summaries)),
-                                    version) if mcp else None
+                                    _version()) if mcp else None
 
     class WebHandler(BaseHTTPRequestHandler):
         # A visitor that connects and then says nothing would hold its thread forever.
@@ -1295,7 +1299,7 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
 
     # The dashboard reads these settings from current.json; it cannot read config.ini.
     # The lower pane is a row of [buttons], each loading its page below; none set, no pane.
-    page = {"title": _title(cfg), "lower_buttons": _buttons(cfg), "station": _station(cfg),
+    page = {"title": _title(cfg), "version": _version(), "lower_buttons": _buttons(cfg), "station": _station(cfg),
             "outdoor_rows": _card_rows(cfg, "outdoor_rows"),
             "sensor_rows": _card_rows(cfg, "sensor_rows")}
     db_path = _db_path(cfg)

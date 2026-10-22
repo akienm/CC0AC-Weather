@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.3.0)
+# How CC0AC-Weather installs and keeps itself up to date (1.3.1)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -36,6 +36,10 @@ any station had installed 1.2.0, added Home Assistant and four weather networks.
 1.3.0 added weather alerts, records and normals, the barometer outlook, an
 embeddable dashboard, an MCP server for AI assistants, and `--import` for older
 readings. A house that answered Yes takes it at its weekly check.
+
+1.3.1 is a repair: after a restart the barometer outlook stayed blank until it
+had three new hours of readings. It also shows the version at the foot of the
+dashboard.
 
 ## When it checks
 
@@ -103,7 +107,7 @@ back past it.
 | Windows 10/11 | `irm … setup/install.ps1 \| iex` in PowerShell | a scheduled task at logon | not yet |
 | macOS | `curl … setup/install.sh \| bash` (no sudo) | launchd | **no Mac to test on** |
 
-"Not yet with 1.2.0": the station itself has run on a Pi for months, and the
+"Not yet with 1.2.0": the station itself has run on a Pi every day since 4 October 2026, and the
 boot loader's install, update and rollback have run in a test folder, but the
 installers themselves have not yet run end to end on a fresh machine.
 

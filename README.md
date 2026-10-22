@@ -1,8 +1,10 @@
 # CC0AC-Weather
 
+![The dashboard: outdoor readings, the hourly and 7-day forecast, sun and moon, every room, and records against the normals](docs/dashboard.png)
+
 Keep your AcuRite weather station working on your own terms: your own
 dashboard, your own data files, Weather Underground uploads unchanged, and no
-dependence on AcuRite's cloud. Built by Claude Code ("cc.0") with Akien
+dependence on AcuRite's cloud. Built by Claude Code ("cc0") with Akien
 MacIain; contributions welcome.
 
 **Other brands** (Ambient Weather, Ecowitt, Fine Offset and its relabels,
@@ -13,7 +15,56 @@ says what works how, and how sure we are.
 Not affiliated with or endorsed by AcuRite or Chaney Instrument Co. AcuRite is
 their trademark; it is used here only to say which hardware this works with.
 
-## How it works
+**Contents:**
+[What it does](#what-it-does) ·
+[Install](#install) ·
+[What it runs on, and what's been tested](#what-it-runs-on-and-whats-been-tested) ·
+[Theory of operation](#theory-of-operation) ·
+[What leaves your house](#what-leaves-your-house) ·
+[Seeing it from outside your house](#seeing-it-from-outside-your-house) ·
+[Contributing and architecture](#contributing-and-architecture) ·
+[Credits, the name, and the license](#credits-the-name-and-the-license)
+
+## What it does
+
+- **Keeps every reading** from your station, for good, in files you own (SQLite and CSV).
+- **Dashboard and charts** in any browser, phone included, with the forecast, alerts,
+  records against the 30-year normals, and an outlook from your own barometer.
+- **Leaves what you have working:** the AcuRite app and Weather Underground carry on.
+- **Sends your station on** to Windy, PWSweather, Weathercloud, CWOP, and MQTT /
+  Home Assistant, if you want.
+- **Phone alerts** when readings stop, and for frost, heat or a falling barometer.
+- **Answers AI assistants** (MCP): ask "how cold did it get last night?"
+- **Other brands** by console upload or radio; **no station at all** works too,
+  from the internet's weather.
+- **Wall displays:** turns an old Android phone into a locked-down weather kiosk.
+- **Looks after itself:** updates if you say yes, disk health, weekly backup.
+
+## Install
+
+- **Easiest:** a ready-made Raspberry Pi card, [below](#the-easy-way-a-ready-made-raspberry-pi-card).
+- **Any other computer:** [one command](#other-computers-one-command).
+- **By hand,** if you want to know every step: [Setup with an Access hub, by hand](#setup-with-an-access-hub-by-hand).
+
+## What it runs on, and what's been tested
+
+"Tested" here means run, not read: something happened and we watched it.
+
+| | Tested | Written, not yet tested |
+|---|---|---|
+| **Station** | AcuRite Access hub with an Atlas and indoor towers, in a house every day since 4 October 2026 | smartHUB; the 5-in-1, Iris and other AcuRite sensors |
+| **Radio (no hub)** | RTL-SDR Blog V4 dongle hearing AcuRite sensors, live; 13 other models from recorded radio | the rest of [SUPPORTED.md](SUPPORTED.md) |
+| **Other brands' consoles** | — | Ambient Weather, Ecowitt and Wunderground-format uploads |
+| **No station** | the test suite only | the National Weather Service (US) or Open-Meteo (anywhere) as the only source: `[online]`, see [UPDATES.md](UPDATES.md#internet-weather-a-station-with-no-station) |
+| **Computer** | Raspberry Pi 400, Raspberry Pi OS (Debian 13); an Ubuntu laptop | other Pis (3 B+, 4, 5), Mac, Windows, Docker |
+| **Installing** | the boot loader's install, update and roll-back, in a test folder | the card image and the installers end to end on a fresh machine |
+| **Wall kiosk** | an Android 14 emulator | a real phone |
+| **Weather networks** | — | Windy, PWSweather, Weathercloud, CWOP with real accounts |
+| **MCP** | a test client over the network | Claude Desktop through `mcp-remote` |
+
+[SUPPORTED.md](SUPPORTED.md) has every brand and model, and how sure we are of each.
+
+## Theory of operation
 
 The AcuRite **Access** hub (or smartHUB) uploads each sensor reading over HTTPS
 to a server named in its settings. CC0AC-Weather is that server:
@@ -795,7 +846,66 @@ and wakes at a touch. One command sets it up over USB:
 
 See [kiosk/README.md](kiosk/README.md) for the options and how to build it.
 
-## Files
+## What leaves your house
+
+Nothing is sent to us: there is no account, no analytics, no "phone home". What
+does go out, and only when it's switched on:
+
+- each reading to **AcuRite** (the relay, so their app keeps working; `[hub] relay`);
+- the station's readings to the **weather networks** and **MQTT broker** you set
+  up (`[windy]`, `[cwop]`, `[mqtt]` and the rest); the hub uploads to Weather
+  Underground itself;
+- your **location** to the National Weather Service or Open-Meteo for the
+  forecast and the internet's weather, and to NOAA (or Open-Meteo outside the
+  US) for the normals;
+- **alerts** to ntfy, your email server or healthchecks.io;
+- a look at **GitHub** for a new version, daily or weekly, if you said yes to updates.
+
+The dashboard and charts, with the readings they show, are open to anyone who
+can reach the computer; the settings page, `/mcp` and the raw files (the database,
+`history.csv`) answer only your own network.
+
+## Seeing it from outside your house
+
+At first the dashboard only works at home, on your own Wi-Fi. Two ways to see
+it from anywhere:
+
+- **A private network for your own devices** (Tailscale is the best-known; ZeroTier
+  and others work the same way). Install it on the station's computer and on your
+  phone or laptop, sign both into the same account, and open the station's
+  Tailscale name with the web port, e.g. `http://cc0ac-weather:12345/`. Nothing is
+  opened to the internet, and only your own devices can reach it. This is the safer choice.
+- **Port forwarding**, to share the dashboard with anyone. In your router's
+  settings, forward an outside port (80 is the easiest to type) to the station's
+  computer, port 12345. Anyone with your home's internet address can then see the
+  dashboard and the charts. Your router's "dynamic DNS" setting, or a free service
+  like DuckDNS, gives that address a name that stays put. Some routers (Xfinity's)
+  can only forward a port to the same number: list both in `[web] port = 12345, 80`.
+
+Either way, outside visitors (a Tailscale address counts as outside) get the
+dashboard and the charts only. The settings page, `/mcp` and the raw files still
+answer only your home network, and there is no password, so that is the line that
+keeps your settings safe. Forward only the web port: never 443, which is where the
+hub delivers readings, or anyone could send it false ones.
+
+## Contributing and architecture
+
+Contributions are welcome: open an issue or a pull request on GitHub. The most
+useful thing you can send is a report from hardware we haven't seen:
+`python3 acurite-capture.py --diagnostics` writes one file to attach, with keys,
+addresses, sensor names and location taken out.
+
+The shape: **sources** turn whatever a station sends (the hub's uploads, a radio,
+a console) into one kind of *Reading*; the program records each Reading, keeps
+`current.json` and the database up to date, and serves the pages; **outputs** send
+Readings on (networks, MQTT). Adding a brand is a new file in `sources/`, adding a
+destination is a new file in `outputs/`; each folder's `__init__.py` says how.
+Plain Python 3 standard library, no framework, so it runs on whatever Python the
+computer already has.
+
+Run the tests before a pull request: `python3 -m unittest discover -s tests`.
+
+### Files
 
 | File | Purpose |
 |---|---|
@@ -838,6 +948,19 @@ See [kiosk/README.md](kiosk/README.md) for the options and how to build it.
 | `examples/my-page.html` | A short page of your own to start from |
 | `cc0ac-weather@.service` | systemd unit |
 
-## License
+## Credits, the name, and the license
 
-MIT, see `LICENSE`.
+Designed by Akien MacIain; built by Claude Code, Anthropic's AI coding assistant.
+Akien decides what it should be and checks it in his own house; Claude writes the
+code, the tests and this README.
+
+**The name.** It began as a fix for one AcuRite station. In Akien's other project,
+an attempt to give Claude a memory like a person's, he works with Claude the way
+he would with a colleague, and over time that colleague picked up a name of its
+own: **cc0**. When the project went public, it was named after its builder rather
+than its maker's product: cc0 plus AC for AcuRite, cut down to **CC0AC** so the
+brand name isn't spelled out. It has since learned to read nearly every weather
+station whose radio is published, so the AC is history now, but by then the name
+was out in the world.
+
+MIT license, see `LICENSE`.
