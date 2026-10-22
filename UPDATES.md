@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.2.0)
+# How CC0AC-Weather installs and keeps itself up to date (1.2.1)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -31,8 +31,10 @@ Releases are git tags: `v1.2.0` is a version, and `s2` is security revision 2.
 The update program reads the list of tags from GitHub and downloads a release as
 a plain archive, so it doesn't need git.
 
-1.2.0 is the last release that adds features: this installer, plus internet
-weather (below). After 1.2.0 there are only security fixes and small repairs.
+1.2.0 added this installer and internet weather (below); 1.2.1, shipped before
+any station had installed 1.2.0, added Home Assistant and four weather networks.
+1.2.1 is the last release that adds features. After it there are only security
+fixes and small repairs.
 
 ## When it checks
 
