@@ -152,6 +152,50 @@ topic = cc0ac-weather
 ; named as in [sensors], one entity per field.
 discovery = true
 discovery_prefix = homeassistant
+; A sensor not heard for this long shows as unavailable in Home Assistant,
+; not as its last value forever. 0 = never.
+stale_after_minutes = 60
+
+; ── Weather networks ─────────────────────────────────────────────────────────
+; Each one uploads one station: `sensor = <ID>` (as in [sensors]), or else the
+; first outdoor sensor heard. Internet weather (the [online] source) is never
+; uploaded. every_minutes is how often; the default is each network's own.
+
+[windy]
+; stations.windy.com: add a station, copy its ID and password.
+enabled = false
+; station_id =
+; password =
+; sensor =
+; every_minutes = 5
+
+[pwsweather]
+; pwsweather.com (PWSweather / AerisWeather): your station ID and its API key.
+enabled = false
+; station_id =
+; api_key =
+; sensor =
+; every_minutes = 5
+
+[weathercloud]
+; app.weathercloud.net: add a device, copy its Weathercloud ID and key. A free
+; account takes one upload every 10 minutes.
+enabled = false
+; weathercloud_id =
+; key =
+; sensor =
+; every_minutes = 10
+
+[cwop]
+; CWOP, the Citizen Weather Observer Program: feeds the US National Weather
+; Service. Sign up at weather.gladstonefamily.net/cwop_signup.html for an ID
+; like FW1234, or use your ham callsign and its passcode. Needs [station]
+; latitude and longitude.
+enabled = false
+; station_id =
+; passcode = -1
+; sensor =
+; every_minutes = 10
 
 [forecast]
 ; Forecast, nearest-airport visibility and clouds, and active alerts from the

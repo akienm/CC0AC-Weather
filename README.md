@@ -498,8 +498,41 @@ cc0ac-weather/00005678/humidity_pct  44
 
 Home Assistant's MQTT integration finds the sensors by itself (MQTT
 discovery): each one appears as a device named as in `[sensors]`, with an
-entity per field in the right units. Set `discovery = false` to publish only
-the values. Plain MQTT 3.1.1 on your own network; there is no TLS.
+entity per field in the right units (Home Assistant converts them for a metric
+house). Batteries show as battery problem sensors, on when low. A sensor not
+heard for `stale_after_minutes` (60) shows as unavailable rather than its last
+value. Set `discovery = false` to publish only the values. Plain MQTT 3.1.1 on
+your own network; there is no TLS.
+
+Checked 2026-10-21 against Home Assistant 2026.10 and Mosquitto 2.0: every
+sensor appeared with its entities, units and classes, and no warnings.
+
+**Apple Home, Google Home, Alexa:** through Home Assistant. Its HomeKit Bridge
+integration puts the sensors in Apple's Home app, and its Google Assistant and
+Alexa integrations (or Home Assistant Cloud) do the same for theirs. openHAB,
+Node-RED and Homebridge can read the MQTT topics directly.
+
+## Weather networks
+
+Besides Weather Underground, readings can go to four more networks, each
+switched on in its own section of `config.ini` with the ID and key the network
+gives you:
+
+| Section | Network | Every |
+|---|---|---|
+| `[windy]` | [Windy](https://stations.windy.com) | 5 min |
+| `[pwsweather]` | [PWSweather](https://www.pwsweather.com) | 5 min |
+| `[weathercloud]` | [Weathercloud](https://weathercloud.net) | 10 min |
+| `[cwop]` | [CWOP](https://weather.gladstonefamily.net/cwop_signup.html), which feeds the US National Weather Service | 10 min |
+
+Each uploads one station: `sensor = <ID>` in its section, or else the first
+outdoor sensor heard. Readings from the hub and from a radio both count;
+internet weather never does. CWOP needs `[station] latitude` and `longitude`.
+A failed upload is logged with the network's reason.
+
+**Status:** the formats were checked 2026-10-21 against each network's live
+endpoint (each answers a wrong key with its own refusal) and, for CWOP, by an
+APRS parser; an accepted upload with a real account is not yet measured.
 
 ## Radio capture (no hub)
 
@@ -634,6 +667,11 @@ See [kiosk/README.md](kiosk/README.md) for the options and how to build it.
 | `outputs/__init__.py` | How to add an output: somewhere readings are sent |
 | `outputs/weather_underground.py` | Uploads readings heard by radio to Weather Underground |
 | `outputs/mqtt.py` | Publishes readings to an MQTT broker, with Home Assistant discovery |
+| `outputs/_station.py` | What the weather-network outputs share: the station, its latest values, how often |
+| `outputs/windy.py` | Uploads the station to Windy |
+| `outputs/pwsweather.py` | Uploads the station to PWSweather |
+| `outputs/weathercloud.py` | Uploads the station to Weathercloud |
+| `outputs/cwop.py` | Sends the station to CWOP as an APRS weather packet |
 | `config.ini.example` | Configuration template, every option documented |
 | `weather.html` | Dashboard; reads `current.js` and `forecast.js` |
 | `charts.html` | Charts over any period; reads `/history.json` |

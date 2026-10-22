@@ -31,20 +31,35 @@ log = logging.getLogger("acurite")
 NAME = "mqtt"
 KEEPALIVE = 120   # seconds; the connection is opened afresh after half that idle
 
-# Field → Home Assistant unit, device_class, and whether it is a measurement.
+# Field → how Home Assistant shows it: name, unit, device_class, state_class,
+# decimal places. Checked against Home Assistant 2026.10: it accepts each
+# device_class with the state_class given, and converts units for metric houses.
+M, ANGLE, DAILY = "measurement", "measurement_angle", "total_increasing"
 HA = {
-    "temp_f": ("°F", "temperature"), "dew_point_f": ("°F", "temperature"),
-    "heat_index_f": ("°F", "temperature"), "feels_like_f": ("°F", "temperature"),
-    "wind_chill_f": ("°F", "temperature"),
-    "humidity_pct": ("%", "humidity"),
-    "wind_mph": ("mph", "wind_speed"), "wind_avg_mph": ("mph", "wind_speed"),
-    "wind_gust_mph": ("mph", "wind_speed"),
-    "wind_dir_deg": ("°", None), "wind_gust_dir_deg": ("°", None),
-    "rain_hour_in": ("in", "precipitation"), "rain_day_in": ("in", "precipitation"),
-    "pressure_inhg": ("inHg", "atmospheric_pressure"),
-    "uv_index": ("UV index", None), "light_lux": ("lx", "illuminance"),
-    "strike_count": (None, None), "last_strike_mi": ("mi", "distance"),
+    "temp_f": ("Temperature", "°F", "temperature", M, 1),
+    "dew_point_f": ("Dew point", "°F", "temperature", M, 1),
+    "heat_index_f": ("Heat index", "°F", "temperature", M, 1),
+    "feels_like_f": ("Feels like", "°F", "temperature", M, 1),
+    "wind_chill_f": ("Wind chill", "°F", "temperature", M, 1),
+    "humidity_pct": ("Humidity", "%", "humidity", M, 0),
+    "wind_mph": ("Wind speed", "mph", "wind_speed", M, 1),
+    "wind_avg_mph": ("Average wind speed", "mph", "wind_speed", M, 1),
+    "wind_gust_mph": ("Wind gust", "mph", "wind_speed", M, 1),
+    "wind_dir_deg": ("Wind direction", "°", "wind_direction", ANGLE, 0),
+    "wind_gust_dir_deg": ("Gust direction", "°", "wind_direction", ANGLE, 0),
+    "rain_hour_in": ("Rain, last hour", "in", "precipitation", M, 2),
+    "rain_day_in": ("Rain today", "in", "precipitation", DAILY, 2),   # back to 0 at midnight
+    "pressure_inhg": ("Pressure", "inHg", "atmospheric_pressure", M, 2),
+    "uv_index": ("UV index", "UV index", None, M, 0),
+    "light_lux": ("Light", "lx", "illuminance", M, 0),
+    "light_seconds": ("Light time", "s", "duration", DAILY, 0),
+    "strike_count": ("Lightning strikes", None, None, DAILY, 0),
+    "last_strike_mi": ("Last strike distance", "mi", "distance", M, 0),
+    "signal": ("Signal strength", None, None, M, 0),
 }
+# "normal"/"low" fields: a battery problem sensor, on when low.
+BATTERIES = {"battery": "Battery", "hub_battery": "Hub battery"}
+DIAGNOSTIC = {"signal", "hub_battery"}   # shown under the device's diagnostics, not on its main card
 
 _sock: socket.socket | None = None
 _last_sent = 0.0
@@ -164,22 +179,36 @@ def messages(cfg: configparser.ConfigParser, reading: Reading) -> list[tuple[str
     if cfg.getboolean("mqtt", "discovery", fallback=True):
         ha = cfg.get("mqtt", "discovery_prefix", fallback="homeassistant").strip().strip("/")
         name = cfg.get("sensors", sid, fallback="") if cfg.has_section("sensors") else ""
-        device = {"identifiers": [f"cc0ac-weather-{sid}"], "manufacturer": "AcuRite",
-                  "model": reading.type or "sensor", "name": name or f"{reading.type} {sid}"}
+        device = {"identifiers": [f"cc0ac-weather-{sid}"], "model": reading.type or "sensor",
+                  "name": name or reading.name or f"{reading.type} {sid}"}
+        # The hub's sensors, and AcuRite's heard by radio (their IDs are all digits).
+        if reading.source == "acurite-access" or (reading.source == "rtl_433" and sid.isdigit()):
+            device["manufacturer"] = "AcuRite"
+        # A sensor silent this long shows as unavailable, not as its last value forever.
+        stale_s = 60 * cfg.getint("mqtt", "stale_after_minutes", fallback=60)
         for field in reading.fields:
             if (sid, field) in _announced or field not in FIELDS:
                 continue
-            unit, device_class = HA.get(field, (None, None))
-            config = {"name": FIELDS[field].split(",")[0].capitalize(),
-                      "unique_id": f"cc0ac-weather-{sid}-{field}",
+            config = {"unique_id": f"cc0ac-weather-{sid}-{field}",
                       "state_topic": f"{prefix}/{sid}/{field}", "device": device}
-            if unit:
-                config["unit_of_measurement"] = unit
-            if device_class:
-                config["device_class"] = device_class
-            if field in HA and field != "strike_count":
-                config["state_class"] = "measurement"
-            out.append((f"{ha}/sensor/cc0ac-weather-{sid}/{field}/config", json.dumps(config)))
+            if stale_s:
+                config["expire_after"] = stale_s
+            if field in DIAGNOSTIC:
+                config["entity_category"] = "diagnostic"
+            if field in BATTERIES:
+                component = "binary_sensor"
+                config.update(name=BATTERIES[field], device_class="battery",
+                              payload_on="low", payload_off="normal")
+            else:
+                component = "sensor"
+                label, unit, device_class, state_class, places = HA.get(
+                    field, (FIELDS[field].split(",")[0].capitalize(), None, None, None, None))
+                config["name"] = label
+                for key, value in (("unit_of_measurement", unit), ("device_class", device_class),
+                                   ("state_class", state_class), ("suggested_display_precision", places)):
+                    if value is not None:
+                        config[key] = value
+            out.append((f"{ha}/{component}/cc0ac-weather-{sid}/{field}/config", json.dumps(config)))
     for field, value in reading.fields.items():
         if field in FIELDS and value is not None:
             out.append((f"{prefix}/{sid}/{field}", str(value)))
@@ -202,4 +231,5 @@ def send(cfg: configparser.ConfigParser, reading: Reading) -> None:
                 log.warning("MQTT publish failed: %s", exc)
                 return
     prefix = cfg.get("mqtt", "discovery_prefix", fallback="homeassistant").strip().strip("/") + "/"
-    _announced.update((reading.sensor_id, t.split("/")[-2]) for t, _ in msgs if t.startswith(prefix))
+    _announced.update((reading.sensor_id, t.split("/")[-2]) for t, _ in msgs
+                      if t.startswith(prefix) and t.endswith("/config"))
