@@ -58,8 +58,25 @@ class Reception(unittest.TestCase):
         heard("t5", "radio", [NOW - 100])
         r = capture.reception("t5", NOW)
         self.assertEqual(r["hub"]["heard"], 13)
-        self.assertEqual(r["hub"]["percent"], 100)
+        self.assertEqual((r["hub"]["expected"], r["hub"]["percent"]), (12, 100))
         self.assertEqual(r["radio"], {"heard": 1, "last": r["radio"]["last"]})
+
+    def test_seeded_from_the_store_after_a_restart(self):
+        import sqlite3
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            db = Path(d) / "weather.db"
+            con = capture.open_db(db)
+            # The hub's 5-minute uploads over the last two hours, off the hour's edge as real ones are.
+            for i in range(24):
+                at = capture.datetime.fromtimestamp(NOW - 7100 + i * 300, capture.timezone.utc)
+                con.execute("INSERT INTO readings (received_utc, hub_id, sensor_id, query) VALUES (?, ?, ?, ?)",
+                            (at.strftime("%Y-%m-%dT%H:%M:%SZ"), "24C86E000000", "t6", f"q{i}"))
+            con.commit()
+            con.close()
+            capture._seed_heard(db, NOW)
+        r = capture.reception("t6", NOW)["hub"]
+        self.assertEqual((r["heard"], r["expected"], r["percent"]), (12, 12, 100))
 
     def test_stored_rows_name_their_receiver(self):
         self.assertEqual(capture._receiver_of("", "rtl_433 dongle 0"), "radio")

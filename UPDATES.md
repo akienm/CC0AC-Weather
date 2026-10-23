@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.3.2)
+# How CC0AC-Weather installs and keeps itself up to date (1.3.3)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -46,6 +46,9 @@ C, as the radio hears it), its battery (a sensor sends only ok or low), and for
 each receiver how many of the last hour's readings arrived, with the radio's
 signal over noise in dB and the hub's own signal bars. A sensor heard less
 than 90% of the time shows in the warning colour.
+
+1.3.3 is a repair to that line: over a full hour it expected one reading too
+many, so a sensor that missed nothing read as 92% from the hub.
 
 ## When it checks
 

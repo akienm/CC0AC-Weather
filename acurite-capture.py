@@ -151,10 +151,11 @@ def _note_heard(sensor_id: str, who: str, epoch: float, snr: float | None = None
 
 
 def _seed_heard(db_path: Path | None, now: float) -> None:
-    """The last hour from the store, so a restart doesn't zero the counts."""
+    """The last hour from the store, so a restart doesn't zero the counts. Two
+    hours are read: a sensor heard before the hour began is not a new one."""
     if db_path is None or not db_path.exists():
         return
-    since = datetime.fromtimestamp(now - HEARD_WINDOW_S, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    since = datetime.fromtimestamp(now - 2 * HEARD_WINDOW_S, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     try:
         con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
         rows = con.execute("SELECT sensor_id, hub_id, received_utc FROM readings WHERE received_utc >= ?"
@@ -192,10 +193,12 @@ def reception(sensor_id: str, now: float) -> dict:
         every = _interval(times)
         r = {"heard": len(times), "last": datetime.fromtimestamp(times[-1], timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
         if every:
-            # A sensor first heard less than an hour ago is expected only since then.
-            span = now - max(now - HEARD_WINDOW_S, h["since"])
+            # A sensor first heard less than an hour ago is expected only since then,
+            # and that first reading is one more than the gaps after it.
+            new = h["since"] > now - HEARD_WINDOW_S
+            span = now - h["since"] if new else HEARD_WINDOW_S
             r["every_s"] = round(every, 1)
-            r["expected"] = max(1, round(span / every) + 1)
+            r["expected"] = max(1, round(span / every) + (1 if new else 0))
             r["percent"] = min(100, round(100 * len(times) / r["expected"]))
         if h["snr"]:
             r["snr_db"] = round(sorted(s for _, s in h["snr"])[len(h["snr"]) // 2], 1)
