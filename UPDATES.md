@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.3.1)
+# How CC0AC-Weather installs and keeps itself up to date (1.3.2)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -40,6 +40,12 @@ readings. A house that answered Yes takes it at its weekly check.
 1.3.1 is a repair: after a restart the barometer outlook stayed blank until it
 had three new hours of readings. It also shows the version at the foot of the
 dashboard.
+
+1.3.2 adds a line under each sensor card: the sensor's channel switch (A, B or
+C, as the radio hears it), its battery (a sensor sends only ok or low), and for
+each receiver how many of the last hour's readings arrived, with the radio's
+signal over noise in dB and the hub's own signal bars. A sensor heard less
+than 90% of the time shows in the warning colour.
 
 ## When it checks
 

@@ -44,6 +44,7 @@
   .row > span:first-child { color: var(--muted); white-space: nowrap; margin-right: 12px; }
   .row > span:last-child { text-align: right; }
   .low { color: var(--warn); }
+  .foot { margin-top: 8px; font-size: 13px; color: var(--muted); }
   .arrow { display: inline-block; font-size: 16px; line-height: 1; }
   .sky { display: flex; align-items: center; gap: 16px; }
   .sky .moon { font-size: 56px; line-height: 1; }
@@ -409,6 +410,29 @@ function battery(f) {
     ? `<span class="low">🪫 battery ${f.battery}</span>` : '';
 }
 
+// The line under each card: the sensor's channel switch, its battery (a sensor
+// sends only ok or low, never a level), and for each receiver how many of the
+// last hour's readings arrived. The hub also sends its own signal bars (0 to 4);
+// the radio measures signal over noise in dB.
+const RECEIVER_ORDER = ['radio', 'hub', 'console'];
+function sensorFoot(s) {
+  const f = s.fields, rx = s.reception || {}, parts = [];
+  if (s.channel) parts.push(`ch ${esc(s.channel)}`);
+  if (f.battery) parts.push(battery(f) || '🔋 ok');
+  for (const who of RECEIVER_ORDER) {
+    const r = rx[who];
+    if (!r) continue;
+    let text = r.percent == null ? `${who} ${r.heard}` : `${who} ${r.percent}%`;
+    if (who === 'radio' && r.snr_db != null) text += ` · ${num(r.snr_db, 0)} dB`;
+    if (who === 'hub' && f.signal != null) text += ` · ${f.signal}/4`;
+    const title = r.expected == null ? `${r.heard} readings in the last hour`
+      : `${r.heard} of ${r.expected} readings in the last hour (one every ${r.every_s} s)`;
+    const weak = r.percent != null && r.percent < 90;
+    parts.push(`<span title="${title}"${weak ? ' class="low"' : ''}>📡 ${text}</span>`);
+  }
+  return parts.length ? `<div class="foot">${parts.join(' · ')}</div>` : '';
+}
+
 function wind(f) {
   if (f.wind_mph == null) return '—';
   const speed = num(f.wind_avg_mph ?? f.wind_mph);
@@ -449,7 +473,7 @@ function outdoorCard(s, data, sk) {
       <div class="temp" style="color:${tempColor(f.temp_f)}">${num(f.temp_f)}°<small>F</small></div>
     </div>
     <div class="rows">${rows(OUTDOOR_ROWS, data.outdoor_rows, f, data)}</div>
-    <div style="margin-top:8px">${battery(f)}</div>
+    ${sensorFoot(s)}
   </div>`;
 }
 
@@ -490,7 +514,7 @@ function sensorCard(s, data) {
     <div class="name"><span>${s.name}</span>${ageSpan(s.updated)}</div>
     <div class="big">${num(f.temp_f)}°<small>F</small></div>
     <div class="rows">${rows(SENSOR_ROWS, data.sensor_rows, f, data)}</div>
-    <div style="margin-top:8px">${battery(f)}</div>
+    ${sensorFoot(s)}
   </div>`;
 }
 

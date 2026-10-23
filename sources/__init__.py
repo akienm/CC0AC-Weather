@@ -67,6 +67,8 @@ class Reading:
     receiver: str | None = None    # the hub or radio that heard it
     sensor_utc: str | None = None  # the time the sensor or hub gave the reading, if any
     name: str | None = None        # a name for a sensor not under [sensors], e.g. an online source's
+    channel: str | None = None     # the sensor's channel switch (A, B, C), where the source hears it
+    snr_db: float | None = None    # signal over noise as the radio heard this message, dB
 
 
 def derive(fields: dict) -> dict:

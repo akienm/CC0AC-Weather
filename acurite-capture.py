@@ -125,6 +125,83 @@ _pressure: deque = deque()   # (epoch seconds, inHg), guarded by _current_lock
 _pressure_seeded = False
 _current_page: dict = {}     # derived values for the page, e.g. pressure_change_3h
 
+# Reception: when each receiver heard each sensor over the last hour, so the page
+# can show how many of the readings a sensor sent actually arrived. A sensor sends
+# at a steady interval of its own (an AcuRite tower about every 16 s, the hub
+# uploads every 5 min), so the interval is read from the gaps themselves: the
+# shortest common gap, refined over the gaps that are a few intervals long.
+HEARD_WINDOW_S = 3600
+RECEIVERS = {"rtl_433": "radio", "acurite-access": "hub", "console": "console", "online": "online"}
+_heard: dict[str, dict[str, dict]] = {}   # sensor_id → receiver → {"at": deque, "snr": [..]}; _current_lock
+
+
+def _receiver_of(source: str, receiver: str | None = None) -> str:
+    if source in RECEIVERS:
+        return RECEIVERS[source]
+    # A stored row knows only the receiver: "rtl_433 dongle 0", "api.weather.gov" or a hub's id.
+    r = receiver or ""
+    return "radio" if r.startswith("rtl_433") else "online" if r.startswith("api.") else "hub"
+
+
+def _note_heard(sensor_id: str, who: str, epoch: float, snr: float | None = None) -> None:
+    h = _heard.setdefault(sensor_id, {}).setdefault(who, {"at": deque(), "snr": deque(), "since": epoch})
+    h["at"].append(epoch)
+    if snr is not None:
+        h["snr"].append((epoch, snr))
+
+
+def _seed_heard(db_path: Path | None, now: float) -> None:
+    """The last hour from the store, so a restart doesn't zero the counts."""
+    if db_path is None or not db_path.exists():
+        return
+    since = datetime.fromtimestamp(now - HEARD_WINDOW_S, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
+        rows = con.execute("SELECT sensor_id, hub_id, received_utc FROM readings WHERE received_utc >= ?"
+                           " ORDER BY received_utc", (since,)).fetchall()
+        con.close()
+    except sqlite3.Error as exc:
+        log.warning("Reception counts start empty, the store is unreadable: %s", exc)
+        return
+    for sid, receiver, at in rows:
+        _note_heard(sid, _receiver_of("", receiver), _epoch(at))
+
+
+def _interval(times: list[float]) -> float | None:
+    gaps = [b - a for a, b in zip(times, times[1:]) if b - a >= 2]
+    if len(gaps) < 4:
+        return None
+    base = sorted(gaps)[len(gaps) // 10]
+    # A missed reading makes a gap of two or three intervals; those still count,
+    # and over many of them the whole-second rounding of the times averages out.
+    steps = [(g, round(g / base)) for g in gaps if round(g / base) <= 8]
+    return sum(g for g, _ in steps) / sum(n for _, n in steps)
+
+
+def reception(sensor_id: str, now: float) -> dict:
+    """{receiver: {"heard", "expected", "percent", "last", "snr_db"}} for the last hour."""
+    out = {}
+    for who, h in _heard.get(sensor_id, {}).items():
+        while h["at"] and h["at"][0] < now - HEARD_WINDOW_S:
+            h["at"].popleft()
+        while h["snr"] and h["snr"][0][0] < now - HEARD_WINDOW_S:
+            h["snr"].popleft()
+        if not h["at"]:
+            continue
+        times = list(h["at"])
+        every = _interval(times)
+        r = {"heard": len(times), "last": datetime.fromtimestamp(times[-1], timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+        if every:
+            # A sensor first heard less than an hour ago is expected only since then.
+            span = now - max(now - HEARD_WINDOW_S, h["since"])
+            r["every_s"] = round(every, 1)
+            r["expected"] = max(1, round(span / every) + 1)
+            r["percent"] = min(100, round(100 * len(times) / r["expected"]))
+        if h["snr"]:
+            r["snr_db"] = round(sorted(s for _, s in h["snr"])[len(h["snr"]) // 2], 1)
+        out[who] = r
+    return out
+
 
 def _epoch(iso: str) -> float:
     return datetime.strptime(iso, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
@@ -175,6 +252,9 @@ def _write_atomic(path: Path, text: str) -> None:
 
 def _write_snapshot(write_path: Path, sensors: dict, page: dict | None, written: str, hub: str) -> None:
     """current.json / current.js from _current; the caller holds _current_lock."""
+    now = time.time()
+    for e in _current.values():
+        e["reception"] = reception(e["sensor_id"], now)
     snapshot = {"written": written, "hub": hub,
                 **{k: v for k, v in (page or {}).items() if v},
                 **{k: v for k, v in _current_page.items() if v is not None},
@@ -232,6 +312,9 @@ def record_reading(reading: Reading, write_path: Path, sensors: dict, page: dict
         entry["type"] = kind
         entry["updated"] = now
         entry["fields"].update(fields)
+        if reading.channel:
+            entry["channel"] = reading.channel
+        _note_heard(sensor_id, _receiver_of(reading.source, reading.receiver), _epoch(now), reading.snr_db)
         if isinstance(fields.get("pressure_inhg"), (int, float)):
             # Wind under 1 mph has no direction worth counting.
             calm = not (entry["fields"].get("wind_mph") or 0) >= 1
@@ -1303,6 +1386,8 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
             "outdoor_rows": _card_rows(cfg, "outdoor_rows"),
             "sensor_rows": _card_rows(cfg, "sensor_rows")}
     db_path = _db_path(cfg)
+    with _current_lock:
+        _seed_heard(db_path, time.time())
     refresh_snapshot(write_path, sensors, page)
 
     queues = []

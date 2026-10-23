@@ -53,8 +53,9 @@ ACURITE_TYPES = {"Acurite-Atlas": "Atlas", "Acurite-Iris": "Iris", "Acurite-Towe
                  "Acurite-5n1": "5N1"}
 
 # What differs between a sensor's repeats of one message (raw_msg carries the
-# sequence number), so isn't compared when dropping repeats.
-REPEAT_VARIES = ("time", "sequence_num", "raw_msg", "mic")
+# sequence number), so isn't compared when dropping repeats. -M level adds the
+# signal levels, which differ a little from one repeat to the next.
+REPEAT_VARIES = ("time", "sequence_num", "raw_msg", "mic", "mod", "freq", "freq1", "freq2", "rssi", "snr", "noise")
 
 # Fields that mean a sensor is outdoors, for brands whose type names we don't know.
 OUTDOOR_FIELDS = ("wind_mph", "wind_gust_mph", "wind_dir_deg", "uv_index", "light_lux", "strike_count")
@@ -75,7 +76,8 @@ def command(cfg: configparser.ConfigParser) -> list[str]:
         protocols = [p.strip() for p in cfg.get("capture", "protocols").split(",") if p.strip()]
     if [p.lower() for p in protocols] == ["all"]:
         protocols = []
-    cmd = ["rtl_433", "-F", "json", "-M", "time:utc"]
+    # -M level: each message carries how strongly it was heard (rssi, snr, noise).
+    cmd = ["rtl_433", "-F", "json", "-M", "time:utc", "-M", "level"]
     files = [f.strip() for f in cfg.get("capture", "read", fallback="").split(",") if f.strip()]
     if files:
         for f in files:
@@ -242,7 +244,9 @@ def readings(lines, receiver: str, rain: RainCounter, sensors: dict | None = Non
             fields.update(rain.update(sensor_id, counter, now))
         yield Reading(source=NAME, sensor_id=sensor_id, type=kind,
                       received_utc=datetime.fromtimestamp(now, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                      raw=line, fields=derive(fields), receiver=receiver, sensor_utc=_utc(raw.get("time")))
+                      raw=line, fields=derive(fields), receiver=receiver, sensor_utc=_utc(raw.get("time")),
+                      channel=str(raw["channel"]) if raw.get("channel") not in (None, "") else None,
+                      snr_db=_scaled(raw, {"snr": 1}))
 
 
 def _sensors(cfg: configparser.ConfigParser) -> set:
