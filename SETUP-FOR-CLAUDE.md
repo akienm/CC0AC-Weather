@@ -36,7 +36,8 @@ It gives the hub its address and answers AcuRite's server name with itself. Noth
    which one the hub's cable goes into; you can answer for them with
    `| sudo bash -s -- --hub-network PORT`. It is safe to run twice. It skips the
    network part if the port was already set up by hand, or if the machine
-   reaches the house network through that port; tell the person if that happens. Its log is
+   reaches the house network through that port, and stops if no other port
+   reaches the internet; tell the person if that happens. Its log is
    `/opt/cc0ac-weather/updates.log`.
 3. Ask them to plug the hub's cable into that port (and to power
    the hub, if it isn't). Within a minute `cat /var/lib/misc/dnsmasq.leases`

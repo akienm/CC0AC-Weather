@@ -5,6 +5,7 @@ UPDATES.md says why each part is the way it is.
   bootloader.py install --platform P --root DIR --config FILE --home DIR [--user U]
                         [--from DIR | --tag TAG] [--image] [--no-hub-network | --hub-interface IF]
   bootloader.py ports                          the wired ports that could take the hub's cable
+  bootloader.py outside [--except PORT]        the ports that reach the internet
   bootloader.py run [--root DIR]               the service: run the station, check every 5 min, update
   bootloader.py update [--root DIR] [--security-only]   look for updates now
   bootloader.py status [--root DIR]
@@ -232,16 +233,36 @@ def _run(cmd: list[str], check: bool = True, **kw) -> subprocess.CompletedProces
     return subprocess.run(cmd, check=check, **kw)
 
 
+def routed_ports() -> set[str]:
+    """The ports a default route leaves by: this machine's ways to your network."""
+    routed = set()
+    for family in ("-4", "-6"):
+        out = subprocess.run(["ip", family, "route", "show", "default"], capture_output=True, text=True).stdout
+        routed |= set(re.findall(r"\bdev (\S+)", out))
+    return routed
+
+
+def reaches_outside(port: str, run=subprocess.run) -> bool:
+    """Does this port actually get out? A route only says it is set up. Google's DNS
+    answering a ping says it works; where pings are blocked, GitHub answering (the
+    installer has just downloaded from it) says the same."""
+    for cmd in (["ping", "-c", "1", "-W", "3", "-I", port, "8.8.8.8"],
+                ["curl", "-fsS", "-o", "/dev/null", "--max-time", "10", "--interface", port, "https://github.com"]):
+        try:
+            if run(cmd, capture_output=True).returncode == 0:
+                return True
+        except OSError:   # no ping on this machine: the next way
+            continue
+    return False
+
+
 def hub_ports(sys_net: Path = Path("/sys/class/net"), routed: set[str] | None = None) -> list[dict]:
     """The wired ports that could take the hub's cable: real Ethernet hardware (a USB
     adapter counts), not Wi-Fi, and not the port this machine reaches your network by.
     A port names itself after its place on the board (enp1s0) or, a USB adapter, after
     its own address (enx...), so a laptop's port is seldom eth0."""
     if routed is None:
-        routed = set()
-        for family in ("-4", "-6"):
-            out = subprocess.run(["ip", family, "route", "show", "default"], capture_output=True, text=True).stdout
-            routed |= set(re.findall(r"\bdev (\S+)", out))
+        routed = routed_ports()
     ports = []
     for d in sorted(Path(sys_net).iterdir()):
         try:
@@ -782,7 +803,13 @@ def main(argv: list[str] | None = None) -> None:
         if name == "update":
             s.add_argument("--security-only", action="store_true")
     sub.add_parser("ports", help="the wired ports that could take the hub's cable, for the installer")
+    o = sub.add_parser("outside", help="the ports that reach the internet, besides the hub's; for the installer")
+    o.add_argument("--except", dest="hub", help="the hub's port, never counted")
     args = p.parse_args(argv)
+    if args.cmd == "outside":   # one per line; none at all exits 1
+        found = [port for port in sorted(routed_ports() - {args.hub}) if reaches_outside(port)]
+        print("\n".join(found))
+        sys.exit(0 if found else 1)
     if args.cmd == "ports":   # one per line: name, usb or board, cable or none
         for port in hub_ports():
             print(port["name"], "usb" if port["usb"] else "board", "cable" if port["cable"] else "none")

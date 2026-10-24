@@ -103,7 +103,7 @@ else
     apt-get update -qq
     # util-linux: setpriv, which runs the station as its own user.
     apt-get install -y -qq --no-install-recommends python3 ca-certificates curl util-linux \
-        smartmontools smbclient avahi-daemon >/dev/null
+        smartmontools smbclient avahi-daemon iputils-ping >/dev/null
 
     # The installer before 1.2.0 cloned the program into /opt/cc0ac-weather; the boot
     # loader lives there now. The settings and readings in /var/lib are kept.
@@ -193,6 +193,19 @@ fi
 [ "$IMAGE" = 1 ] && [ "$PLATFORM" = pi ] && [ -z "$HUB" ] && HUB=yes
 [ "$HUB" = yes ] && [ -z "$HUB_IF" ] && HUB_IF=eth0
 [ "$HUB" = yes ] && echo "The hub's cable goes into: $HUB_IF"
+
+# Before the hub's port is taken: is there still a way out? Without one, this machine
+# could be cut off from your network, and from you.
+if [ "$HUB" = yes ] && [ "$IMAGE" = 0 ]; then
+    if OUT=$(python3 "$WORK/bootloader.py" outside --except "$HUB_IF"); then
+        echo "Your network: $(printf '%s' "$OUT" | paste -sd ' ') (reaches the internet)"
+    else
+        echo "Nothing but $HUB_IF reaches the internet from here (no answer from 8.8.8.8 or GitHub)," >&2
+        echo "so making it the hub's port could cut this machine off. Connect it to your network" >&2
+        echo "another way (Wi-Fi: sudo nmtui; or a second wired port), then run this again." >&2
+        exit 1
+    fi
+fi
 
 say "The boot loader"
 ARGS=(install --platform "$PLATFORM" --root "$ROOT" --config "$CONFIG" --home "$STATION_HOME"

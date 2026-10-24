@@ -63,6 +63,31 @@ class Ports(unittest.TestCase):
         self.assertEqual(bl.hub_ports(self.net, routed={"eth0"}), [])
 
 
+class Outside(unittest.TestCase):
+    def ran(self, answers):
+        tried = []
+        def run(cmd, **kw):
+            tried.append(cmd[0])
+            if answers.get(cmd[0]) is None:
+                raise FileNotFoundError(cmd[0])
+            return SimpleNamespace(returncode=0 if answers[cmd[0]] else 1)
+        return tried, run
+
+    def test_google_answering_is_enough(self):
+        tried, run = self.ran({"ping": True, "curl": False})
+        self.assertTrue(bl.reaches_outside("wlan0", run))
+        self.assertEqual(tried, ["ping"])
+
+    def test_pings_blocked_but_github_answers(self):
+        self.assertTrue(bl.reaches_outside("wlan0", self.ran({"ping": False, "curl": True})[1]))
+
+    def test_no_ping_installed(self):
+        self.assertTrue(bl.reaches_outside("wlan0", self.ran({"curl": True})[1]))
+
+    def test_nothing_answers(self):
+        self.assertFalse(bl.reaches_outside("wlan0", self.ran({"ping": False, "curl": False})[1]))
+
+
 class Migration(unittest.TestCase):
     def apply(self, **settings):
         written = {}

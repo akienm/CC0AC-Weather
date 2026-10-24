@@ -152,7 +152,7 @@ prints an address: open it and answer the setup page.
 | Computer | Run this | Notes |
 |---|---|---|
 | **A Pi already running Raspberry Pi OS** | `curl -fsSL https://raw.githubusercontent.com/akienm/CC0AC-Weather/main/setup/install.sh \| sudo bash` | Takes over the Pi's network port for the hub, unless the Pi itself is plugged into your router there (`--no-hub-network` to be sure) |
-| **Debian or Ubuntu** (an old laptop works well) | the same line | Lists the wired ports your network isn't on and asks which one the hub's cable goes into; Enter for none. Without a terminal to ask: `--hub-network PORT` |
+| **Debian or Ubuntu** (an old laptop works well) | the same line | Lists the wired ports your network isn't on and asks which one the hub's cable goes into; Enter for none. Stops if no other port reaches the internet. Without a terminal to ask: `--hub-network PORT` |
 | **Mac** | the same line **without** `sudo` | Needs Python 3 from python.org or Homebrew; runs while you're logged in. Untested: no Mac to test on |
 | **Windows 10/11** | in PowerShell: `irm https://raw.githubusercontent.com/akienm/CC0AC-Weather/main/setup/install.ps1 \| iex` | Installs Python if it's missing; starts when you log on. Untested |
 | **Docker** (anything) | `cd setup/docker && docker compose up -d` in a copy of this project | Readings and settings in the volume `cc0ac-weather-data`. Untested |

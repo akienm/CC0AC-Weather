@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.3.4)
+# How CC0AC-Weather installs and keeps itself up to date (1.3.5)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -57,6 +57,12 @@ wasn't there. Now it lists the wired ports your network isn't on and asks which
 one is the hub's (Enter for none); `--hub-network PORT` answers without asking.
 The boot loader keeps the answer as `hub_interface`. A Pi still uses `eth0`, and
 a station already set up keeps the network it has.
+
+1.3.5 checks the way out before it takes a port for the hub. A route only says
+a port is set up, so the installer asks each other port to reach Google's DNS
+(8.8.8.8) by ping, or GitHub where pings are blocked. If nothing answers, it
+stops: making the hub's port of the only working line would cut the machine off
+from your network.
 
 ## When it checks
 
