@@ -232,7 +232,7 @@ class PageLinks(unittest.TestCase):
         page = (HERE / "weather.html").read_text()
         hidden = re.search(r'<span id="local-pages" hidden>(.*?)</span>', page, re.S).group(1)
         links = [urllib.parse.urlparse(h).path for h in re.findall(r'href="([^"]+)"', hidden)]
-        self.assertEqual(links, ["/status", "/config.cgi", "/setup", "/log", "/diagnostics"])
+        self.assertEqual(links, ["/status", "/noaa", "/config.cgi", "/setup", "/log", "/diagnostics"])
         for path in links:
             self.assertNotIn(path, capture.OUTSIDE_PATHS)
         self.assertIn('getElementById("local-pages").hidden = false', page)

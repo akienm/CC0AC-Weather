@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.3.12)
+# How CC0AC-Weather installs and keeps itself up to date (1.3.13)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -110,6 +110,12 @@ Setup, the service log and the diagnostics file.
 JSON to a web address of your own, for Node-RED, n8n or Home Assistant) and
 InfluxDB 1.x, 2 or 3, for Grafana. `[webhook]` and `[influxdb]` in config.ini;
 the README's "Webhook and InfluxDB" explains them.
+
+1.3.13 adds NOAA-style climate summaries: a month's days or a year's months as
+the National Weather Service's plain-text table, with degree days, at `/noaa`
+on your own network, as a text file, or by `--noaa`. And `--import` now reads
+Cumulus's month logs. The README's "NOAA climate summaries" and "Bringing in
+older readings" explain them.
 
 ## When it checks
 

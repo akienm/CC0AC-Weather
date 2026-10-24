@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CC0AC Weather NOAA Summary</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+<style>
+  :root {
+    --bg: #000;
+    --surface: #111;
+    --border: #333;
+    --text: #e8e8e8;
+    --muted: #888;
+    --accent: #4af;
+    --warn: #f44;
+    --font: "Helvetica Neue", Helvetica, Arial, Roboto, "Liberation Sans", sans-serif;
+    --mono: ui-monospace, "DejaVu Sans Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; padding: 16px; }
+  h1 { font-size: 16px; color: var(--muted); margin-bottom: 12px; letter-spacing: 1px; }
+  h1 a { color: var(--accent); text-decoration: none; font-size: 14px; margin-left: 12px; letter-spacing: 0; }
+  .buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 12px; }
+  .buttons a, .buttons button, .buttons select { font: inherit; font-size: 13px; color: var(--text);
+    background: none; border: 1px solid var(--border); padding: 6px 12px; text-decoration: none; cursor: pointer; }
+  .buttons a:hover, .buttons button:hover, .buttons select:hover { border-color: var(--accent); }
+  .buttons button.on { border-color: var(--accent); color: var(--accent); }
+  .buttons select option { background: var(--surface); }
+  #period { min-width: 7em; text-align: center; color: var(--accent); }
+  .card { background: var(--surface); border: 1px solid var(--border); padding: 14px; overflow-x: auto; }
+  pre { font-family: var(--mono); font-size: 12px; line-height: 1.35; }
+  .muted { color: var(--muted); }
+  #error { color: var(--warn); margin-bottom: 12px; }
+</style>
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<h1>NOAA climate summary <a href="/">← now</a> <a href="/charts.html">📈 Charts</a> <a href="/status">Status</a></h1>
+<div class="buttons">
+  <button id="month">Month</button><button id="year">Year</button>
+  <button id="prev" title="Earlier">◀</button><span id="period"></span><button id="next" title="Later">▶</button>
+  <select id="sensor" title="Which outdoor sensor"></select>
+  <a id="download" download>Download as text</a>
+</div>
+<div id="error"></div>
+<div class="card"><pre id="text" class="muted">loading…</pre></div>
+
+<script>
+"use strict";
+// Everything here comes from /noaa.json (noaa.py); the download is /noaa.txt.
+// The period and sensor are kept in the address, so a summary can be bookmarked.
+const $ = id => document.getElementById(id);
+const here = new URLSearchParams(location.search);
+const now = new Date();
+let period = here.get("period") || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+let sensor = here.get("sensor") || "";
+
+function step(by) {
+  if (period.length === 4) {
+    period = String(+period + by);
+  } else {
+    const [y, m] = period.split("-").map(Number);
+    const d = new Date(y, m - 1 + by, 1);
+    period = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  }
+  load();
+}
+
+async function load() {
+  const q = new URLSearchParams({period});
+  if (sensor) q.set("sensor", sensor);
+  history.replaceState(null, "", `?${q}`);
+  $("period").textContent = period;
+  $("month").classList.toggle("on", period.length !== 4);
+  $("year").classList.toggle("on", period.length === 4);
+  $("download").href = `/noaa.txt?${q}`;
+  $("text").textContent = "working…";
+  $("text").className = "muted";
+  try {
+    const r = await fetch(`/noaa.json?${q}`, {cache: "no-store"});
+    if (!r.ok) throw new Error(`the station answered ${r.status} ${r.statusText}`);
+    const d = await r.json();
+    $("sensor").innerHTML = "";
+    for (const s of d.sensors) $("sensor").add(new Option(s.name, s.id, false, s.id === d.sensor));
+    if (!d.sensors.length) $("sensor").add(new Option("no outdoor sensor then", ""));
+    $("text").textContent = d.text;
+    $("text").className = "";
+    $("error").textContent = "";
+  } catch (e) {
+    $("text").textContent = "";
+    $("error").textContent = `Could not read the summary: ${e.message}`;
+  }
+}
+
+$("prev").onclick = () => step(-1);
+$("next").onclick = () => step(1);
+$("month").onclick = () => {
+  if (period.length === 4) period = `${period}-${period == now.getFullYear() ? String(now.getMonth() + 1).padStart(2, "0") : "12"}`;
+  load();
+};
+$("year").onclick = () => { period = period.slice(0, 4); load(); };
+$("sensor").onchange = e => { sensor = e.target.value; load(); };
+load();
+</script>
+</body>
+</html>

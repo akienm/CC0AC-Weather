@@ -538,6 +538,40 @@ Anything unheard for 15 minutes shows in red. Every log opens as it is on disk,
 in a new window. The send logs (`sent/<service>/<date>.log` beside config.ini)
 keep a month; they hold the answer each service gave, never the keys sent.
 
+### NOAA climate summaries
+
+`http://THIS_BOX:12345/noaa` (linked from the dashboard as **NOAA summary**, from
+your own network only) shows a month or a year as the plain-text climate summary
+the National Weather Service publishes, and WeeWX and Cumulus print:
+
+- **a month:** each day's mean temperature, its high and low and when they
+  came, heating and cooling degree days, rain, average wind, the highest gust
+  and when, and the direction the wind blew from most; then the month's
+  totals, and how many days were hot, freezing or wet;
+- **a year:** the same by month, in three tables (temperature, rain, wind),
+  with the whole year under each.
+
+The arrows step back and forward, and **Download as text** saves it as
+`NOAA-2026-10.txt`. It sums up the outdoor sensor with the most readings in
+that period; the menu picks another. It shows the units the pages show (see
+[Units](#units)). Degree days are worked out from the middle of each day's high
+and low, against 65 °F unless `[climate] heating_base_f` and `cooling_base_f`
+say otherwise. From the command line:
+
+```
+python3 acurite-capture.py --noaa 2026-10      # a month
+python3 acurite-capture.py --noaa 2026         # a year
+python3 acurite-capture.py --noaa 2026 --sensor <ID>
+```
+
+A day without readings is listed empty, and a month or year counts only the
+days it has. A year comes from the daily summaries the charts use, so a month
+and its year agree.
+
+**Status:** measured 2026-10-24 on a Raspberry Pi 400 against three weeks of a
+real station: a month takes about 2 seconds and a year 1.5; the
+tests check every column on made-up readings.
+
 ### Making it yours
 
 **Name.** `[station] name = Hilltop Weather` puts your station's name in the
@@ -865,6 +899,7 @@ charts and records reach back further:
 ```
 python3 acurite-capture.py --import ~/weewx.sdb           # a WeeWX database
 python3 acurite-capture.py --import export.csv            # a CSV file
+python3 acurite-capture.py --import ~/CumulusMX/data       # Cumulus
 python3 acurite-capture.py --import wu --wu-station KXXMYTOWN12 \
         --wu-api-key YOUR_KEY --from 2023-01-01           # Weather Underground
 ```
@@ -876,6 +911,12 @@ python3 acurite-capture.py --import wu --wu-station KXXMYTOWN12 \
   are recognised by their names (Temperature, Humidity, Wind Speed, Pressure,
   Dewpoint and the like, with units such as "°F" in the cells allowed). Add
   `--metric` when the numbers are °C, km/h, hPa and mm.
+- **Cumulus** (MX or the older Cumulus 1): its `data` folder, the Cumulus
+  folder above it, or one month's log such as `Oct24log.txt`. The units are
+  read from `Cumulus.ini` beside it. Without one, they are taken as Cumulus's
+  own defaults (°C, m/s, hPa, mm), or with `--metric` km/h for the wind, as
+  Cumulus MX has defaulted to since 3.12; the import says which it used.
+  Rain is counted from midnight, as the hub counts it.
 - **Weather Underground:** your station's daily summaries, one day per request,
   with the API key from your Weather Underground account (Member Settings → API
   Keys). Give `--from` and optionally `--to` (default yesterday).
@@ -887,8 +928,9 @@ running the same import twice adds nothing the second time. Impossible values
 (a 150% humidity, a -9999 placeholder) are dropped. The charts show the new
 readings at once; the Records card counts them within the hour.
 
-**Status:** each format is checked by the tests on small sample files; not yet
-measured on a real WeeWX database or a real Weather Underground account.
+**Status:** each format is checked by the tests on small sample files (the
+Cumulus ones written from Cumulus's documentation of its log); not yet measured
+on a real WeeWX database, Cumulus install or Weather Underground account.
 
 ## Radio capture (no hub)
 
@@ -1111,7 +1153,9 @@ Run the tests before a pull request: `python3 -m unittest discover -s tests`.
 | `climate.py` | Records and the 1991-2020 normals: `climate.json` and the dashboard's Records card |
 | `zambretti.py` | The barometer outlook on the outdoor card |
 | `mcp_server.py` | The read-only MCP server at `/mcp`, for AI assistants |
-| `importer.py` | `--import`: older readings from WeeWX, CSV files or Weather Underground |
+| `importer.py` | `--import`: older readings from WeeWX, Cumulus, CSV files or Weather Underground |
+| `noaa.py` | `--noaa` and `/noaa.json`: NOAA-style month and year climate summaries |
+| `noaa.html` | The NOAA summary page at `/noaa` (your network only) |
 | `setup/install.sh` | Installs on a Pi, Debian, Ubuntu or a Mac (`install-pi.sh` is the old name and runs it) |
 | `setup/install.ps1` | Installs on Windows |
 | `setup/docker/` | The Docker image and `compose.yaml` |

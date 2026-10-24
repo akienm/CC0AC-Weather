@@ -62,6 +62,7 @@ import diagnostics
 import importer
 import iolog
 import mcp_server
+import noaa
 import sanity
 import units
 import upkeep
@@ -556,9 +557,11 @@ def import_history(cfg: configparser.ConfigParser, args: argparse.Namespace) -> 
         kind, rows = "wu", importer.rows_wu(station, args.wu_api_key, start, end)
     else:
         path = Path(what).expanduser()
-        if not path.is_file():
+        if not path.exists():
             sys.exit(f"{path} not found")
-        if path.suffix.lower() in (".sdb", ".db", ".sqlite"):
+        if path.is_dir() or importer.CUMULUS_LOG.fullmatch(path.name):
+            kind, rows = "cumulus", importer.rows_cumulus(path, args.metric)
+        elif path.suffix.lower() in (".sdb", ".db", ".sqlite"):
             kind, rows = "weewx", importer.rows_weewx(path)
         else:
             kind, rows = "csv", importer.rows_csv(path, args.metric)
@@ -607,6 +610,33 @@ def import_history(cfg: configparser.ConfigParser, args: argparse.Namespace) -> 
     print(f"{added} readings added (sensor {', '.join(sorted(into)) or target}), "
           f"{same} already there, {later} left out as newer than the station's own readings, "
           f"{empty} with nothing usable; {days} days summed up. The records card counts them within the hour.")
+
+
+def noaa_summary(cfg: configparser.ConfigParser, db_path: Path, sensors: dict, q: dict) -> dict:
+    """/noaa.json and --noaa: a month's or year's NOAA-style summary (noaa.py) for
+    q["sensor"], or else the outdoor sensor with the most readings in it."""
+    year, month = noaa.period(q.get("period") or datetime.now().strftime("%Y-%m"))
+    first = f"{year:04d}-{month or 1:02d}-01"
+    last = f"{year + (month or 12) // 12:04d}-{(month or 12) % 12 + 1:02d}-01"
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
+    try:
+        # A day either side: the rows are UTC, the period is local.
+        found = con.execute(f"""SELECT sensor_id, max(type), count(*) FROM readings WHERE type IN {OUTDOOR}
+            AND sensor_id NOT LIKE 'open-meteo%' AND sensor_id NOT LIKE 'nws-%'
+            AND received_utc >= date(?, '-1 day') AND received_utc < date(?, '+1 day')
+            GROUP BY sensor_id ORDER BY count(*) DESC""", [first, last]).fetchall()
+        choices = [{"id": sid, "name": sensors.get(sid, f"{kind} {sid}")} for sid, kind, _ in found]
+        wanted = (q.get("sensor") or "").strip()
+        sid = next((c["id"] for c in choices if c["id"].lower() == wanted.lower()), None) if wanted else None
+        if wanted and sid is None:
+            raise ValueError(f"no outdoor readings from {wanted} then")
+        sid = sid or (choices[0]["id"] if choices else None)
+        name = next((c["name"] for c in choices if c["id"] == sid), "no outdoor sensor")
+        text = noaa.report(cfg, con, sid or "", name, year, month)
+    finally:
+        con.close()
+    return {"period": f"{year:04d}" + (f"-{month:02d}" if month else ""), "sensor": sid,
+            "sensors": choices, "text": text}
 
 
 def _db_path(cfg: configparser.ConfigParser) -> Path:
@@ -1434,6 +1464,9 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
                 self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
+            if path in ("/noaa", "/noaa.json", "/noaa.txt") and cfg is not None:
+                self._noaa(path, dict(urllib.parse.parse_qsl(url.query)))
+                return
             if path in ("/history.json", "/summaries.json"):
                 self._query(history if path == "/history.json" else summaries,
                             dict(urllib.parse.parse_qsl(url.query)))
@@ -1637,6 +1670,33 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
                 return
             self._send(json.dumps(data, separators=(",", ":")).encode(), "application/json")
 
+        def _noaa(self, path: str, q: dict):
+            if path == "/noaa":
+                self._send((page_dir / "noaa.html").read_bytes(), PAGE_TYPES[".html"])
+                return
+            if db_path is None or not db_path.exists():
+                self.send_error(404, "No database yet")
+                return
+            try:
+                got = noaa_summary(cfg, db_path, sensors or {}, q)
+            except ValueError as e:
+                self.send_error(400, str(e))
+                return
+            except sqlite3.Error as e:
+                log.error("NOAA summary failed: %s", e)
+                self.send_error(500, "Database error")
+                return
+            if path == "/noaa.json":
+                self._send(json.dumps(got).encode(), "application/json")
+                return
+            body = got["text"].encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Disposition", f'inline; filename="NOAA-{got["period"]}.txt"')
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
         def _send(self, body: bytes, ctype: str):
             self.send_response(200)
             self.send_header("Content-Type", ctype)
@@ -1795,11 +1855,17 @@ def main() -> None:
         help="Load every reading in the raw hub logs into the database and exit (safe to re-run)",
     )
     parser.add_argument(
-        "--import", dest="import_from", metavar="FILE|wu",
-        help="Add older weather: a WeeWX .sdb, a CSV file, or wu (Weather Underground); see importer.py",
+        "--import", dest="import_from", metavar="FILE|FOLDER|wu",
+        help="Add older weather: a WeeWX .sdb, a CSV file, a Cumulus data folder or month log, "
+             "or wu (Weather Underground); see importer.py",
     )
-    parser.add_argument("--sensor", help="With --import: the sensor id it belongs to (default: the first outdoor one)")
-    parser.add_argument("--metric", action="store_true", help="With --import of a CSV: °C, km/h, hPa and mm")
+    parser.add_argument(
+        "--noaa", metavar="YYYY-MM|YYYY",
+        help="Print a month's or a year's NOAA-style climate summary (noaa.py); --sensor picks the sensor",
+    )
+    parser.add_argument("--sensor", help="With --import: the sensor id it belongs to (default: the first outdoor one); "
+                        "with --noaa: the sensor to sum up")
+    parser.add_argument("--metric", action="store_true", help="With --import of a CSV: °C, km/h, hPa and mm (of Cumulus without its Cumulus.ini: km/h wind)")
     parser.add_argument("--wu-station", help="With --import wu: the station ID (default: [weather_underground])")
     parser.add_argument("--wu-api-key", help="With --import wu: your Weather Underground API key")
     parser.add_argument("--from", dest="date_from", metavar="YYYY-MM-DD", help="With --import wu: the first day")
@@ -1841,6 +1907,12 @@ def main() -> None:
         import_raw(cfg)
     elif args.import_from:
         import_history(cfg, args)
+    elif args.noaa:
+        try:
+            print(noaa_summary(cfg, _db_path(cfg), sensor_map(cfg), {"period": args.noaa, "sensor": args.sensor})["text"],
+                  end="")
+        except (ValueError, sqlite3.Error) as e:
+            sys.exit(str(e))
     elif args.discover:
         from sources import rtl_433
         rtl_433.discover(cfg, args.discover_time)
