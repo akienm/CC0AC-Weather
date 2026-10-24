@@ -494,8 +494,13 @@ out from each day's high and low, so no extra sensor is needed:
   no latitude it is left off.
 
 *Status: measured 2026-10-24. The sun's energy matches FAO-56's worked example
-8, and a day's ET0 matches equation 52 worked by hand. Not yet compared with a
-nearby agricultural weather station's published ET0.*
+8, and a day's ET0 matches equation 52 worked by hand. On one station over 20
+October days, it came to 2.30 in against 3.21 in from Open-Meteo's
+Penman-Monteith ET0 for the same spot. The full Penman-Monteith, worked from
+the station's own humidity and wind, gave 2.28 in, so the formula is not the
+gap. The likely causes are the yard's lighter wind (1-4 mph most days) and the
+model's own sunshine. Read it as this yard's figure, a little below an open
+field's. Not yet compared with an agricultural weather station's published ET0.*
 
 ### Barometer outlook
 
