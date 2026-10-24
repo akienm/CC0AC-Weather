@@ -40,7 +40,7 @@ _APRS_POSITION = re.compile(r"\d{4}\.\d{2}[NS]/\d{5}\.\d{2}[EW]")   # in a CWOP 
 # Settings whose values are someone's identity or secret, in any section.
 SECRET_KEYS = ("station_id", "station_key", "password", "passcode", "key", "api_key", "user", "smtp_user",
                "smtp_password", "ntfy_topic", "email_to", "email_from", "healthcheck_url", "hub_id", "station",
-               "token", "header", "username")
+               "token", "header", "username", "domain")
 
 
 def _public(ip: str) -> bool:

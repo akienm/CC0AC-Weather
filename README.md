@@ -1075,6 +1075,17 @@ IDs, MACs, public IP addresses, sensor names and your location are left out.
 Attach it to an [issue](https://github.com/akienm/CC0AC-Weather/issues), and say
 what you expected to see and what you saw instead.
 
+### A phone says the page can't be reached
+
+Android 17 asks before an app may reach anything on your home network, and a
+browser that was never asked is quietly refused: Chrome shows *This site can't be
+reached* (`ERR_TOO_MANY_RETRIES`) for the station's home address while every
+other computer in the house opens it. Allow it under Settings → Apps → Chrome →
+Permissions (local network, or nearby devices). With the phone on a USB cable and
+developer options on, the same thing from a computer:
+
+    adb shell cmd appops set --uid com.android.chrome ACCESS_LOCAL_NETWORK allow
+
 ## Wall displays: old Android phones as weather kiosks
 
 `kiosk/` turns a spare, freshly reset Android phone into a wall display that shows
@@ -1117,8 +1128,9 @@ it from anywhere:
 - **Port forwarding**, to share the dashboard with anyone. In your router's
   settings, forward an outside port (80 is the easiest to type) to the station's
   computer, port 12345. Anyone with your home's internet address can then see the
-  dashboard and the charts. Your router's "dynamic DNS" setting, or a free service
-  like DuckDNS, gives that address a name that stays put. Some routers (Xfinity's)
+  dashboard and the charts. Your router's "dynamic DNS" setting, or a free
+  DuckDNS name (which the station can keep up to date, and which gets you
+  `https://`, below), gives that address a name that stays put. Some routers (Xfinity's)
   can only forward a port to the same number: list both in `[web] port = 12345, 80`.
 
 Either way, outside visitors (a Tailscale address counts as outside) get the
@@ -1126,6 +1138,58 @@ dashboard and the charts only. The settings page, `/mcp` and the raw files still
 answer only your home network, and there is no password, so that is the line that
 keeps your settings safe. Forward only the web port: never 443, which is where the
 hub delivers readings, or anyone could send it false ones.
+
+### https and a name of your own
+
+Browsers increasingly expect `https://`: some phones' Chrome refuses a plain
+`http://` address from outside, or warns about it. The web server can answer
+both on the same port, with a free certificate from Let's Encrypt. The
+certificate has to name the address people type, so it needs a name, not a bare
+number; a free DuckDNS name does it, and the station keeps the name pointed at
+your house. Nothing more is opened on your router: the port you already forward
+does both.
+
+1. **A name.** Sign in at [duckdns.org](https://www.duckdns.org), add a domain
+   (say `ourweather`, giving `ourweather.duckdns.org`), and copy the token at the
+   top of the page. Put both in the settings:
+
+       [duckdns]
+       enabled = true
+       domain = ourweather
+       token = <the token>
+
+   Restart, and the status line in the service log says *DuckDNS: the name
+   points here*. Every five minutes it tells DuckDNS your current address, so a
+   change by your internet provider follows within minutes.
+
+2. **A certificate.** [acme.sh](https://github.com/acmesh-official/acme.sh) gets
+   it and renews it every two months. It proves the name is yours through
+   DuckDNS itself, so Let's Encrypt never needs to reach your house. On the
+   station's computer, as the user the station runs as:
+
+       git clone --depth 1 https://github.com/acmesh-official/acme.sh.git ~/acme.sh-src
+       (cd ~/acme.sh-src && ./acme.sh --install)
+       export DuckDNS_Token="<the token>"
+       ~/.acme.sh/acme.sh --issue --server letsencrypt --dns dns_duckdns -d ourweather.duckdns.org
+       mkdir -p ~/.cc0ac-weather/tls
+       ~/.acme.sh/acme.sh --install-cert -d ourweather.duckdns.org \
+           --key-file ~/.cc0ac-weather/tls/key.pem --fullchain-file ~/.cc0ac-weather/tls/fullchain.pem
+
+   The installer adds a daily check that renews the certificate when it is due
+   and copies it to the same two files.
+
+3. **Tell the station.** In `[web]`:
+
+       certificate = ~/.cc0ac-weather/tls/fullchain.pem
+       key = ~/.cc0ac-weather/tls/key.pem
+
+   Restart once. From then on `https://ourweather.duckdns.org:<forwarded port>/`
+   works, `http://` still works beside it, and a renewal is picked up by itself
+   (the files are read again when they change).
+
+At home keep using the station's own address (`http://10.0.0.x:12345/`): a
+certificate can only name a public name, and the settings page answers only that
+way anyway.
 
 ## Contributing and architecture
 
@@ -1158,6 +1222,7 @@ Run the tests before a pull request: `python3 -m unittest discover -s tests`.
 | `units.py` | `[units]`: the units the pages and alert messages show readings in |
 | `units.js` | The same for the pages: converts each stored reading for display |
 | `calibration.py` | `[calibration]`: corrects a sensor that reads a little off |
+| `secure_web.py` | `[web] certificate` and `[duckdns]`: https beside http on the same port, and keeping a DuckDNS name pointed home |
 | `sanity.py` | `[sanity]`: holds back readings no weather could produce |
 | `SUPPORTED.md` | Which brands work how, and how sure we are (made by `setup/supported.py`) |
 | `tests/` | `python3 -m unittest discover tests`; `rtl_433_samples.jsonl` is one recorded line per radio model |

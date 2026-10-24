@@ -50,7 +50,7 @@ import urllib.parse
 import urllib.request
 from collections import deque
 from datetime import datetime, timezone
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
 from sources import FIELDS, OUTDOOR_TYPES, Reading, derive
@@ -64,6 +64,7 @@ import iolog
 import mcp_server
 import noaa
 import sanity
+import secure_web
 import units
 import upkeep
 import wizard
@@ -1718,13 +1719,13 @@ def run_web_server(cfg: configparser.ConfigParser, write_path: Path, config_path
         log.warning("[web] pages folder %s not found; serving the shipped pages only", own_dir)
     handler = _make_web_handler(write_path, _db_path(cfg), sensor_map(cfg), own_dir, _title(cfg), config_path,
                                 cfg.getboolean("web", "mcp", fallback=True), cfg)
-    # The stock queue holds 5 waiting connections; a phone opening a page plus its charts
-    # can briefly be more than that, and the kernel then logs it as a SYN flood.
-    ThreadingHTTPServer.request_queue_size = 64
-    servers = [ThreadingHTTPServer(("", port), handler) for port in ports]
+    servers = [secure_web.WebServer(("", port), handler) for port in ports]
+    cert = secure_web.certificate(cfg)
+    for server in servers:
+        server.certificate = cert       # https on the same port(s) as http (secure_web.py)
     for port, server in zip(ports[1:], servers[1:]):
         threading.Thread(target=server.serve_forever, daemon=True).start()
-    log.info("Web server on port(s) %s", ", ".join(map(str, ports)))
+    log.info("Web server on port(s) %s%s", ", ".join(map(str, ports)), ", http and https" if cert else "")
     servers[0].serve_forever()
 
 
@@ -1802,6 +1803,9 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
 
     if cfg.getboolean("web", "enabled", fallback=False):
         threading.Thread(target=run_web_server, args=(cfg, write_path, config_path), daemon=True).start()
+
+    if cfg.getboolean("duckdns", "enabled", fallback=False):
+        threading.Thread(target=secure_web.run_duckdns, args=(cfg,), daemon=True, name="duckdns").start()
 
     if cfg.getboolean("forecast", "enabled", fallback=False):
         threading.Thread(target=run_forecast, args=(cfg, write_path), daemon=True).start()

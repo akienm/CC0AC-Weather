@@ -126,6 +126,21 @@ port = 12345
 ; speaks MCP, the Model Context Protocol): current readings, history, records,
 ; the forecast. Read-only, and only for your own network, like /config.cgi.
 mcp = true
+;
+; https:// on the same port(s), beside plain http://, with a certificate for a
+; name that reaches this machine (README: "https and a name of your own"). The
+; files are read again when they change, so a renewal needs no restart.
+; certificate = ~/.cc0ac-weather/tls/fullchain.pem
+; key = ~/.cc0ac-weather/tls/key.pem
+
+[duckdns]
+; A free name for your house's address, yourname.duckdns.org, kept up to date
+; when your internet provider changes the address. Sign in at duckdns.org, add
+; a domain, and copy the token from the top of that page.
+enabled = false
+domain =
+token =
+every_minutes = 5
 
 [updates]
 ; Whether the station installs security fixes and small repairs by itself

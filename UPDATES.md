@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.3.14)
+# How CC0AC-Weather installs and keeps itself up to date (1.3.15)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -122,6 +122,12 @@ heating and cooling degree days for today, the month and the season, and ET0,
 the water a lawn gives up, for today and the month. Both come from the highs
 and lows, so no new sensor is needed. The README's "Records and normals"
 explains them.
+
+1.3.15 lets the web server answer `https://` beside `http://` on the same port,
+given a certificate in `[web]`, and re-reads the certificate when it is renewed.
+`[duckdns]` keeps a free DuckDNS name pointed at your house. Both are off until
+you set them; the README's "https and a name of your own" walks through it. It
+also stops logging a full error each time a browser drops a connection.
 
 ## When it checks
 
