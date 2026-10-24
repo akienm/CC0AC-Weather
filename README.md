@@ -33,7 +33,7 @@ their trademark; it is used here only to say which hardware this works with.
 - **Leaves what you have working:** the AcuRite app and Weather Underground carry on.
 - **Sends your station on** to Windy, PWSweather, Weathercloud, CWOP, and MQTT /
   Home Assistant, if you want.
-- **Phone alerts** when readings stop, and for frost, heat or a falling barometer.
+- **Phone alerts** when readings stop, and for frost, heat, a falling barometer or lightning close by.
 - **Answers AI assistants** (MCP): ask "how cold did it get last night?"
 - **Other brands** by console upload or radio; **no station at all** works too,
   from the internet's weather.
@@ -139,8 +139,8 @@ hub works exactly as before; nothing on it was changed.
 free ntfy app) or an email when readings stop, and another when they're back.
 To hear about the Pi itself losing power, add a free healthchecks.io check on
 the same page.
-It can also warn about the weather itself: frost, heat, and a falling
-barometer (see [Weather alerts](#weather-alerts)).
+It can also warn about the weather itself: frost, heat, a falling barometer
+and lightning close by (see [Weather alerts](#weather-alerts)).
 
 ## Other computers: one command
 
@@ -695,11 +695,18 @@ weather, in the same ways (ntfy, email): one message when it starts and one
 when it's over. In `[alerts]`:
 
 ```ini
-weather = frost, heat, storm
+weather = frost, heat, storm, lightning
 frost_f = 35              ; outdoors at or below this
 heat_f = 105              ; feels-like at or above this
 pressure_drop_inhg = 0.06 ; the barometer falls this much in 3 hours
+lightning_mi = 10         ; a strike this close or closer
+lightning_minutes = 30    ; ...heard in this long; over after this long without one
 ```
+
+Lightning needs a lightning sensor (the Atlas's add-on, or a tower such as the
+6045M). It gives the distance to the storm, not its direction. If you can hear
+thunder you are within about 10 miles of it, and the usual advice is to wait 30
+minutes after the last one before going back outside; those are the defaults.
 
 The station's own outdoor sensor is used when it has been heard lately, and an
 internet one (`[online]`) only when it hasn't. Each alert has a little room

@@ -1,11 +1,12 @@
 """Checks for the station's own day: its time zone, the 24-hour charts and
-lightning strikes counted since midnight. python3 -m unittest tests/test_station_day.py
+lightning strikes counted since midnight and the alert for them. python3 -m unittest tests/test_station_day.py
 
 These need no network or radio. Each one that sets a time zone puts the
 computer's back afterwards.
 """
 import configparser
 import importlib.util
+import json
 import os
 import sqlite3
 import sys
@@ -20,6 +21,7 @@ HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE / "updates"))
 import bootloader as bl   # noqa: E402
+import alerts             # noqa: E402
 import wizard             # noqa: E402
 
 spec = importlib.util.spec_from_file_location("acurite_capture", HERE / "acurite-capture.py")
@@ -156,6 +158,58 @@ class Strikes(unittest.TestCase):
                                     fields={"strike_count": count})
                 entry = capture.record_reading(r, out, {})
         self.assertEqual((entry["fields"]["strike_count"], entry["fields"]["strikes_today"]), (257, 1))
+
+    def test_a_strike_is_stamped_only_when_the_count_rises(self):
+        stamps = []
+        with tempfile.TemporaryDirectory() as d:
+            for i, count in enumerate((40, 40, 41, 41)):
+                at = f"2026-10-24T20:0{i}:00Z"
+                r = capture.Reading(source="acurite-access", sensor_id="s2", type="Atlas", received_utc=at,
+                                    raw=f"r{i}", fields={"strike_count": count, "last_strike_mi": 6})
+                stamps.append(capture.record_reading(r, Path(d), {})["fields"].get("last_strike_heard"))
+        self.assertEqual(stamps, [None, None, "2026-10-24T20:02:00Z", "2026-10-24T20:02:00Z"])
+
+
+class LightningAlert(unittest.TestCase):
+    NOW = datetime(2026, 10, 24, 20, 0).astimezone().timestamp()
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.dir.name)
+        self.sent = []
+        self._send = alerts.send
+        alerts.send = lambda c, title, message: self.sent.append((title, message)) or []
+        self.c = configparser.ConfigParser()
+        self.c["alerts"] = {"enabled": "true", "weather": "lightning"}
+        self.c["station"] = {"name": "Home"}
+
+    def tearDown(self):
+        alerts.send = self._send
+        self.dir.cleanup()
+
+    def look(self, mi, minutes_ago, today=3, now=None):
+        heard = datetime.fromtimestamp(self.NOW - minutes_ago * 60, ZoneInfo("UTC")).strftime("%Y-%m-%dT%H:%M:%SZ")
+        fields = {"strike_count": 259, "strikes_today": today, "last_strike_mi": mi, "last_strike_heard": heard}
+        (self.root / "current.json").write_text(json.dumps({"sensors": [
+            {"sensor_id": "1", "name": "Yard", "type": "Atlas", "updated": heard, "fields": fields}]}))
+        return alerts.check_weather(self.c, self.root, now or self.NOW, self.root / "state.json")
+
+    def test_a_close_strike_alerts_once_then_over_after_the_quiet(self):
+        self.assertEqual(self.look(6, 2), "weather: lightning alerted")
+        self.assertEqual(self.sent[-1], ("Home: lightning", "Lightning: a strike 6 mi away, heard at Yard (3 today)."))
+        self.assertEqual(self.look(4, 20, today=5), "weather: nothing new")
+        self.assertEqual(self.look(4, 31, today=5), "weather: lightning over")
+        self.assertEqual(self.sent[-1], ("Home: lightning over", "No lightning within 10 mi for 30 minutes."))
+        self.assertEqual(len(self.sent), 2)
+
+    def test_a_far_or_old_strike_is_quiet(self):
+        self.assertEqual(self.look(15, 1), "weather: nothing new")
+        self.assertEqual(self.look(3, 45), "weather: nothing new")
+        self.assertEqual(self.sent, [])
+
+    def test_the_radius_and_window_are_settings(self):
+        self.c["alerts"].update(lightning_mi="20", lightning_minutes="60")
+        self.assertEqual(self.look(15, 45), "weather: lightning alerted")
 
 
 if __name__ == "__main__":

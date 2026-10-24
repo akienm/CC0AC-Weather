@@ -317,17 +317,20 @@ def refresh_snapshot(write_path: Path, sensors: dict, page: dict | None) -> None
 # since local midnight: each rise in the count, and the whole count when it is
 # smaller than the last one (it started again). Seeded from the store, so a
 # restart doesn't lose the day's strikes. A count the source already keeps per
-# day comes out the same.
-_strikes: dict[str, dict] = {}   # sensor_id → {"day", "today", "last"}, guarded by _current_lock
+# day comes out the same. A rise also stamps last_strike_heard, our own time for
+# it, which the lightning alert reads (alerts.py).
+_strikes: dict[str, dict] = {}   # sensor_id → {"day", "today", "last", "rose"}, guarded by _current_lock
 
 
 def _count_strikes(sensor_id: str, count: int, day: str) -> int:
     s = _strikes.setdefault(sensor_id, {"day": day, "today": 0, "last": None})
     if s["day"] != day:
         s["day"], s["today"] = day, 0
+    grew = 0
     if s["last"] is not None:
-        s["today"] += count - s["last"] if count >= s["last"] else count
-    s["last"] = count
+        grew = count - s["last"] if count >= s["last"] else count
+    s["today"] += grew
+    s["last"], s["rose"] = count, grew > 0
     return s["today"]
 
 
@@ -382,6 +385,8 @@ def record_reading(reading: Reading, write_path: Path, sensors: dict, page: dict
             if sensor_id not in _strikes:
                 _seed_strikes(db_path, sensor_id, _epoch(now))
             entry["fields"]["strikes_today"] = _count_strikes(sensor_id, fields["strike_count"], _local_day(_epoch(now)))
+            if _strikes[sensor_id]["rose"]:
+                entry["fields"]["last_strike_heard"] = now
         if reading.channel:
             entry["channel"] = reading.channel
         _note_heard(sensor_id, _receiver_of(reading.source, reading.receiver), _epoch(now), reading.snr_db)

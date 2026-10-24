@@ -200,6 +200,24 @@ def weather_conditions(cfg: configparser.ConfigParser, snapshot: dict, now: floa
         t, name = max(hot) if hot else (None, "")
         out["heat"] = (f"Dangerous heat: feels like {t:.0f}°F at {name}." if t is not None
                        and (t >= heat or (was.get("heat") and t >= heat - 3)) else None)
+    if "lightning" in wanted:
+        # A strike the station heard (its count rose: last_strike_heard) within
+        # lightning_mi, in the last lightning_minutes; over once that long passes
+        # with none so close. Any sensor with a lightning detector, room or outdoor.
+        near, window = _setting(cfg, "lightning_mi", 10), _setting(cfg, "lightning_minutes", 30) * 60
+        close = []
+        for s in snapshot.get("sensors", []):
+            f = s.get("fields") or {}
+            try:
+                heard = datetime.fromisoformat(f["last_strike_heard"].replace("Z", "+00:00")).timestamp()
+            except (KeyError, AttributeError, ValueError):
+                continue
+            if isinstance(f.get("last_strike_mi"), (int, float)) and f["last_strike_mi"] <= near and now - heard <= window:
+                close.append((f["last_strike_mi"], s.get("name", ""), f.get("strikes_today")))
+        mi, name, today = min(close, key=lambda c: c[0]) if close else (None, "", None)
+        out["lightning"] = (f"Lightning: a strike {mi:g} mi away, heard at {name}"
+                            + (f" ({today} today)." if isinstance(today, int) else ".")
+                            if close else None)
     if "storm" in wanted:
         change = snapshot.get("pressure_change_3h")
         out["storm"] = (f"The barometer has fallen {-change:.2f} inHg in 3 hours: a storm may be coming."
@@ -209,7 +227,8 @@ def weather_conditions(cfg: configparser.ConfigParser, snapshot: dict, now: floa
 
 
 WEATHER_OVER = {"frost": "The frost risk is over.", "heat": "The dangerous heat is over.",
-                "storm": "The barometer has stopped falling fast."}
+                "storm": "The barometer has stopped falling fast.",
+                "lightning": "No lightning within {lightning_mi:g} mi for {lightning_minutes:g} minutes."}
 
 
 def check_weather(cfg: configparser.ConfigParser, write_path: Path, now: float | None = None,
@@ -230,7 +249,9 @@ def check_weather(cfg: configparser.ConfigParser, write_path: Path, now: float |
         if now_says and not sent.get(kind):
             message, title = now_says, f"{name}: {now_says.split(':')[0].lower()}"
         elif not now_says and sent.get(kind):
-            message, title = WEATHER_OVER[kind], f"{name}: {kind} over"
+            message = WEATHER_OVER[kind].format(lightning_mi=_setting(cfg, "lightning_mi", 10),
+                                                lightning_minutes=_setting(cfg, "lightning_minutes", 30))
+            title = f"{name}: {kind} over"
         else:
             continue
         problems = send(cfg, title, message)

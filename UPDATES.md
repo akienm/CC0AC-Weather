@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.3.6)
+# How CC0AC-Weather installs and keeps itself up to date (1.3.7)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -71,6 +71,12 @@ a Docker container's clock is UTC, so in Denver "today" began at 6 in the
 evening. Lightning shows the strikes counted since midnight: the hub sends the
 sensor's running count, so one strike could show as 256. The charts gain a 24
 hours period, from this time yesterday to now.
+
+1.3.7 adds a lightning alert. With `lightning` in `[alerts] weather`, a strike
+your lightning sensor hears within 10 miles sends a message, and another goes
+out once 30 minutes pass with none that close (`lightning_mi`,
+`lightning_minutes`). The station stamps each strike when it hears the count
+rise, so the alert doesn't depend on the sensor's clock.
 
 ## When it checks
 

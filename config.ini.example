@@ -279,11 +279,16 @@ quiet_minutes = 30
 ;
 ; Weather alerts, sent the same ways: one message when it starts, one when it's
 ; over. Any of: frost (outdoors at or below frost_f), heat (feels like at or
-; above heat_f), storm (the barometer falls pressure_drop_inhg in 3 hours).
-; weather = frost, heat, storm
+; above heat_f), storm (the barometer falls pressure_drop_inhg in 3 hours),
+; lightning (a lightning sensor heard a strike within lightning_mi in the last
+; lightning_minutes; over when that long passes with none so close. If you can
+; hear thunder you are within about 10 miles of it).
+; weather = frost, heat, storm, lightning
 ; frost_f = 35
 ; heat_f = 105
 ; pressure_drop_inhg = 0.06
+; lightning_mi = 10
+; lightning_minutes = 30
 
 [console]
 ; A station console or WiFi gateway that can upload to a "custom server":
