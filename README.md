@@ -423,7 +423,8 @@ Set `[station] latitude` and `longitude` (and optionally `elevation_ft`) and a
 Sun & moon card appears: sunrise, sunset, daylight and the moon phase, computed
 in the page with no outside service. The outdoor card shows everything the
 Atlas sends (feels-like, dew point, wind with direction arrow, gusts, rain, UV
-with its level, light, lightning) plus the 3-hour pressure trend.
+with its level, light, lightning) plus the 3-hour pressure trend. Lightning
+is the strikes since midnight, counted from the sensor's running total.
 
 In the US, set `[forecast] enabled = true` (with `[station]` latitude and
 longitude) and the program also fetches from the National Weather Service
@@ -440,7 +441,10 @@ the last good copy and says so on the page.
 `weather.db` on one page — outdoor temperature (with dew point, feels-like and
 the low–high band), wind speed, gusts and direction, pressure, rain, UV and
 light, and temperature and humidity for every room. One row of buttons sets the
-period for all of them: Today, Week, Month, Year, All time, or a Range of dates.
+period for all of them: Today, 24 hours (this time yesterday to now), Week,
+Month, Year, All time, or a Range of dates. Today starts at the station's
+midnight: set `[station] timezone` (the setup page fills it in) when the
+computer's clock isn't the station's, as in Docker, whose clock is UTC.
 The period sits in the address (`charts.html#week`), so a view can be
 bookmarked. Rain also shows totals for today, this week, month and year, and
 since recording began.
@@ -560,7 +564,8 @@ A page gets everything from two addresses on the same server:
     `humidity_pct`, `dew_point_f` and `battery`. The Atlas also sends
     `feels_like_f`, `wind_mph`, `wind_gust_mph`, `wind_dir_deg`,
     `pressure_inhg`, `rain_day_in`, `rain_hour_in`, `uv_index` and
-    `light_lux`.
+    `light_lux`. With a lightning sensor, `strike_count` is its running count
+    and `strikes_today` the strikes since midnight.
 
   `/forecast.json` holds the Weather Service data (`hourly`, `daily`,
   `observation`, `alerts`) when `[forecast]` is on. Both are also written as

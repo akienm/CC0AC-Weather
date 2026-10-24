@@ -134,6 +134,12 @@ button3 =
 ; latitude = 32.0
 ; longitude = -108.0
 ; elevation_ft = 6000
+;
+; The station's time zone, as its name in the tz database. "Today" on the
+; charts, each day's rain and the records start at its midnight. Unset, the
+; computer's own clock decides, and a Docker container's is UTC. The setup page
+; fills it in from the browser.
+; timezone = America/Denver
 
 [weather_underground]
 ; Station ID and key: only for uploading from this program (below).

@@ -8,7 +8,7 @@ FROM python:3.12.7-slim-bookworm
 # smartmontools: the disk check (it sees disks only when they are passed in);
 # smbclient: the backup to a Windows share.
 RUN apt-get update -qq \
- && apt-get install -y -qq --no-install-recommends smartmontools smbclient \
+ && apt-get install -y -qq --no-install-recommends smartmontools smbclient tzdata \
  && rm -rf /var/lib/apt/lists/*
 
 # The version in the image installs on the first start; after that the volume

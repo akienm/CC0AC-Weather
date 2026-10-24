@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.3.5)
+# How CC0AC-Weather installs and keeps itself up to date (1.3.6)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -63,6 +63,14 @@ a port is set up, so the installer asks each other port to reach Google's DNS
 (8.8.8.8) by ping, or GitHub where pings are blocked. If nothing answers, it
 stops: making the hub's port of the only working line would cut the machine off
 from your network.
+
+1.3.6 gives the station its own day. A new setting, `[station] timezone`, says
+where its midnight is; the setup page fills it in from your browser. "Today" on
+the charts, each day's rain and the records followed the computer's clock, and
+a Docker container's clock is UTC, so in Denver "today" began at 6 in the
+evening. Lightning shows the strikes counted since midnight: the hub sends the
+sensor's running count, so one strike could show as 256. The charts gain a 24
+hours period, from this time yesterday to now.
 
 ## When it checks
 

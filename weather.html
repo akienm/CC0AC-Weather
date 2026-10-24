@@ -493,7 +493,9 @@ const OUTDOOR_ROWS = {
   rain_rate:   f => row('🌧️ Rain rate', num(f.rain_hour_in, 2) + ' in/h'),
   uv:          f => row('🔆 UV index', uvLevel(f.uv_index)),
   light:       f => row('☀️ Light', num(f.light_lux, 0) + ' lux'),
-  lightning:   f => row('⚡ Lightning', f.strike_count == null ? '—' : `${f.strike_count} strikes`),
+  // strikes_today is worked out by the server from the sensor's running count (record_reading).
+  lightning:   f => row('⚡ Lightning', f.strikes_today == null ? '—'
+                 : `${f.strikes_today} strike${f.strikes_today == 1 ? '' : 's'} today`),
   last_strike: f => row('⚡ Last strike', f.last_strike_mi == null ? '—' : `${f.last_strike_mi} mi`),
 };
 const SENSOR_ROWS = {

@@ -48,6 +48,7 @@ ALIVE = "running"        # touched every minute by `run`
 ASKED = "update-now"     # `update` by hand, while `run` is running
 REPORTING_WINDOW_S = 30 * 60   # a sensor heard this recently counts as reporting
 DEFAULT_TIME = "06:00"
+ZONEINFO = Path("/usr/share/zoneinfo")
 JITTER_MIN = 20                # a few random minutes past the update time
 MARK_TEXT = "Written by CC0AC-Weather's boot loader; it rewrites this file when it runs again."
 MARK = "# " + MARK_TEXT
@@ -186,6 +187,7 @@ class Boot:
             c.read(self.config, encoding="utf-8")
         except (configparser.Error, OSError) as exc:
             log.warning("Couldn't read %s (%s); using the defaults", self.config, exc)
+        station_timezone(c)
         return c
 
     def expand(self, path: str) -> Path:
@@ -465,6 +467,22 @@ def healthy(boot: Boot, station: Station, before: list[str], since: float,
                                        (f"no new reading from {', '.join(before)}", heard)) if not ok]
             return False, "; ".join(missing)
         time.sleep(HEALTH_POLL_S)
+
+
+def station_timezone(c: configparser.ConfigParser) -> None:
+    """[station] timezone, so the update time is the station's own wherever the
+    computer's clock is set (a container's is usually UTC). The program it starts
+    inherits it, and sets it again itself."""
+    tz = c.get("station", "timezone", fallback="").strip()
+    if not tz or os.environ.get("TZ") == tz:
+        return
+    if not re.fullmatch(r"[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*", tz) or not (ZONEINFO / tz).is_file():
+        log.error("[station] timezone = %s is not a time zone this computer has (%s); "
+                  "using the computer's own", tz, ZONEINFO)
+        return
+    os.environ["TZ"] = tz
+    time.tzset()
+    log.info("Time zone: %s", tz)
 
 
 # ── Updating ──────────────────────────────────────────────────────────────────

@@ -79,6 +79,25 @@ def load_config(path: Path) -> configparser.ConfigParser:
     return cfg
 
 
+ZONEINFO = Path("/usr/share/zoneinfo")
+
+
+def apply_timezone(cfg: configparser.ConfigParser) -> None:
+    """[station] timezone: "today", each day's rain and the records are the
+    station's own days, wherever the computer's clock is set (a container's is
+    usually UTC), and so is the time the hub is told. Unset, the computer's own."""
+    tz = cfg.get("station", "timezone", fallback="").strip()
+    if not tz:
+        return
+    if not re.fullmatch(r"[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*", tz) or not (ZONEINFO / tz).is_file():
+        log.error("[station] timezone = %s is not a time zone this computer has (%s); "
+                  "days follow the computer's clock", tz, ZONEINFO)
+        return
+    os.environ["TZ"] = tz
+    time.tzset()
+    log.info("Time zone: %s", tz)
+
+
 def sensor_map(cfg: configparser.ConfigParser) -> dict[str, str]:
     """{sensor_id: display name} from [sensors], in display order: the sensors
     listed in [sensor_order] by their numbers, then the rest by name."""
@@ -292,6 +311,50 @@ def refresh_snapshot(write_path: Path, sensors: dict, page: dict | None) -> None
             _write_snapshot(write_path, sensors, page, old.get("written", ""), old.get("hub", ""))
 
 
+# Lightning: a sensor keeps a running count of the strikes it has heard, which
+# goes on from wherever it was (and starts again when its batteries come out), so
+# the number it sends is not today's strikes. The page shows the strikes counted
+# since local midnight: each rise in the count, and the whole count when it is
+# smaller than the last one (it started again). Seeded from the store, so a
+# restart doesn't lose the day's strikes. A count the source already keeps per
+# day comes out the same.
+_strikes: dict[str, dict] = {}   # sensor_id → {"day", "today", "last"}, guarded by _current_lock
+
+
+def _count_strikes(sensor_id: str, count: int, day: str) -> int:
+    s = _strikes.setdefault(sensor_id, {"day": day, "today": 0, "last": None})
+    if s["day"] != day:
+        s["day"], s["today"] = day, 0
+    if s["last"] is not None:
+        s["today"] += count - s["last"] if count >= s["last"] else count
+    s["last"] = count
+    return s["today"]
+
+
+def _seed_strikes(db_path: Path | None, sensor_id: str, now: float) -> None:
+    """Today's counts for one sensor from the store, and the last one before midnight."""
+    _strikes.pop(sensor_id, None)
+    if db_path is None or not db_path.exists():
+        return
+    day = _local_day(now)
+    midnight = _day_bounds(day)[0]
+    try:
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
+        before = con.execute("SELECT strike_count FROM readings WHERE sensor_id = ? AND strike_count IS NOT NULL"
+                             " AND received_utc < ? ORDER BY received_utc DESC LIMIT 1",
+                             (sensor_id, midnight)).fetchall()
+        today = con.execute("SELECT strike_count FROM readings WHERE sensor_id = ? AND strike_count IS NOT NULL"
+                            " AND received_utc >= ? ORDER BY received_utc", (sensor_id, midnight)).fetchall()
+        con.close()
+    except sqlite3.Error as exc:
+        log.warning("Strikes today start at 0, the store is unreadable: %s", exc)
+        return
+    if before:
+        _strikes[sensor_id] = {"day": day, "today": 0, "last": before[0][0]}
+    for (count,) in today:
+        _count_strikes(sensor_id, count, day)
+
+
 def record_reading(reading: Reading, write_path: Path, sensors: dict, page: dict | None = None,
                    db_path: Path | None = None) -> dict:
     """Fold one reading into current.json / current.js, append history.csv,
@@ -315,6 +378,10 @@ def record_reading(reading: Reading, write_path: Path, sensors: dict, page: dict
         entry["type"] = kind
         entry["updated"] = now
         entry["fields"].update(fields)
+        if isinstance(fields.get("strike_count"), (int, float)):
+            if sensor_id not in _strikes:
+                _seed_strikes(db_path, sensor_id, _epoch(now))
+            entry["fields"]["strikes_today"] = _count_strikes(sensor_id, fields["strike_count"], _local_day(_epoch(now)))
         if reading.channel:
             entry["channel"] = reading.channel
         _note_heard(sensor_id, _receiver_of(reading.source, reading.receiver), _epoch(now), reading.snr_db)
@@ -510,7 +577,7 @@ def _history_bounds(q: dict, first: float, now: datetime) -> tuple[float, float,
         lo = datetime.strptime(q["from"], "%Y-%m-%d").astimezone()
         hi = datetime.strptime(q.get("to", q["from"]), "%Y-%m-%d").astimezone().timestamp() + 86400
         return lo.timestamp(), min(hi, now.timestamp()), "range"
-    days = {"week": 7, "month": 30, "year": 365}
+    days = {"24h": 1, "week": 7, "month": 30, "year": 365}
     if period in days:
         return now.timestamp() - days[period] * 86400, now.timestamp(), period
     if period == "all":
@@ -1491,6 +1558,7 @@ def main() -> None:
     )
 
     cfg = load_config(args.config)
+    apply_timezone(cfg)
 
     if args.check:
         print(alerts.check(cfg, Path(cfg.get("device", "write_path")).expanduser()))

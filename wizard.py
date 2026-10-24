@@ -160,7 +160,7 @@ def apply_setup(text: str, answers: dict) -> str:
     """config.ini with the setup page's answers written in.
 
     answers: {"sensors": [{"id", "name"}, ...] in display order,
-              "station": {"name", "latitude", "longitude", "elevation_ft"},
+              "station": {"name", "latitude", "longitude", "elevation_ft", "timezone"},
               "forecast": bool, "online": bool, "alerts": {"ntfy_topic", "email_to", ...},
               "updates": {"automatic": bool, "time": "HH:MM"},
               "backup": {"path", "user", "password", "keep"}}"""
@@ -182,6 +182,11 @@ def apply_setup(text: str, answers: dict) -> str:
         if not lo <= f <= hi:
             raise ValueError(f"{key} {v} is out of range")
         values[key] = f"{f:g}"
+    if "timezone" in station:
+        tz = str(station.get("timezone") or "").strip()
+        if tz and not re.fullmatch(r"[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*", tz):
+            raise ValueError(f"not a time zone: {tz!r}")
+        values["timezone"] = tz or None
     text = set_values(text, "station", values)
     if "forecast" in answers:
         text = set_values(text, "forecast", {"enabled": "true" if answers["forecast"] else "false"})
@@ -237,7 +242,7 @@ def setup_state(cfg: configparser.ConfigParser, leases: Path = LEASES) -> dict:
     current = {
         "sensors": dict(cfg["sensors"]) if cfg.has_section("sensors") else {},
         "sensor_order": dict(cfg["sensor_order"]) if cfg.has_section("sensor_order") else {},
-        "station": {k: cfg.get("station", k, fallback="") for k in ("name", "latitude", "longitude", "elevation_ft")},
+        "station": {k: cfg.get("station", k, fallback="") for k in ("name", "latitude", "longitude", "elevation_ft", "timezone")},
         "forecast": cfg.getboolean("forecast", "enabled", fallback=False),
         "online": cfg.getboolean("online", "enabled", fallback=False),
         "updates": {"automatic": cfg.getboolean("updates", "automatic", fallback=True),

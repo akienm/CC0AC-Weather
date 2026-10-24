@@ -52,6 +52,7 @@
 <div class="ts" id="written">loading…</div>
 <div class="buttons" id="periods">
   <button data-p="today">Today</button>
+  <button data-p="24h">24 hours</button>
   <button data-p="week">Week</button>
   <button data-p="month">Month</button>
   <button data-p="year">Year</button>
@@ -85,7 +86,7 @@ function hashPeriod() {
   const h = decodeURIComponent(location.hash.slice(1));
   const m = h.match(/^range:(\d{4}-\d\d-\d\d):(\d{4}-\d\d-\d\d)$/);
   if (m) return { period: "range", from: m[1], to: m[2] };
-  return { period: ["today", "week", "month", "year", "all"].includes(h) ? h : "today" };
+  return { period: ["today", "24h", "week", "month", "year", "all"].includes(h) ? h : "today" };
 }
 
 function localDate(d) {

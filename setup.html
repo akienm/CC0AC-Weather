@@ -82,6 +82,10 @@
   <label for="elev">Elevation (feet)</label>
   <input type="number" id="elev" step="1">
   <p class="help" id="elevhelp"></p>
+  <label for="tz">Time zone</label>
+  <input type="text" id="tz" placeholder="America/Denver">
+  <p class="help">Where the station's day begins and ends: "today" on the charts, the day's rain and the records.
+     Filled in from this browser; change it only if the station is somewhere else.</p>
   <div class="check"><input type="checkbox" id="forecast"><label for="forecast" style="margin:0">Show the forecast (and weather alerts, in the US)</label></div>
   <div class="check"><input type="checkbox" id="online"><label for="online" style="margin:0">Show the internet's weather for this spot too</label></div>
   <p class="help">No weather station at all? Tick this and you're done: a spare tablet becomes a weather display. In the
@@ -234,6 +238,7 @@ async function start(first) {
   $("name").value = st.name || "";
   if (st.latitude && st.longitude) $("where").value = `${st.latitude}, ${st.longitude}`;
   $("elev").value = st.elevation_ft || (state.hub.elevation_ft || "");
+  $("tz").value = st.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "";
   if (!st.elevation_ft && state.hub.elevation_ft) $("elevhelp").textContent = "Filled in from the hub's own setting.";
   $("forecast").checked = state.current.forecast || !st.latitude;
   $("online").checked = state.current.online || (!st.latitude && state.hub.off && !rows.length);
@@ -265,7 +270,8 @@ function answers() {
   for (const k of ALERT_KEYS) alerts[k] = $(k).value.trim();
   return {
     sensors: rows.map(r => ({id: r.id, name: r.name.trim() || (r.type === "Atlas" ? "Outside" : "")})),
-    station: {name: $("name").value.trim(), latitude, longitude, elevation_ft: $("elev").value.trim()},
+    station: {name: $("name").value.trim(), latitude, longitude, elevation_ft: $("elev").value.trim(),
+              timezone: $("tz").value.trim()},
     forecast: $("forecast").checked && latitude !== "",
     online: $("online").checked,
     alerts,
