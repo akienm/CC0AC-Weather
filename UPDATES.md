@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.3.10)
+# How CC0AC-Weather installs and keeps itself up to date (1.3.11)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -101,6 +101,10 @@ held-back value is kept in the database's new `suspect` column, but the
 records, summaries, alerts, uploads and MQTT all skip it; the dashboard says
 what was held back and why, the charts show it faded, and the status page
 counts it. `[sanity]` in config.ini sets it; the README explains each check.
+
+1.3.11 puts a row of links above the version line on the dashboard: Charts,
+and, only when the page is opened from your own network, Status, Config,
+Setup, the service log and the diagnostics file.
 
 ## When it checks
 

@@ -95,8 +95,10 @@
   #warnings .warning { border: 1px solid #f90; color: #fc6; padding: 8px 14px; margin-bottom: 12px; }
   .above { color: #f96; } .below { color: #6cf; }
   /* weather.html?embed, for an iframe on another page: no lower pane, no charts link. */
-  .embed .lower, .embed h1 a.charts, .embed .credit { display: none !important; }
-  .credit { margin: 24px 0 8px; text-align: center; font-size: 12px; color: var(--muted); }
+  .embed .lower, .embed h1 a.charts, .embed .credit, .embed .pages { display: none !important; }
+  .pages { margin: 24px 0 0; text-align: center; font-size: 13px; }
+  .pages a { color: var(--accent); text-decoration: none; margin: 0 8px; white-space: nowrap; }
+  .credit { margin: 8px 0 8px; text-align: center; font-size: 12px; color: var(--muted); }
   .credit a { color: var(--muted); }
   .embed body { padding: 8px; }
 </style>
@@ -141,12 +143,15 @@
   <iframe id="lower-frame" loading="lazy" title="Lower pane"></iframe>
 </div>
 
+<div class="pages"><a href="/charts.html">📈 Charts</a><span id="local-pages" hidden>
+  <a href="/status">Status</a><a href="/config.cgi">Config</a><a href="/setup">Setup</a>
+  <a href="/log?f=service" target="_blank" rel="noopener">Service log</a><a href="/diagnostics" download>Diagnostics file</a></span></div>
 <div class="credit">CC0AC Weather <span id="version"></span> · made by Akien MacIain and Claude Code ·
-  free under the MIT License · <a href="https://github.com/akienm/CC0AC-Weather" target="_blank" rel="noopener">source and help</a><span id="status-link" hidden> · <a href="/status">status</a></span></div>
+  free under the MIT License · <a href="https://github.com/akienm/CC0AC-Weather" target="_blank" rel="noopener">source and help</a></div>
 <script src="units.js"></script>
 <script>
-// The status page answers only on your own network; the link shows only where it would open.
-fetch("/status", {cache: "no-store"}).then(r => { if (r.ok) document.getElementById("status-link").hidden = false; }, () => {});
+// Status, config and the rest answer only on your own network; their links show only where they would open.
+fetch("/status", {cache: "no-store"}).then(r => { if (r.ok) document.getElementById("local-pages").hidden = false; }, () => {});
 // Data arrives as current.js (window.ACURITE_CURRENT = {...}), written beside this
 // page by acurite-capture.py. A <script> tag can load it from a file:// URL or any
 // static host, where fetch() would be blocked. units.js beside it shows each reading

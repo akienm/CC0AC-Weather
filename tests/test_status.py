@@ -222,5 +222,22 @@ class Links(unittest.TestCase):
         self.assertIn('target="_blank"', page)
 
 
+
+class PageLinks(unittest.TestCase):
+    """The dashboard's row of links above the version: the ones only your network
+    can open are hidden until the status page answers, and stay outside-only proof."""
+
+    def test_the_hidden_ones_are_the_ones_the_outside_cannot_open(self):
+        import re
+        page = (HERE / "weather.html").read_text()
+        hidden = re.search(r'<span id="local-pages" hidden>(.*?)</span>', page, re.S).group(1)
+        links = [urllib.parse.urlparse(h).path for h in re.findall(r'href="([^"]+)"', hidden)]
+        self.assertEqual(links, ["/status", "/config.cgi", "/setup", "/log", "/diagnostics"])
+        for path in links:
+            self.assertNotIn(path, capture.OUTSIDE_PATHS)
+        self.assertIn('getElementById("local-pages").hidden = false', page)
+        self.assertIn("/charts.html", capture.OUTSIDE_PATHS)
+
+
 if __name__ == "__main__":
     unittest.main()
