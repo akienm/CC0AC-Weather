@@ -101,8 +101,10 @@ class Install(unittest.TestCase):
     def install(self, tag="v1.2.0"):
         args = SimpleNamespace(platform="docker", root=str(self.root), config=str(self.home / "config.ini"),
                                home=str(self.home), user=None, python=sys.executable, source=None, tag=tag,
-                               releases=str(self.releases), hub_network=False, image=False)
+                               releases=str(self.releases), hub_network=False, image=False,
+                               hub_interface="enp2s0")
         boot = bl.install(args)
+        self.assertEqual(json.loads((self.root / "bootloader.json").read_text())["hub_interface"], "enp2s0")
         text = (self.home / "config.ini").read_text()
         sys.path.insert(0, str(REPO))
         import wizard

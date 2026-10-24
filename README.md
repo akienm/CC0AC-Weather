@@ -152,13 +152,17 @@ prints an address: open it and answer the setup page.
 | Computer | Run this | Notes |
 |---|---|---|
 | **A Pi already running Raspberry Pi OS** | `curl -fsSL https://raw.githubusercontent.com/akienm/CC0AC-Weather/main/setup/install.sh \| sudo bash` | Takes over the Pi's network port for the hub, unless the Pi itself is plugged into your router there (`--no-hub-network` to be sure) |
-| **Debian or Ubuntu** | the same line | Leaves the network alone; `--hub-network` to give eth0 to the hub |
+| **Debian or Ubuntu** (an old laptop works well) | the same line | Lists the wired ports your network isn't on and asks which one the hub's cable goes into; Enter for none. Without a terminal to ask: `--hub-network PORT` |
 | **Mac** | the same line **without** `sudo` | Needs Python 3 from python.org or Homebrew; runs while you're logged in. Untested: no Mac to test on |
 | **Windows 10/11** | in PowerShell: `irm https://raw.githubusercontent.com/akienm/CC0AC-Weather/main/setup/install.ps1 \| iex` | Installs Python if it's missing; starts when you log on. Untested |
 | **Docker** (anything) | `cd setup/docker && docker compose up -d` in a copy of this project | Readings and settings in the volume `cc0ac-weather-data`. Untested |
 
-Only a Pi or a Debian machine with a spare network port can take the hub's
-cable. Everything else uses the radio dongle, a console upload from another
+Only a Pi or a Debian machine with a spare wired port can take the hub's
+cable. A laptop usually has one network port, and it's the one it reaches your
+network by; a USB network adapter adds a second, for the hub. The adapter's
+port has a name like `enx00e04c680001` (`ip -br link` lists them), and the
+installer offers it by that name. A laptop's own screen and keyboard then serve
+as the station's console, and its battery rides out a power cut. Everything else uses the radio dongle, a console upload from another
 brand, or the **internet's weather** (no station at all: `[online]` in the
 settings, see [UPDATES.md](UPDATES.md)).
 
@@ -247,7 +251,10 @@ You also need a router that can forward port 443.
 ### B. Plug the hub into the Pi
 
 The hub's Ethernet cable goes into the Pi instead of your router, and the Pi
-reaches your network over Wi-Fi. The Pi then plays router for the hub. It gives
+reaches your network over Wi-Fi. A laptop or PC works the same way with a
+second wired port (a USB network adapter): below, read `eth0` as the hub's port
+and `wlan0` as the one your network is on, whatever `ip -br link` calls them.
+The installer does all of this by itself (`--hub-network PORT`). The Pi then plays router for the hub. It gives
 the hub an address, and when the hub asks where `atlasapi.myacurite.com` is,
 the Pi answers "here". Every other name the hub looks up gets the real answer,
 so its Weather Underground uploads (and its clock) pass straight through the

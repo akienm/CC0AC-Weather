@@ -1,4 +1,4 @@
-"""The Pi (or a Debian machine) becomes the AcuRite hub's network: the cable port gets
+"""The Pi (or a Debian machine) becomes the AcuRite hub's network: the hub's port gets
 192.168.77.1, dnsmasq gives the hub an address and answers atlasapi.myacurite.com with
 this machine, and the hub's other traffic goes out to the internet and nowhere else.
 
@@ -7,16 +7,19 @@ dashboard and setup page, console uploads and mDNS. From the internet, if you fo
 port: the dashboard only, a limited number of new connections per visitor. From the
 cable: the hub's own traffic, and ssh, so a Pi whose Wi-Fi is lost can still be reached.
 
+The hub's port is eth0 on a Pi; on another machine the installer asks which (often a
+USB adapter, enx...), and the boot loader hands it over as ctx.hub_interface.
+
 Skipped with install --no-hub-network, or when the cable port was set up by hand."""
 import subprocess
 from pathlib import Path
 
 PLATFORMS = ("pi", "debian")
-HUB_IF = "eth0"
 HUB_NET = "192.168.77"
 NM_FILE = Path("/etc/NetworkManager/system-connections/cc0ac-hub.nmconnection")
 DNSMASQ_FILE = Path("/etc/dnsmasq.d/cc0ac-hub.conf")
 NFT = Path("/etc/nftables.conf")
+AVAHI = Path("/etc/avahi/avahi-daemon.conf")
 PRIVATE4 = "10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16"
 PRIVATE6 = "fe80::/10, fc00::/7"
 
@@ -25,53 +28,30 @@ def apply(ctx):
     if not ctx.hub_network:
         ctx.log.info("  no hub on the cable; network left alone")
         return
+    hub_if = getattr(ctx, "hub_interface", None) or "eth0"   # a boot loader before 1.3.4 knew only eth0
     hand_made = not ctx.ours_or_absent(DNSMASQ_FILE) or (
         not ctx.image and not NM_FILE.exists()
-        and f"inet {HUB_NET}.1/" in subprocess.run(["ip", "-4", "addr", "show", HUB_IF],
+        and f"inet {HUB_NET}.1/" in subprocess.run(["ip", "-4", "addr", "show", hub_if],
                                                     capture_output=True, text=True).stdout)
     if hand_made:
         ctx.log.info("  the cable port was set up by hand here; network left alone")
         return
     ctx.run(["apt-get", "install", "-y", "-qq", "dnsmasq", "nftables", "avahi-daemon"],
             env={"DEBIAN_FRONTEND": "noninteractive", "PATH": "/usr/sbin:/usr/bin:/sbin:/bin"})
-    ctx.write_ours(NM_FILE, f"""[connection]
-id=cc0ac-hub
-type=ethernet
-interface-name={HUB_IF}
-autoconnect=true
-
-[ethernet]
-
-[ipv4]
-method=manual
-address1={HUB_NET}.1/24
-never-default=true
-
-[ipv6]
-method=disabled
-""", 0o600)
-    ctx.write_ours(DNSMASQ_FILE, f"""# DHCP and DNS for the hub, on the cable port only. bind-dynamic: the port may
-# come up after dnsmasq does (no cable yet), and dnsmasq picks it up when it does.
-interface={HUB_IF}
-except-interface=lo
-bind-dynamic
-dhcp-range={HUB_NET}.50,{HUB_NET}.99,12h
-dhcp-option=option:router,{HUB_NET}.1
-dhcp-option=option:dns-server,{HUB_NET}.1
-# The hub's server name answers with this machine; every other name passes through.
-address=/atlasapi.myacurite.com/{HUB_NET}.1
-""")
+    ctx.log.info("  the hub's port: %s", hub_if)
+    ctx.write_ours(NM_FILE, NM.format(hub=hub_if, net=HUB_NET), 0o600)
+    ctx.write_ours(DNSMASQ_FILE, DNSMASQ.format(hub=hub_if, net=HUB_NET))
     ctx.write_ours(Path("/etc/sysctl.d/90-cc0ac-forward.conf"), "net.ipv4.ip_forward=1\n")
     if NFT.exists() and not ctx.ours_or_absent(NFT) and not Path(str(NFT) + ".before-cc0ac").exists():
         ctx.run(["cp", "-a", str(NFT), str(NFT) + ".before-cc0ac"])
         ctx.log.info("  kept the old firewall as %s.before-cc0ac", NFT)
-    ctx.write_ours(NFT, FIREWALL.format(hub=HUB_IF, net=HUB_NET, p4=PRIVATE4, p6=PRIVATE6), 0o755)
+    ctx.write_ours(NFT, FIREWALL.format(hub=hub_if, net=HUB_NET, p4=PRIVATE4, p6=PRIVATE6), 0o755)
     ctx.run(["nft", "-c", "-f", str(NFT)])
     ctx.run(["systemctl", "enable", "dnsmasq", "nftables"], capture_output=True)
-    avahi = Path("/etc/avahi/avahi-daemon.conf")
+    avahi = AVAHI
     if avahi.exists():   # mDNS only on the house side, or avahi hears itself twice and renames the machine
         text = avahi.read_text().splitlines()
-        text = [f"deny-interfaces={HUB_IF}" if l.lstrip("#").startswith("deny-interfaces=") else l for l in text]
+        text = [f"deny-interfaces={hub_if}" if l.lstrip("#").startswith("deny-interfaces=") else l for l in text]
         avahi.write_text("\n".join(text) + "\n")
     if not ctx.image:
         ctx.run(["sysctl", "-q", "--system"])
@@ -80,6 +60,35 @@ address=/atlasapi.myacurite.com/{HUB_NET}.1
         subprocess.run(["nmcli", "connection", "up", "cc0ac-hub"], capture_output=True)
         ctx.run(["systemctl", "restart", "dnsmasq", "avahi-daemon"], check=False)
 
+
+NM = """[connection]
+id=cc0ac-hub
+type=ethernet
+interface-name={hub}
+autoconnect=true
+
+[ethernet]
+
+[ipv4]
+method=manual
+address1={net}.1/24
+never-default=true
+
+[ipv6]
+method=disabled
+"""
+
+DNSMASQ = """# DHCP and DNS for the hub, on its port ({hub}) only. bind-dynamic: the port may
+# come up after dnsmasq does (no cable yet), and dnsmasq picks it up when it does.
+interface={hub}
+except-interface=lo
+bind-dynamic
+dhcp-range={net}.50,{net}.99,12h
+dhcp-option=option:router,{net}.1
+dhcp-option=option:dns-server,{net}.1
+# The hub's server name answers with this machine; every other name passes through.
+address=/atlasapi.myacurite.com/{net}.1
+"""
 
 FIREWALL = """#!/usr/sbin/nft -f
 # {hub} = the hub's cable ({net}.0/24). Every other interface is your network or the internet.

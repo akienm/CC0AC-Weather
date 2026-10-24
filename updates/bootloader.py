@@ -3,7 +3,8 @@
 UPDATES.md says why each part is the way it is.
 
   bootloader.py install --platform P --root DIR --config FILE --home DIR [--user U]
-                        [--from DIR | --tag TAG] [--image] [--no-hub-network]
+                        [--from DIR | --tag TAG] [--image] [--no-hub-network | --hub-interface IF]
+  bootloader.py ports                          the wired ports that could take the hub's cable
   bootloader.py run [--root DIR]               the service: run the station, check every 5 min, update
   bootloader.py update [--root DIR] [--security-only]   look for updates now
   bootloader.py status [--root DIR]
@@ -220,7 +221,8 @@ class Boot:
         return SimpleNamespace(
             platform=self.platform, root=self.root, config=self.config, home=Path(self.settings["home"]),
             user=self.settings.get("user"), python=self.settings["python"], version_dir=version_dir,
-            hub_network=self.settings.get("hub_network", False), image=image, mark=MARK, log=log,
+            hub_network=self.settings.get("hub_network", False),
+            hub_interface=self.settings.get("hub_interface", "eth0"), image=image, mark=MARK, log=log,
             bootloader_cmd=[self.settings["python"], str(self.root / "bootloader.py"), "run"],
             run=_run, write_ours=write_ours, ours_or_absent=ours_or_absent)
 
@@ -228,6 +230,32 @@ class Boot:
 def _run(cmd: list[str], check: bool = True, **kw) -> subprocess.CompletedProcess:
     log.info("  $ %s", " ".join(cmd))
     return subprocess.run(cmd, check=check, **kw)
+
+
+def hub_ports(sys_net: Path = Path("/sys/class/net"), routed: set[str] | None = None) -> list[dict]:
+    """The wired ports that could take the hub's cable: real Ethernet hardware (a USB
+    adapter counts), not Wi-Fi, and not the port this machine reaches your network by.
+    A port names itself after its place on the board (enp1s0) or, a USB adapter, after
+    its own address (enx...), so a laptop's port is seldom eth0."""
+    if routed is None:
+        routed = set()
+        for family in ("-4", "-6"):
+            out = subprocess.run(["ip", family, "route", "show", "default"], capture_output=True, text=True).stdout
+            routed |= set(re.findall(r"\bdev (\S+)", out))
+    ports = []
+    for d in sorted(Path(sys_net).iterdir()):
+        try:
+            wired = (d / "type").read_text().strip() == "1" and (d / "device").exists()
+        except OSError:
+            continue
+        if not wired or (d / "wireless").exists() or (d / "phy80211").exists() or d.name in routed:
+            continue
+        try:
+            cable = (d / "carrier").read_text().strip() == "1"
+        except OSError:   # a port that is down can't say
+            cable = False
+        ports.append({"name": d.name, "usb": "/usb" in os.path.realpath(d / "device"), "cable": cable})
+    return ports
 
 
 def ours_or_absent(path: Path) -> bool:
@@ -613,7 +641,8 @@ def install(args) -> Boot:
     settings_path = root / "bootloader.json"
     settings = {"platform": args.platform, "config": str(Path(args.config)), "home": str(Path(args.home)),
                 "user": args.user, "python": args.python or sys.executable,
-                "releases": args.releases, "hub_network": args.hub_network}
+                "releases": args.releases, "hub_network": args.hub_network,
+                "hub_interface": getattr(args, "hub_interface", None) or "eth0"}
     settings_path.write_text(json.dumps(settings, indent=1))
     if not (root / "state.json").exists():
         (root / "state.json").write_text(json.dumps({
@@ -743,6 +772,7 @@ def main(argv: list[str] | None = None) -> None:
     i.add_argument("--image", action="store_true", help="building an SD card image: write, start nothing")
     i.add_argument("--no-hub-network", dest="hub_network", action="store_false",
                    help="Pi/Debian: leave the network port alone (no AcuRite hub on the cable)")
+    i.add_argument("--hub-interface", help="Pi/Debian: the port the hub's cable plugs into (default eth0)")
     i.add_argument("--then-run", action="store_true", help="Docker: install if needed, then run")
     for name, text in (("run", "the service"), ("update", "look for updates now"), ("status", "say what's installed"),
                        ("diagnostics", "make the file to attach to a problem report"),
@@ -751,7 +781,12 @@ def main(argv: list[str] | None = None) -> None:
         s.add_argument("--root", default=str(here))
         if name == "update":
             s.add_argument("--security-only", action="store_true")
+    sub.add_parser("ports", help="the wired ports that could take the hub's cable, for the installer")
     args = p.parse_args(argv)
+    if args.cmd == "ports":   # one per line: name, usb or board, cable or none
+        for port in hub_ports():
+            print(port["name"], "usb" if port["usb"] else "board", "cable" if port["cable"] else "none")
+        return
     root = Path(args.root).resolve()
     setup_logging(root)
     if args.cmd == "install":

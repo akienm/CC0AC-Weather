@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.3.3)
+# How CC0AC-Weather installs and keeps itself up to date (1.3.4)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -49,6 +49,14 @@ than 90% of the time shows in the warning colour.
 
 1.3.3 is a repair to that line: over a full hour it expected one reading too
 many, so a sensor that missed nothing read as 92% from the hub.
+
+1.3.4 lets the hub's cable go into any wired port, not only `eth0`. A laptop or
+PC names its ports by their place (`enp1s0`) or, a USB network adapter, by its
+own address (`enx...`), so the old installer would have set up a port that
+wasn't there. Now it lists the wired ports your network isn't on and asks which
+one is the hub's (Enter for none); `--hub-network PORT` answers without asking.
+The boot loader keeps the answer as `hub_interface`. A Pi still uses `eth0`, and
+a station already set up keeps the network it has.
 
 ## When it checks
 
