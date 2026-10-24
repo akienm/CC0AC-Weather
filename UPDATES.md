@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.3.11)
+# How CC0AC-Weather installs and keeps itself up to date (1.3.12)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -105,6 +105,11 @@ counts it. `[sanity]` in config.ini sets it; the README explains each check.
 1.3.11 puts a row of links above the version line on the dashboard: Charts,
 and, only when the page is opened from your own network, Status, Config,
 Setup, the service log and the diagnostics file.
+
+1.3.12 adds two places to send readings: a webhook (each reading POSTed as
+JSON to a web address of your own, for Node-RED, n8n or Home Assistant) and
+InfluxDB 1.x, 2 or 3, for Grafana. `[webhook]` and `[influxdb]` in config.ini;
+the README's "Webhook and InfluxDB" explains them.
 
 ## When it checks
 

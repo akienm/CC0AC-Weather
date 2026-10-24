@@ -729,6 +729,44 @@ integration puts the sensors in Apple's Home app, and its Google Assistant and
 Alexa integrations (or Home Assistant Cloud) do the same for theirs. openHAB,
 Node-RED and Homebridge can read the MQTT topics directly.
 
+## Webhook and InfluxDB
+
+**Webhook:** with `[webhook] enabled = true` and a `url`, every reading from
+every sensor is POSTed there as JSON as it is recorded, for Node-RED, n8n, Home
+Assistant's webhook trigger or a script of your own:
+
+```json
+{"sensor_id": "00001234", "name": "Yard", "type": "Atlas", "outdoor": true,
+ "source": "acurite-access", "time": "2026-10-24T18:00:00Z",
+ "fields": {"temp_f": 61.2, "humidity_pct": 44, "wind_mph": 3.4},
+ "units": {"temp_f": "°F", "humidity_pct": "%", "wind_mph": "mph"},
+ "held_back": {}, "software": "CC0AC-Weather-1.3.12"}
+```
+
+The fields are in the stored units, whichever units the pages show. A value
+the sanity checks didn't believe is in `held_back` with the reason, not in
+`fields`. `header = Authorization: Bearer abc123` sends a token with each one;
+`every_minutes = 10` sends each sensor's latest once in ten minutes rather than
+every reading.
+
+**InfluxDB**, for Grafana: `[influxdb]` with the `url` (such as
+`http://192.168.1.20:8086`), then for InfluxDB 2 or 3 (or InfluxDB Cloud) the
+`org`, `bucket` and a `token` that may write to it, or for InfluxDB 1.x the
+`database` (and `username` and `password` if it has users). Each reading is one
+point in the measurement `weather`, tagged by `sensor_id`, `name`, `type` and
+`source`, with a field per value in the stored units, every number a float.
+Held-back values are left out.
+
+Both show on the status page under "Sent to", each send ok or failed with the
+answer that came back. A failed send is not retried: the next reading goes as
+usual.
+
+**Status:** both are checked by the tests against a small web server in the
+test itself. Measured 2026-10-24 against InfluxDB 2.7.11: points written through
+the 2.x API and through its 1.x API read back with their tags and values, and a
+wrong token showed as failed. Not yet measured on InfluxDB 1.x or 3 themselves,
+or with Node-RED.
+
 ## Asking an AI assistant (MCP)
 
 The station speaks MCP, the Model Context Protocol, at `/mcp` on the dashboard's
@@ -982,8 +1020,8 @@ Nothing is sent to us: there is no account, no analytics, no "phone home". What
 does go out, and only when it's switched on:
 
 - each reading to **AcuRite** (the relay, so their app keeps working; `[hub] relay`);
-- the station's readings to the **weather networks** and **MQTT broker** you set
-  up (`[windy]`, `[cwop]`, `[mqtt]` and the rest); the hub uploads to Weather
+- the station's readings to the **weather networks**, **MQTT broker**, **webhook**
+  and **InfluxDB** you set up (`[windy]`, `[cwop]`, `[mqtt]`, `[webhook]` and the rest); the hub uploads to Weather
   Underground itself;
 - your **location** to the National Weather Service or Open-Meteo for the
   forecast and the internet's weather, and to NOAA (or Open-Meteo outside the
@@ -1060,6 +1098,8 @@ Run the tests before a pull request: `python3 -m unittest discover -s tests`.
 | `outputs/pwsweather.py` | Uploads the station to PWSweather |
 | `outputs/weathercloud.py` | Uploads the station to Weathercloud |
 | `outputs/cwop.py` | Sends the station to CWOP as an APRS weather packet |
+| `outputs/webhook.py` | POSTs each reading as JSON to a web address of your own |
+| `outputs/influxdb.py` | Writes each reading to InfluxDB 1.x, 2 or 3 |
 | `config.ini.example` | Configuration template, every option documented |
 | `weather.html` | Dashboard; reads `current.js`, `forecast.js` and `climate.js` |
 | `charts.html` | Charts over any period; reads `/history.json` |

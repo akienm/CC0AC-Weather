@@ -105,3 +105,16 @@ def get(url: str, params: dict) -> tuple[int, str]:
             return resp.status, resp.read().decode(errors="replace").strip()
     except urllib.error.HTTPError as exc:
         return exc.code, exc.read().decode(errors="replace").strip()
+
+
+def post(url: str, body: bytes, headers: dict) -> tuple[int, str]:
+    """POST body to url; the status and body. A server that can't be reached is
+    status 0 with the reason, so it is reported like any other failure."""
+    req = urllib.request.Request(url, data=body, method="POST", headers={"User-Agent": SOFTWARE, **headers})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            return resp.status, resp.read().decode(errors="replace").strip()
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read().decode(errors="replace").strip()
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        return 0, str(getattr(exc, "reason", exc))

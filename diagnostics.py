@@ -39,7 +39,8 @@ _IPV4 = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
 _APRS_POSITION = re.compile(r"\d{4}\.\d{2}[NS]/\d{5}\.\d{2}[EW]")   # in a CWOP packet: 3230.00N/10815.00W
 # Settings whose values are someone's identity or secret, in any section.
 SECRET_KEYS = ("station_id", "station_key", "password", "passcode", "key", "api_key", "user", "smtp_user",
-               "smtp_password", "ntfy_topic", "email_to", "email_from", "healthcheck_url", "hub_id", "station")
+               "smtp_password", "ntfy_topic", "email_to", "email_from", "healthcheck_url", "hub_id", "station",
+               "token", "header", "username")
 
 
 def _public(ip: str) -> bool:
