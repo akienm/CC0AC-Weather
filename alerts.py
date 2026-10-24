@@ -36,6 +36,8 @@ from datetime import datetime, timezone
 from email.message import EmailMessage
 from pathlib import Path
 
+from iolog import report
+
 log = logging.getLogger("acurite")
 
 DEFAULT_QUIET_MINUTES = 30
@@ -65,14 +67,18 @@ def send(cfg: configparser.ConfigParser, title: str, message: str) -> list[str]:
                                      headers={"Title": title.encode("ascii", "replace").decode(), "Tags": "cloud"})
         try:
             urllib.request.urlopen(req, timeout=20).read()
+            report("ntfy", True, title)
         except OSError as e:
             problems.append(f"ntfy: {e}")
+            report("ntfy", False, f"{title}: {e}")
     to = _get(cfg, "email_to")
     if to:
         try:
             _email(cfg, to, title, message)
+            report("email", True, title)
         except (OSError, smtplib.SMTPException, ValueError) as e:
             problems.append(f"email: {e}")
+            report("email", False, f"{title}: {e}")
     return problems
 
 
@@ -100,10 +106,13 @@ def _email(cfg: configparser.ConfigParser, to: str, title: str, message: str) ->
 
 
 def _ping(url: str) -> None:
+    kind = "fail" if url.endswith("/fail") else "ok"
     try:
         urllib.request.urlopen(url, timeout=20).read()
+        report("healthcheck", True, f"pinged {kind}")
     except OSError as e:
         log.warning("healthcheck ping %s failed: %s", url, e)
+        report("healthcheck", False, f"ping {kind}: {e}")
 
 
 def _load_state(path: Path) -> dict:

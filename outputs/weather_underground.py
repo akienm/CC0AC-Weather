@@ -14,6 +14,7 @@ import logging
 import urllib.parse
 import urllib.request
 
+from iolog import report
 from sources import OUTDOOR_TYPES, Reading
 
 log = logging.getLogger("acurite")
@@ -58,6 +59,9 @@ def send(cfg: configparser.ConfigParser, reading: Reading) -> None:
         return
     try:
         with urllib.request.urlopen(WU_URL + "?" + urllib.parse.urlencode(p), timeout=10) as resp:
-            log.info("WU upload OK: %s", resp.read().decode().strip())
+            answer = resp.read().decode().strip()
+        log.info("WU upload OK: %s", answer)
+        report(NAME, True, answer)
     except Exception as exc:
         log.warning("WU upload failed: %s", exc)
+        report(NAME, False, str(exc))

@@ -24,6 +24,7 @@ import socket
 import struct
 import time
 
+from iolog import report
 from sources import FIELDS, Reading
 
 log = logging.getLogger("acurite")
@@ -224,11 +225,13 @@ def send(cfg: configparser.ConfigParser, reading: Reading) -> None:
             if msgs:
                 sock.sendall(b"".join(publish_packet(t, p) for t, p in msgs))
                 _last_sent = time.monotonic()
+                report(NAME, True, f"{len(msgs)} messages for {reading.sensor_id}")
             break
         except OSError as exc:
             _close()
             if attempt == 2:
                 log.warning("MQTT publish failed: %s", exc)
+                report(NAME, False, str(exc))
                 return
     prefix = cfg.get("mqtt", "discovery_prefix", fallback="homeassistant").strip().strip("/") + "/"
     _announced.update((reading.sensor_id, t.split("/")[-2]) for t, _ in msgs

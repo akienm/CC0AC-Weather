@@ -520,6 +520,24 @@ pages load (`current.js`, `forecast.js`, `/history.json`); your own pages,
 Use the box's own address (`http://10.0.0.x:12345/`), not your outside name: a
 router that loops your outside name back to you makes you look like a visitor.
 
+### The status page
+
+`http://THIS_BOX:12345/status` shows how the station itself is doing, and the
+dashboard links to it at the bottom (from your own network only). It shows:
+
+- how long the program and the computer have been up, the newest reading, how
+  far back the history goes and how big it is, and the last backup;
+- each sensor: when it was last heard, its battery, how well each receiver
+  hears it, and links to that sensor's own lines in each raw log;
+- each receiver (the hub, the radio, a console) and its raw logs by day;
+- everything the station sends to other services (weather networks, MQTT, the
+  relay to AcuRite, the forecast and alert fetches, your alerts): when it last
+  went, whether it worked, what came back, and a log of each try by day.
+
+Anything unheard for 15 minutes shows in red. Every log opens as it is on disk,
+in a new window. The send logs (`sent/<service>/<date>.log` beside config.ini)
+keep a month; they hold the answer each service gave, never the keys sent.
+
 ### Making it yours
 
 **Name.** `[station] name = Hilltop Weather` puts your station's name in the
@@ -848,12 +866,18 @@ AcuRite hub, so for now a console-only setup is config.ini by hand.
 
 ## When something reads wrong
 
+Asking for help starts with a **diagnostics file**: this is a free project with
+no support staff, and a report with one attached is one we can actually answer.
+Make it with the button on the status page (`/status`, "Download the diagnostics
+file"), or with
+
     python3 acurite-capture.py --diagnostics
 
-writes one file holding the raw uploads and radio lines of the last three
-days, the service log, and the radio and console settings. Passwords, station
-keys, MACs, public IP addresses, sensor names and your location are left out.
-Attach it to an [issue](https://github.com/akienm/CC0AC-Weather/issues).
+It holds the raw uploads and radio lines of the last three days, the send logs,
+the service log, and the radio and console settings. Passwords, station keys and
+IDs, MACs, public IP addresses, sensor names and your location are left out.
+Attach it to an [issue](https://github.com/akienm/CC0AC-Weather/issues), and say
+what you expected to see and what you saw instead.
 
 ## Wall displays: old Android phones as weather kiosks
 
@@ -933,7 +957,8 @@ Run the tests before a pull request: `python3 -m unittest discover -s tests`.
 | `sources/acurite_access.py` | The Access hub source: listener, relay to AcuRite, raw log |
 | `sources/rtl_433.py` | The radio source: runs rtl_433 and turns its messages into Readings |
 | `sources/console_upload.py` | Console uploads: Ambient Weather, Ecowitt and Wunderground formats |
-| `diagnostics.py` | `--diagnostics`: one file to attach to a problem report |
+| `diagnostics.py` | `--diagnostics` and the status page's download: one file to attach to a problem report |
+| `iolog.py` | The send logs: what was sent to each service and what came back |
 | `SUPPORTED.md` | Which brands work how, and how sure we are (made by `setup/supported.py`) |
 | `tests/` | `python3 -m unittest discover tests`; `rtl_433_samples.jsonl` is one recorded line per radio model |
 | `outputs/__init__.py` | How to add an output: somewhere readings are sent |
@@ -949,6 +974,7 @@ Run the tests before a pull request: `python3 -m unittest discover -s tests`.
 | `charts.html` | Charts over any period; reads `/history.json` |
 | `config.html` | The settings page served at `/config.cgi` (your network only) |
 | `setup.html` | The first-run setup page at `/setup` (your network only) |
+| `status.html` | The status page at `/status` (your network only); reads `/status.json` |
 | `wizard.py` | Finds the hub, reads its page, writes the setup page's answers into the settings |
 | `alerts.py` | Sends a message when readings stop and when they're back, and weather alerts (`--check`, `--test-alert`) |
 | `climate.py` | Records and the 1991-2020 normals: `climate.json` and the dashboard's Records card |

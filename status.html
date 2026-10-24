@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CC0AC Weather Status</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+<style>
+  :root {
+    --bg: #000;
+    --surface: #111;
+    --border: #333;
+    --text: #e8e8e8;
+    --muted: #888;
+    --accent: #4af;
+    --warn: #f44;
+    --font: "Helvetica Neue", Helvetica, Arial, Roboto, "Liberation Sans", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; padding: 16px;
+         font-variant-numeric: tabular-nums; }
+  h1 { font-size: 16px; color: var(--muted); margin-bottom: 4px; letter-spacing: 1px; }
+  h1 a { color: var(--accent); text-decoration: none; font-size: 14px; margin-left: 12px; letter-spacing: 0; }
+  .ts { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+  .buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 16px; }
+  .buttons a { font-size: 13px; color: var(--text); border: 1px solid var(--border); padding: 6px 12px;
+               text-decoration: none; }
+  .buttons a:hover { border-color: var(--accent); }
+  .card { background: var(--surface); border: 1px solid var(--border); padding: 14px; margin-bottom: 12px;
+          overflow-x: auto; }
+  .name { color: var(--accent); font-size: 13px; margin-bottom: 8px; }
+  table { border-collapse: collapse; width: 100%; }
+  th { color: var(--muted); font-weight: 400; font-size: 12px; text-align: left; padding: 4px 10px 4px 0; }
+  td { padding: 4px 10px 4px 0; border-top: 1px dotted var(--border); vertical-align: top; }
+  td a { color: var(--accent); text-decoration: none; margin-right: 8px; }
+  .muted { color: var(--muted); }
+  .bad { color: var(--warn); }
+  .detail { color: var(--muted); font-size: 12px; word-break: break-word; }
+  #error, #warnings { color: var(--warn); margin-bottom: 12px; }
+</style>
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<h1><span id="title">CC0AC Weather</span> status <a href="/">← now</a> <a href="/charts.html">📈 Charts</a> <a href="/setup">Setup</a></h1>
+<div class="ts" id="written">loading…</div>
+<div class="buttons">
+  <a href="/diagnostics" download>Download the diagnostics file</a>
+  <a href="/log?f=service" target="_blank" rel="noopener">Service log</a>
+</div>
+<div id="error"></div>
+<div id="warnings"></div>
+<div class="card"><div class="name">This station</div><table id="station"></table></div>
+<div class="card"><div class="name">Sensors</div><table id="sensors"></table></div>
+<div class="card"><div class="name">Heard from</div><table id="sources"></table></div>
+<div class="card"><div class="name">Sent to</div><table id="sends"></table></div>
+
+<script>
+"use strict";
+// Everything here comes from /status.json; the links open each log as it is on
+// disk in a new window. Refreshes every minute.
+const QUIET_S = 15 * 60;   // a sensor or receiver unheard this long is shown in red
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const secondsSince = iso => iso ? (Date.now() - Date.parse(iso)) / 1000 : null;
+
+function span(s) {
+  if (s == null) return "—";
+  s = Math.max(0, Math.round(s));
+  if (s < 90) return `${s} s`;
+  if (s < 5400) return `${Math.round(s / 60)} min`;
+  if (s < 172800) return `${Math.round(s / 3600)} h`;
+  return `${Math.round(s / 86400)} days`;
+}
+
+function ago(iso, quiet) {
+  const s = secondsSince(iso);
+  if (s == null) return '<span class="muted">never</span>';
+  const when = new Date(iso).toLocaleString();
+  return `<span class="${quiet && s > quiet ? "bad" : ""}" title="${esc(when)}">${span(s)} ago</span>`;
+}
+
+function logLink(f, label, find) {
+  const q = new URLSearchParams({f});
+  if (find) q.set("find", find);
+  return `<a href="/log?${q}" target="_blank" rel="noopener">${esc(label)}</a>`;
+}
+
+const day = f => f.split("/").pop().replace(".log", "");
+const rows = (heads, body) => `<tr>${heads.map(h => `<th>${h}</th>`).join("")}</tr>` + body.join("");
+
+function bytes(n) {
+  if (n == null) return "—";
+  return n > 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n > 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.round(n / 1e3)} kB`;
+}
+
+function show(d) {
+  $("title").textContent = d.title || "CC0AC Weather";
+  document.title = `${d.title || "CC0AC Weather"} Status`;
+  $("written").textContent = `version ${d.version} · as of ${new Date(d.now).toLocaleString()} (${d.timezone})`;
+  $("warnings").innerHTML = (d.warnings || []).map(w => `<div>${esc(w)}</div>`).join("");
+
+  const h = d.history || {}, b = d.backup;
+  const station = [
+    ["Running", `${span(d.uptime_s)}, since ${esc(new Date(d.started).toLocaleString())}`],
+    ["Computer up", span(d.machine_uptime_s)],
+    ["Newest reading", ago(d.readings_written, QUIET_S)],
+    ["History", h.error ? `<span class="bad">${esc(h.error)}</span>` : h.first
+      ? `${esc(new Date(h.first).toLocaleDateString())} to now, ${span(secondsSince(h.first))}: ` +
+        `${(h.readings || 0).toLocaleString()} readings from ${h.sensors} sensors, ${bytes(h.bytes)}`
+      : "no readings stored yet"],
+    ["Backup", !b ? '<span class="muted">none made</span>' : b.ok
+      ? `${ago(b.at)} to ${esc(b.to)}, ${bytes(b.bytes)}`
+      : `<span class="${b.ok === false ? "bad" : "muted"}">${esc(b.problem)}</span> ${ago(b.at)}`],
+  ];
+  $("station").innerHTML = station.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join("");
+
+  $("sensors").innerHTML = rows(["Sensor", "Last heard", "Battery", "Reception", "Its lines"], (d.sensors || []).map(s => {
+    const rec = Object.entries(s.reception || {}).map(([who, r]) =>
+      `${esc(who)} ${r.percent != null ? `${r.percent}%` : `${r.heard} heard`}` +
+      (r.every_s ? ` every ${Math.round(r.every_s)} s` : "") + (r.snr_db != null ? `, SNR ${r.snr_db} dB` : "")).join("<br>");
+    const logs = Object.entries(s.logs || {}).map(([who, l]) => logLink(l.f, `${who} ${day(l.f)}`, l.find)).join(" ");
+    const low = s.battery && s.battery !== "normal";
+    return `<tr><td>${esc(s.name || s.id)}<div class="detail">${esc(s.type)} ${esc(s.id)}</div></td>` +
+      `<td>${ago(s.updated, QUIET_S)}</td><td class="${low ? "bad" : ""}">${esc(s.battery || "—")}</td>` +
+      `<td>${rec || "—"}</td><td>${logs || "—"}</td></tr>`;
+  }));
+
+  $("sources").innerHTML = rows(["Receiver", "Last heard", "What it heard, by day (UTC)"], (d.sources || []).map(s =>
+    `<tr><td>${esc(s.name)}</td><td>${ago(s.last, QUIET_S)}</td>` +
+    `<td>${s.logs.map(f => logLink(f, day(f))).join(" ") || '<span class="muted">no log kept</span>'}</td></tr>`));
+
+  const sends = d.sends || [];
+  $("sends").innerHTML = sends.length ? rows(["Service", "Last sent", "Answer", "That day", "Log, by day (UTC)"], sends.map(s => {
+    const last = s.last || {};
+    return `<tr><td>${esc(s.name)}</td><td>${ago(last.at)}</td>` +
+      `<td><span class="${last.ok ? "" : "bad"}">${last.ok ? "ok" : "FAILED"}</span> <span class="detail">${esc(last.detail)}</span>` +
+      (!last.ok && s.last_ok ? `<div class="detail">last ok ${ago(s.last_ok)}</div>` : "") + `</td>` +
+      `<td>${s.ok_count} ok${s.failed_count ? `, <span class="bad">${s.failed_count} failed</span>` : ""}</td>` +
+      `<td>${s.logs.map(f => logLink(f, day(f))).join(" ")}</td></tr>`;
+  })) : '<tr><td class="muted">Nothing sent yet since this version started.</td></tr>';
+}
+
+async function load() {
+  try {
+    const r = await fetch("/status.json", {cache: "no-store"});
+    if (!r.ok) throw new Error(`the station answered ${r.status}`);
+    show(await r.json());
+    $("error").textContent = "";
+  } catch (e) {
+    $("error").textContent = `Could not read the status: ${e.message}`;
+  }
+}
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>

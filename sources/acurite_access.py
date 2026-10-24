@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from iolog import report
 from sources import Reading
 
 log = logging.getLogger("acurite")
@@ -175,6 +176,10 @@ def _make_hub_handler(cfg: configparser.ConfigParser, emit):
             answer = (_relay(relay_url, self.path, method, body, self.headers.get("Content-Type"),
                              self.headers.get("User-Agent"))
                       if relay_on else None)
+            if relay_on:
+                report("acurite-relay", answer is not None and answer[0] < 300,
+                       "AcuRite did not answer (see the service log)" if answer is None
+                       else f"{answer[0]} {answer[2][:200].decode(errors='replace')}")
             if answer is not None and answer[0] >= 300:
                 # AcuRite refused it. Passing the refusal on makes the Access resend the
                 # same reading forever, so log it and answer as if no relay were set.

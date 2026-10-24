@@ -141,8 +141,10 @@
 </div>
 
 <div class="credit">CC0AC Weather <span id="version"></span> · made by Akien MacIain and Claude Code ·
-  free under the MIT License · <a href="https://github.com/akienm/CC0AC-Weather" target="_blank" rel="noopener">source and help</a></div>
+  free under the MIT License · <a href="https://github.com/akienm/CC0AC-Weather" target="_blank" rel="noopener">source and help</a><span id="status-link" hidden> · <a href="/status">status</a></span></div>
 <script>
+// The status page answers only on your own network; the link shows only where it would open.
+fetch("/status", {cache: "no-store"}).then(r => { if (r.ok) document.getElementById("status-link").hidden = false; }, () => {});
 // Data arrives as current.js (window.ACURITE_CURRENT = {...}), written beside this
 // page by acurite-capture.py. A <script> tag can load it from a file:// URL or any
 // static host, where fetch() would be blocked.

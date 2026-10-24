@@ -21,6 +21,7 @@ import socket
 from datetime import datetime
 
 from outputs._station import SOFTWARE, VERSION, Station, needs, number
+from iolog import report
 from sources import Reading
 
 log = logging.getLogger("acurite")
@@ -106,8 +107,10 @@ def send(cfg: configparser.ConfigParser, reading: Reading) -> None:
         answer = _send_packet(cfg, text)
     except OSError as exc:
         log.warning("CWOP send failed: %s", exc)
+        report(NAME, False, str(exc))
         return
     if "logresp" in answer:
         log.info("CWOP sent: %s (%s)", text, answer)
     else:
         log.warning("CWOP login not answered as expected: %r; sent %s", answer, text)
+    report(NAME, "logresp" in answer, f"sent {text}; answered {answer}")

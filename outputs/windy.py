@@ -13,6 +13,7 @@ import configparser
 import logging
 
 from outputs._station import Station, get, needs, wu_format
+from iolog import report
 from sources import Reading
 
 log = logging.getLogger("acurite")
@@ -40,3 +41,4 @@ def send(cfg: configparser.ConfigParser, reading: Reading) -> None:
         log.info("Windy upload OK")
     else:
         log.warning("Windy upload failed (%s): %s", status, body[:200])
+    report(NAME, status == 200, f"{status} {body[:200]}")

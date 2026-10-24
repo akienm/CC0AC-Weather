@@ -2,10 +2,13 @@
 --diagnostics: one file to attach to a problem report.
 
 It bundles what a fix needs and nothing personal: the raw uploads and radio
-lines of the last few days, the service's log, the radio and console settings,
-the sensor IDs, and versions. Passwords, station keys, MACs, public IP
-addresses and sensor names are replaced with ****. Location, alert addresses and
+lines of the last few days, what was sent to other services and their answers,
+the service's log, the radio and console settings, the sensor IDs, and
+versions. Passwords, station keys and IDs, MACs, public IP addresses, positions
+and sensor names are replaced with ****. Location, alert addresses and
 everything else in config.ini are left out.
+
+Download it from the status page (/status), or: python3 acurite-capture.py --diagnostics
 """
 
 from __future__ import annotations
@@ -33,6 +36,10 @@ DAYS = 3
 
 _KEYS = re.compile(r"\b((?:PASSKEY|MAC|ID|id|PASSWORD|hub_id|station)=)[^&\s'\"]+")
 _IPV4 = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
+_APRS_POSITION = re.compile(r"\d{4}\.\d{2}[NS]/\d{5}\.\d{2}[EW]")   # in a CWOP packet: 3230.00N/10815.00W
+# Settings whose values are someone's identity or secret, in any section.
+SECRET_KEYS = ("station_id", "station_key", "password", "passcode", "key", "api_key", "user", "smtp_user",
+               "smtp_password", "ntfy_topic", "email_to", "email_from", "healthcheck_url", "hub_id", "station")
 
 
 def _public(ip: str) -> bool:
@@ -49,6 +56,7 @@ def scrub(text: str, names=()) -> str:
     for name in sorted((n for n in names if n.strip()), key=len, reverse=True):
         text = text.replace(name, "****")
     text = _KEYS.sub(r"\1****", text)
+    text = _APRS_POSITION.sub("****", text)
     return _IPV4.sub(lambda m: "****" if _public(m.group(0)) else m.group(0), text)
 
 
@@ -90,9 +98,11 @@ def info(cfg: configparser.ConfigParser) -> str:
 
 
 def recent_raw(days: int = DAYS):
-    """(name in the bundle, path) for each raw log of the last `days` days."""
+    """(name in the bundle, path) for each raw log, and each log of what was
+    sent (iolog.py), of the last `days` days."""
     since = f"{datetime.now(timezone.utc) - timedelta(days=days):%Y-%m-%d}"
-    for d in RAW_DIRS:
+    folders = list(RAW_DIRS) + [f"sent/{d.name}" for d in sorted((CONFIG_DIR / "sent").glob("*")) if d.is_dir()]
+    for d in folders:
         for f in sorted((CONFIG_DIR / d).glob("*.log")):
             if f.stem >= since:
                 yield f"{d}/{f.name}", f
@@ -118,6 +128,9 @@ def bundle(cfg: configparser.ConfigParser, out_dir: Path | None = None) -> Path:
     out_dir = out_dir or Path.home()
     path = out_dir / f"cc0ac-diagnostics-{datetime.now():%Y%m%d-%H%M}.tar.gz"
     names = [v for _, v in cfg.items("sensors", raw=True)] if cfg.has_section("sensors") else []
+    # Station IDs, keys and the like, wherever they turn up (a CWOP answer names its station).
+    names += [v.strip() for s in cfg.sections() if s != "sensors"
+              for k, v in cfg.items(s, raw=True) if k in SECRET_KEYS and len(v.strip()) >= 4]
     parts = {
         "info.txt": info(cfg),
         "settings.txt": settings(cfg),

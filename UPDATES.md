@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.3.7)
+# How CC0AC-Weather installs and keeps itself up to date (1.3.8)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -77,6 +77,15 @@ your lightning sensor hears within 10 miles sends a message, and another goes
 out once 30 minutes pass with none that close (`lightning_mi`,
 `lightning_minutes`). The station stamps each strike when it hears the count
 rise, so the alert doesn't depend on the sensor's clock.
+
+1.3.8 adds a status page, `/status`, linked from the bottom of the dashboard on
+your own network: how long the station has been up, how deep its history is,
+each sensor with its battery, reception and its own raw log lines, and every
+service it sends to, with the last answer and a month of logs. Its button
+downloads the diagnostics file, which is what to attach when asking for help.
+The diagnostics file now also leaves out station IDs and the position inside a
+CWOP packet; before this, a CWOP upload's position could reach the service log
+it includes.
 
 ## When it checks
 

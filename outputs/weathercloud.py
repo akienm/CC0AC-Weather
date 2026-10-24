@@ -14,6 +14,7 @@ import configparser
 import logging
 
 from outputs._station import VERSION, Station, get, needs, number
+from iolog import report
 from sources import Reading
 
 log = logging.getLogger("acurite")
@@ -64,7 +65,9 @@ def send(cfg: configparser.ConfigParser, reading: Reading) -> None:
     if due is None:
         return
     status, body = get(URL, params(cfg, *due))
-    if status == 200 and body == "200":
+    ok = status == 200 and body == "200"
+    if ok:
         log.info("Weathercloud upload OK")
     else:
         log.warning("Weathercloud upload failed (%s): %s", status, ANSWERS.get(body, body[:200]))
+    report(NAME, ok, f"{status} {ANSWERS.get(body, body[:200])}")

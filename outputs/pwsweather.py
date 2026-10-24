@@ -14,6 +14,7 @@ import json
 import logging
 
 from outputs._station import Station, get, needs, wu_format
+from iolog import report
 from sources import Reading
 
 log = logging.getLogger("acurite")
@@ -46,3 +47,4 @@ def send(cfg: configparser.ConfigParser, reading: Reading) -> None:
         log.info("PWSweather upload OK")
     else:
         log.warning("PWSweather upload failed (%s): %s", status, body[:200])
+    report(NAME, ok, f"{status} {body[:200]}")

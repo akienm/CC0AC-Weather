@@ -43,6 +43,7 @@ import re
 import shutil
 import sqlite3
 import sys
+import tempfile
 import threading
 import time
 import urllib.parse
@@ -58,6 +59,7 @@ import alerts
 import climate
 import diagnostics
 import importer
+import iolog
 import mcp_server
 import upkeep
 import wizard
@@ -994,9 +996,11 @@ def run_forecast(cfg: configparser.ConfigParser, write_path: Path) -> None:
             work()
             out["errors"].pop(part, None)
             due[part] = time.time() + every
+            iolog.report("weather-service", True, f"{part} fetched")
         except Exception as exc:
             # Loud in the log, and named on the page; the last good copy stays.
             log.warning("Weather Service %s fetch failed: %s", part, exc)
+            iolog.report("weather-service", False, f"{part}: {exc}")
             out["errors"][part] = f"{datetime.now(timezone.utc).isoformat(timespec='seconds')}: {exc}"
             due[part] = time.time() + 300
         return True
@@ -1037,8 +1041,10 @@ def run_open_meteo_forecast(lat: float, lon: float, contact: str, write_path: Pa
             out.update(online.open_meteo_forecast(lat, lon, contact))
             out["errors"].pop("forecast", None)
             wait = FORECAST_EVERY_S
+            iolog.report("open-meteo", True, "forecast fetched")
         except Exception as exc:
             log.warning("Open-Meteo forecast fetch failed: %s", exc)
+            iolog.report("open-meteo", False, f"forecast: {exc}")
             out["errors"]["forecast"] = f"{datetime.now(timezone.utc).isoformat(timespec='seconds')}: {exc}"
             wait = 300
         out["written"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -1046,6 +1052,116 @@ def run_open_meteo_forecast(lat: float, lon: float, contact: str, write_path: Pa
         _write_atomic(write_path / "forecast.json", body)
         _write_atomic(write_path / "forecast.js", f"window.ACURITE_FORECAST = {body};\n")
         time.sleep(wait)
+
+
+# ── System status ────────────────────────────────────────────────────────────
+#
+# /status (status.html, from /status.json): how long it has run, how deep the
+# history goes, each sensor and each receiver with when it was last heard, and
+# each service with when it was last sent to and how that went. Every log
+# behind them opens from the page (/log), and the diagnostics file downloads
+# from it (/diagnostics). Your own network only, like the settings.
+
+STARTED = time.time()
+CONFIG_DIR = Path.home() / ".cc0ac-weather"
+LOG_DAYS_LISTED = 7
+LOG_PATH = re.compile(r"(hub-raw|radio-raw|console-raw|sent/[a-z0-9][a-z0-9_-]*)/(\d{4}-\d{2}-\d{2}\.log)")
+
+
+def _raw_dirs(cfg: configparser.ConfigParser) -> dict[str, Path]:
+    """Each receiver's raw log folder: what it heard, exactly, one file per UTC day."""
+    return {"hub": acurite_access._raw_dir(cfg), "radio": CONFIG_DIR / "radio-raw",
+            "console": CONFIG_DIR / "console-raw"}
+
+
+def _log_dir(cfg: configparser.ConfigParser, folder: str) -> Path | None:
+    if folder.startswith("sent/"):
+        return iolog.SENT_DIR / folder[5:] if iolog.SENT_DIR else None
+    return _raw_dirs(cfg)[folder.split("-")[0]]
+
+
+def _log_days(folder: Path | None) -> list[str]:
+    """The newest few days' log files in a folder, newest first."""
+    if folder is None or not folder.is_dir():
+        return []
+    days = sorted((f.name for f in folder.glob("*.log") if iolog.LOG_FILE.fullmatch(f.name)), reverse=True)
+    return days[:LOG_DAYS_LISTED]
+
+
+def _raw_mark(receiver: str, sensor_id: str) -> str:
+    """What marks this sensor's lines in a receiver's raw log, to show only those."""
+    if receiver == "hub":
+        return f"sensor={sensor_id}"
+    if receiver == "radio" and sensor_id.isdigit():
+        return f'"id" : {int(sensor_id)},'          # rtl_433's AcuRite id, as it prints it
+    return ""                                       # other brands: the whole log
+
+
+def _machine_uptime() -> float | None:
+    try:
+        return float(Path("/proc/uptime").read_text().split()[0])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _history_depth(db_path: Path | None) -> dict:
+    if db_path is None or not db_path.exists():
+        return {"readings": 0}
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
+    try:
+        first, last, count = con.execute(
+            "SELECT MIN(received_utc), MAX(received_utc), COUNT(*) FROM readings").fetchone()
+        sensors = con.execute("SELECT COUNT(DISTINCT sensor_id) FROM readings").fetchone()[0]
+    finally:
+        con.close()
+    return {"first": first, "last": last, "readings": count, "sensors": sensors,
+            "bytes": sum(f.stat().st_size for f in db_path.parent.glob(db_path.name + "*") if f.is_file())}
+
+
+def system_status(cfg: configparser.ConfigParser, write_path: Path, now: float | None = None) -> dict:
+    now = now or time.time()
+    try:
+        current = json.loads((write_path / "current.json").read_text())
+    except (OSError, ValueError):
+        current = {}
+    raw = _raw_dirs(cfg)
+    sensors, receivers = [], {}
+    for e in current.get("sensors", []):
+        heard = e.get("reception") or {}
+        for who, r in heard.items():
+            if r.get("last") and r["last"] > receivers.get(who, ""):
+                receivers[who] = r["last"]
+        sensors.append({"id": e.get("sensor_id"), "name": e.get("name"), "type": e.get("type"),
+                        "updated": e.get("updated"), "battery": (e.get("fields") or {}).get("battery"),
+                        "reception": heard, "logs": {who: {"f": f"{who}-raw/{_log_days(raw[who])[0]}",
+                                                           "find": _raw_mark(who, e.get("sensor_id") or "")}
+                                                     for who in heard if who in raw and _log_days(raw[who])}})
+    sources = []
+    for who, folder in raw.items():
+        days = _log_days(folder)
+        if days or who in receivers:
+            sources.append({"name": who, "last": receivers.get(who),
+                            "logs": [f"{who}-raw/{d}" for d in days]})
+    if "online" in receivers:
+        sources.append({"name": "online", "last": receivers["online"], "logs": []})
+    sends = []
+    for name in iolog.names():
+        s = iolog.latest(name) or {"name": name}
+        s["logs"] = [f"sent/{name}/{d}" for d in _log_days(iolog.SENT_DIR / name)]
+        sends.append(s)
+    try:
+        depth = _history_depth(_db_path(cfg))
+    except sqlite3.Error as e:
+        depth = {"error": str(e)}
+    try:
+        backup = json.loads(upkeep.backup_record_path().read_text())
+    except (OSError, ValueError):
+        backup = None
+    return {"title": _title(cfg), "version": _version(), "now": _iso(now),
+            "timezone": time.strftime("%Z"), "started": _iso(STARTED), "uptime_s": round(now - STARTED),
+            "machine_uptime_s": _machine_uptime(), "readings_written": current.get("written"),
+            "history": depth, "sensors": sensors, "sources": sources, "sends": sends,
+            "warnings": upkeep.problems(diagnostics.BOOT_ROOT), "backup": backup}
 
 
 # ── Web server ───────────────────────────────────────────────────────────────
@@ -1169,7 +1285,8 @@ def _find_page(name: str, own_dir: Path | None, page_dir: Path) -> Path | None:
 
 def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: dict | None = None,
                       own_dir: Path | None = None, title: str = DEFAULT_TITLE,
-                      config_path: Path | None = None, mcp: bool = True):
+                      config_path: Path | None = None, mcp: bool = True,
+                      cfg: configparser.ConfigParser | None = None):
     page_dir = Path(__file__).resolve().parent
 
     def read_data(name: str) -> dict | None:
@@ -1213,6 +1330,9 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
             if path in ("/setup", "/setup.json"):
                 self._setup_page(path)
                 return
+            if path in ("/status", "/status.json", "/log", "/diagnostics") and cfg is not None:
+                self._status(path, dict(urllib.parse.parse_qsl(url.query)))
+                return
             # Not set up yet: a visit from home goes to the setup page first.
             if (path in ("/", "/weather.html") and config_path is not None
                     and _local_host(self.headers.get("Host", "")) and self._unconfigured()):
@@ -1254,6 +1374,38 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
                 self._send(config_path.read_bytes(), "text/plain; charset=utf-8")
             else:
                 self._send((page_dir / "config.html").read_bytes(), PAGE_TYPES[".html"])
+
+        def _status(self, path: str, q: dict):
+            if not self._config_allowed():
+                return
+            if path == "/status":
+                self._send((page_dir / "status.html").read_bytes(), PAGE_TYPES[".html"])
+            elif path == "/status.json":
+                self._send(json.dumps(system_status(cfg, write_path)).encode(), "application/json")
+            elif path == "/diagnostics":
+                with tempfile.TemporaryDirectory() as d:
+                    made = diagnostics.bundle(cfg, Path(d))
+                    body = made.read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/gzip")
+                self.send_header("Content-Disposition", f'attachment; filename="{made.name}"')
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            elif q.get("f") == "service":
+                self._send(diagnostics.service_log().encode(), "text/plain; charset=utf-8")
+            else:
+                m = LOG_PATH.fullmatch(q.get("f", ""))
+                folder = _log_dir(cfg, m.group(1)) if m else None
+                target = folder / m.group(2) if folder else None
+                if target is None or not target.is_file():
+                    self.send_error(404)
+                    return
+                text = target.read_text(errors="replace")
+                find = q.get("find", "")
+                if find:
+                    text = "".join(line for line in text.splitlines(keepends=True) if find in line)
+                self._send(text.encode(), "text/plain; charset=utf-8")
 
         def _unconfigured(self) -> bool:
             try:
@@ -1412,7 +1564,7 @@ def run_web_server(cfg: configparser.ConfigParser, write_path: Path, config_path
     if own_dir is not None and not own_dir.is_dir():
         log.warning("[web] pages folder %s not found; serving the shipped pages only", own_dir)
     handler = _make_web_handler(write_path, _db_path(cfg), sensor_map(cfg), own_dir, _title(cfg), config_path,
-                                cfg.getboolean("web", "mcp", fallback=True))
+                                cfg.getboolean("web", "mcp", fallback=True), cfg)
     # The stock queue holds 5 waiting connections; a phone opening a page plus its charts
     # can briefly be more than that, and the kernel then logs it as a SYN flood.
     ThreadingHTTPServer.request_queue_size = 64
@@ -1451,6 +1603,7 @@ def _run_output(cfg: configparser.ConfigParser, output, todo: queue.Queue) -> No
 
 
 def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) -> None:
+    iolog.keep()
     write_path = Path(cfg.get("device", "write_path")).expanduser()
     write_path.mkdir(parents=True, exist_ok=True)
     sensors = sensor_map(cfg)
@@ -1565,6 +1718,8 @@ def main() -> None:
     cfg = load_config(args.config)
     apply_timezone(cfg)
 
+    if args.check or args.test_alert:
+        iolog.keep()
     if args.check:
         print(alerts.check(cfg, Path(cfg.get("device", "write_path")).expanduser()))
         print(alerts.check_weather(cfg, Path(cfg.get("device", "write_path")).expanduser()))
