@@ -660,6 +660,47 @@ line, and a part that can't be read is named in the service log and left out.
 A good way to find the amount: set a trusted thermometer beside the sensor, in
 the shade, for an hour, and compare.
 
+### Readings that can't be right
+
+Sensors fail in ways that look like weather. A dying one, pushed by heat or
+cold, can report far too high or too low for a while, and a glitch somewhere
+between a station and its server has shown 200 mph of wind in a calm night.
+Each reading is checked as it arrives (after calibration), and a value that
+fails is **held back**:
+
+- **Past what any station reads**: wind over 120 mph, a gust over 160, a
+  temperature below -80°F or above 150°F, humidity outside 0–100, and so on.
+- **A jump faster than weather moves**: a temperature may move 4°F at once, 1°F
+  a minute for ten minutes, then 15°F an hour; humidity and pressure have their
+  own pace, and rain may only rise so fast (it goes back to nothing at midnight,
+  which is fine). Once held, a field stays held until it reads near the last
+  value believed again, or enough time has passed for weather to have got there.
+- **Far from the other outdoor sensors**: an outdoor temperature more than
+  `reference_f` from the middle of the others'. It needs at least two others
+  (the online weather counts as one), since with one there is no telling which
+  is wrong.
+- **Frozen**: an outdoor temperature that hasn't changed at all in
+  `stuck_hours`.
+
+A held-back value is kept, not deleted: the database keeps it in the
+`suspect` column with the reason, and the raw logs keep what was sent. Nothing
+counts it: the records, daily summaries, alerts, uploads and MQTT all skip it.
+The dashboard shows the last value believed and says, in red on the card, what
+was held back and why. The charts show held-back values as faded points, kept
+inside the range of the believed ones so one wild value can't flatten the
+chart. The status page counts each sensor's held-back readings over the last
+day, and the service log notes when a field is held and when it's believed again.
+
+    [sanity]
+    enabled = yes
+    reference_f = 20
+    stuck_hours = 4
+    hold_back_from_acurite = no
+
+With `hold_back_from_acurite = yes`, a held-back value is also taken out of the
+reading passed on to AcuRite, so the AcuRite app and anything AcuRite sends it
+on to never show it. Off by default: AcuRite gets what the hub sent.
+
 ## MQTT and Home Assistant
 
 With `[mqtt] enabled = true` and a broker's `host` (and `username` and
@@ -1008,6 +1049,7 @@ Run the tests before a pull request: `python3 -m unittest discover -s tests`.
 | `units.py` | `[units]`: the units the pages and alert messages show readings in |
 | `units.js` | The same for the pages: converts each stored reading for display |
 | `calibration.py` | `[calibration]`: corrects a sensor that reads a little off |
+| `sanity.py` | `[sanity]`: holds back readings no weather could produce |
 | `SUPPORTED.md` | Which brands work how, and how sure we are (made by `setup/supported.py`) |
 | `tests/` | `python3 -m unittest discover tests`; `rtl_433_samples.jsonl` is one recorded line per radio model |
 | `outputs/__init__.py` | How to add an output: somewhere readings are sent |

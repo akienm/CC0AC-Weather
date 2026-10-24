@@ -155,6 +155,21 @@ function line(label, color, extra = {}) {
   return { label, stroke: color, width: 1.5, spanGaps: false, ...extra };
 }
 
+// Readings sanity.py held back: faded points, no line, pinned to the edge of what the
+// believed readings span, so one 200 mph gust shows without flattening the chart.
+// items: [label, values in the units shown, color, the believed series they sit among].
+function withHeld(opts, data, items) {
+  for (const [label, values, color, among] of items) {
+    if (!values || !values.some(v => v != null)) continue;
+    const seen = among.flat().filter(v => v != null);
+    const lo = Math.min(...seen), hi = Math.max(...seen);
+    opts.series.push({ label: `${label} held back`, stroke: color, alpha: 0.4, paths: () => null,
+                       points: { show: true, size: 7, fill: color } });
+    data.push(seen.length ? values.map(v => v == null ? null : Math.min(hi, Math.max(lo, v))) : values);
+  }
+  return [opts, data];
+}
+
 function card(title, el) {
   const c = document.createElement("div");
   c.className = "card";
@@ -186,29 +201,33 @@ function draw(d) {
 
   // Readings come in the stored units; shown in those [units] in config.ini chose (units.js).
   Units.use(d.units);
-  const o = d.outdoor, t = d.t;
+  const o = d.outdoor, t = d.t, h = d.held || {};
   const as = (kind, values) => (values || []).map(v => Units.value(kind, v));
   const deg = Units.label("temperature");
 
-  plot(`Outdoor temperature ${deg}`, {
+  const temps = [o.temp_f, o.temp_min, o.temp_max, o.dew_point_f, o.feels_like_f].map(v => as("temperature", v));
+  plot(`Outdoor temperature ${deg}`, ...withHeld({
     axes: axes(deg),
     series: [{}, line("Temp", COLORS[0]), line("Low", C.band, { width: 1 }), line("High", C.band, { width: 1 }),
              line("Dew point", COLORS[2]), line("Feels like", COLORS[1], { dash: [4, 4] })],
     bands: [{ series: [3, 2], fill: C["band-fill"] }],
     scales: { x: { time: true } },
-  }, [t, ...[o.temp_f, o.temp_min, o.temp_max, o.dew_point_f, o.feels_like_f].map(v => as("temperature", v))]);
+  }, [t, ...temps], [["Temp", as("temperature", h.temp_f), COLORS[0], temps]]));
 
-  plot("Wind", {
+  const winds = [as("wind", o.wind_mph), as("wind", o.wind_gust_mph)];
+  plot("Wind", ...withHeld({
     axes: axes(Units.label("wind"), "direction °"),
     series: [{}, line("Speed", COLORS[0]), line("Gust", COLORS[1], { width: 1 }),
              { label: "From", stroke: COLORS[2], scale: "r", paths: () => null, points: { show: true, size: 4, fill: COLORS[2] } }],
     scales: { r: { range: [0, 360] } },
-  }, [t, as("wind", o.wind_mph), as("wind", o.wind_gust_mph), o.wind_dir_deg]);
+  }, [t, ...winds, o.wind_dir_deg], [["Speed", as("wind", h.wind_mph), COLORS[0], winds],
+                                     ["Gust", as("wind", h.wind_gust_mph), COLORS[1], winds]]));
 
-  plot(`Pressure ${Units.label("pressure")}`, {
+  const pressure = as("pressure", o.pressure_inhg);
+  plot(`Pressure ${Units.label("pressure")}`, ...withHeld({
     axes: axes(Units.label("pressure")),
     series: [{}, line("Pressure", COLORS[0])],
-  }, [t, as("pressure", o.pressure_inhg)]);
+  }, [t, pressure], [["Pressure", as("pressure", h.pressure_inhg), COLORS[0], [pressure]]]));
 
   const tot = d.rain_totals;
   const since = tot.since ? new Date(tot.since + "T00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "start";
@@ -226,23 +245,26 @@ function draw(d) {
     scales: { y: { range: (u, min, max) => [0, Math.max(Units.value("rain", 0.1), max * 1.1)] } },
   }, [d.rain.t, as("rain", d.rain.in)], totals);
 
-  plot("UV and light", {
+  plot("UV and light", ...withHeld({
     axes: axes("UV index", "lux"),
     series: [{}, line("UV", COLORS[3]), line("Light", COLORS[4], { scale: "r", width: 1 })],
     scales: { y: { range: (u, min, max) => [0, Math.max(11, max)] }, r: { range: (u, min, max) => [0, Math.max(1000, max)] } },
-  }, [t, o.uv_index, o.light_lux]);
+  }, [t, o.uv_index, o.light_lux], [["UV", h.uv_index, COLORS[3], [o.uv_index, [0, 11]]]]));
 
-  const rooms = d.rooms;
-  plot(`Indoor temperature ${deg}`, {
+  const rooms = d.rooms, roomColor = i => COLORS[i % COLORS.length];
+  const roomTemps = rooms.map(r => as("temperature", r.temp_f));
+  plot(`Indoor temperature ${deg}`, ...withHeld({
     axes: axes(deg),
-    series: [{}, ...rooms.map((r, i) => line(r.name, COLORS[i % COLORS.length]))],
-  }, [t, ...rooms.map(r => as("temperature", r.temp_f))]);
+    series: [{}, ...rooms.map((r, i) => line(r.name, roomColor(i)))],
+  }, [t, ...roomTemps], rooms.map((r, i) => [r.name, as("temperature", (r.held || {}).temp_f), roomColor(i), roomTemps])));
 
-  plot("Humidity %", {
+  const hums = [o.humidity_pct, ...rooms.map(r => r.humidity_pct)];
+  plot("Humidity %", ...withHeld({
     axes: axes("%"),
     series: [{}, line("Outdoor", C.outdoor, { width: 1, dash: [4, 4] }),
-             ...rooms.map((r, i) => line(r.name, COLORS[i % COLORS.length]))],
-  }, [t, o.humidity_pct, ...rooms.map(r => r.humidity_pct)]);
+             ...rooms.map((r, i) => line(r.name, roomColor(i)))],
+  }, [t, ...hums], [["Outdoor", h.humidity_pct, C.outdoor, hums],
+                    ...rooms.map((r, i) => [r.name, (r.held || {}).humidity_pct, roomColor(i), hums])]));
 }
 
 let resizeTimer;

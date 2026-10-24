@@ -69,6 +69,7 @@ class Reading:
     name: str | None = None        # a name for a sensor not under [sensors], e.g. an online source's
     channel: str | None = None     # the sensor's channel switch (A, B, C), where the source hears it
     snr_db: float | None = None    # signal over noise as the radio heard this message, dB
+    suspect: dict = field(default_factory=dict)  # fields held back by sanity.py: name → {value, why}
 
 
 def derive(fields: dict) -> dict:

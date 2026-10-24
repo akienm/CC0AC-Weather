@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.3.9)
+# How CC0AC-Weather installs and keeps itself up to date (1.3.10)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -93,6 +93,14 @@ in alert messages. What is stored and uploaded is unchanged, so the history
 stays whole. It also adds `[calibration]`, a fixed correction for a sensor that
 reads a little off, made before a reading is stored, shown or sent on; the raw
 logs keep what the sensor sent, and the status page shows each sensor's line.
+
+1.3.10 holds back readings no weather could produce: values past what any
+station reads (a 200 mph gust), jumps faster than weather moves, an outdoor
+temperature far from the other outdoor sensors', or one frozen for hours. A
+held-back value is kept in the database's new `suspect` column, but the
+records, summaries, alerts, uploads and MQTT all skip it; the dashboard says
+what was held back and why, the charts show it faded, and the status page
+counts it. `[sanity]` in config.ini sets it; the README explains each check.
 
 ## When it checks
 

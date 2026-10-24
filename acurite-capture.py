@@ -62,6 +62,7 @@ import diagnostics
 import importer
 import iolog
 import mcp_server
+import sanity
 import units
 import upkeep
 import wizard
@@ -385,6 +386,15 @@ def record_reading(reading: Reading, write_path: Path, sensors: dict, page: dict
         entry["type"] = kind
         entry["updated"] = now
         entry["fields"].update(fields)
+        # What sanity.py held back: shown beside the last believed value until a
+        # reading of that field is believed again.
+        held = entry.setdefault("suspect", {})
+        for name in fields:
+            held.pop(name, None)
+        for name, h in reading.suspect.items():
+            held[name] = {**h, "since": held.get(name, {}).get("since", now)}
+        if not held:
+            del entry["suspect"]
         if isinstance(fields.get("strike_count"), (int, float)):
             if sensor_id not in _strikes:
                 _seed_strikes(db_path, sensor_id, _epoch(now))
@@ -453,8 +463,11 @@ def open_db(path: Path) -> sqlite3.Connection:
         sensor_id TEXT NOT NULL,
         type TEXT,                   -- Atlas, tower, ...
         {", ".join(DB_COLUMNS)},
-        query TEXT NOT NULL UNIQUE   -- the hub's query string, exactly as sent
+        query TEXT NOT NULL UNIQUE,  -- the hub's query string, exactly as sent
+        suspect TEXT                 -- fields held back by sanity.py, as JSON: name, value and why
     )""")
+    if "suspect" not in {r[1] for r in con.execute("PRAGMA table_info(readings)")}:
+        con.execute("ALTER TABLE readings ADD COLUMN suspect TEXT")   # a database from before 1.3.10
     con.execute("CREATE INDEX IF NOT EXISTS readings_by_sensor ON readings (sensor_id, received_utc)")
     con.execute("CREATE INDEX IF NOT EXISTS readings_by_time ON readings (received_utc)")
     open_daily(con)
@@ -465,11 +478,43 @@ def store_reading(con: sqlite3.Connection, reading: Reading) -> bool:
     """Insert one reading; False if that exact reading was already stored."""
     row = {"received_utc": reading.received_utc, "hub_utc": reading.sensor_utc,
            "hub_id": reading.receiver, "sensor_id": reading.sensor_id, "type": reading.type,
-           **reading.fields, "query": reading.raw}
+           **reading.fields, "query": reading.raw,
+           "suspect": json.dumps(reading.suspect) if reading.suspect else None}
     cur = con.execute(f"INSERT OR IGNORE INTO readings ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})",
                       list(row.values()))
     con.commit()
     return cur.rowcount == 1
+
+
+def _believed_before(db_path: Path, sensor_id: str) -> dict:
+    """{field: (value, epoch)}: a sensor's last stored value of each field sanity.py
+    watches for jumps, from the last three hours, so a restart picks up where it was."""
+    out = {}
+    try:
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
+    except sqlite3.Error:
+        return out
+    try:
+        since = _iso(time.time() - 3 * 3600)
+        for name in sanity.STEADY:
+            row = con.execute(f"""SELECT received_utc, {name} FROM readings WHERE sensor_id = ?
+                AND received_utc >= ? AND {name} IS NOT NULL ORDER BY received_utc DESC LIMIT 1""",
+                              [sensor_id, since]).fetchone()
+            if row:
+                out[name] = (float(row[1]), _epoch(row[0]))
+    except sqlite3.Error as exc:
+        log.warning("Could not read the last readings of %s: %s", sensor_id, exc)
+    finally:
+        con.close()
+    return out
+
+
+def _reference_temp(sensor_id: str, now: float) -> float | None:
+    """The other outdoor sensors' temperature now, for sanity.py to compare with."""
+    with _current_lock:
+        entries = [{**e, "epoch": _epoch(e["updated"]), "outdoor": e.get("type") in OUTDOOR_TYPES}
+                   for e in _current.values() if e.get("updated")]
+    return sanity.reference(entries, sensor_id, now)
 
 
 def import_raw(cfg: configparser.ConfigParser) -> None:
@@ -477,12 +522,15 @@ def import_raw(cfg: configparser.ConfigParser) -> None:
     readings already there are skipped."""
     con = open_db(_db_path(cfg))
     corrections = calibration.rules(cfg)
+    watch = sanity.Watch(cfg)
     added = skipped = other = 0
     for reading in acurite_access.raw_readings(cfg):
         if reading is None:
             other += 1
             continue
         reading.fields = calibration.apply(reading.fields, corrections.get(reading.sensor_id.lower()))
+        reading.fields, reading.suspect = watch.check(reading.sensor_id, reading.fields, _epoch(reading.received_utc),
+                                                      reading.type in OUTDOOR_TYPES)
         if store_reading(con, reading):
             added += 1
         else:
@@ -658,6 +706,10 @@ def _rain_buckets(con: sqlite3.Connection, lo: float, hi: float, step: int, off:
     return {"step": step, "t": t, "in": [round(buckets.get(b, 0), 2) for b in t]}
 
 
+# The fields the charts draw that a held-back value can be shown on.
+HELD_SHOWN = ("temp_f", "humidity_pct", "wind_mph", "wind_gust_mph", "pressure_inhg", "uv_index")
+
+
 def history(db_path: Path, sensors: dict, q: dict) -> dict:
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
     try:
@@ -697,8 +749,26 @@ def history(db_path: Path, sensors: dict, q: dict) -> dict:
                 GROUP BY b""", {**span, "sid": sid}).fetchall(), 2)
             rooms.append({"id": sid, "name": sensors.get(sid, f"{kind} {sid}"), "temp_f": temp, "humidity_pct": hum})
         rooms.sort(key=lambda r: display_order(sensors, r["id"], r["name"]))
+        # What sanity.py held back, bucket by bucket, for the charts to show faded.
+        held_out, held_rooms = {}, {}
+        for sid, kind, at, suspect in con.execute("""SELECT sensor_id, type, received_utc, suspect FROM readings
+                WHERE suspect IS NOT NULL AND received_utc >= ? AND received_utc < ? ORDER BY received_utc""",
+                                                  [_iso(lo), _iso(hi)]):
+            try:
+                suspect = json.loads(suspect)
+            except ValueError:
+                continue
+            i = index.get(int((_epoch(at) + off) // step * step - off))
+            into = held_out if kind in OUTDOOR_TYPES else held_rooms.setdefault(sid, {})
+            for name in HELD_SHOWN:
+                v = (suspect.get(name) or {}).get("value")
+                if i is not None and isinstance(v, (int, float)):
+                    into.setdefault(name, [None] * len(t))[i] = round(v, 2)
+        for room in rooms:
+            room["held"] = held_rooms.get(room["id"], {})
         return {"period": period, "from": lo, "to": hi, "step": step, "t": t,
                 "outdoor": dict(zip(out_names, column(outdoor, len(out_names)))),
+                "held": held_out,
                 "rooms": rooms,
                 "rain": _rain_buckets(con, lo, hi, step, off),
                 "rain_totals": _rain_totals(con, now)}
@@ -1123,6 +1193,16 @@ def _history_depth(db_path: Path | None) -> dict:
             "bytes": sum(f.stat().st_size for f in db_path.parent.glob(db_path.name + "*") if f.is_file())}
 
 
+def _held_back(db_path: Path, now: float) -> dict[str, int]:
+    """{sensor_id: readings with something held back by sanity.py in the last day}."""
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
+    try:
+        return dict(con.execute("""SELECT sensor_id, count(*) FROM readings
+            WHERE received_utc >= ? AND suspect IS NOT NULL GROUP BY sensor_id""", [_iso(now - 86400)]).fetchall())
+    finally:
+        con.close()
+
+
 def system_status(cfg: configparser.ConfigParser, write_path: Path, now: float | None = None) -> dict:
     now = now or time.time()
     try:
@@ -1130,6 +1210,10 @@ def system_status(cfg: configparser.ConfigParser, write_path: Path, now: float |
     except (OSError, ValueError):
         current = {}
     raw = _raw_dirs(cfg)
+    try:
+        held = _held_back(_db_path(cfg), now)
+    except sqlite3.Error:
+        held = {}
     sensors, receivers = [], {}
     for e in current.get("sensors", []):
         heard = e.get("reception") or {}
@@ -1139,6 +1223,7 @@ def system_status(cfg: configparser.ConfigParser, write_path: Path, now: float |
         sensors.append({"id": e.get("sensor_id"), "name": e.get("name"), "type": e.get("type"),
                         "updated": e.get("updated"), "battery": (e.get("fields") or {}).get("battery"),
                         "calibration": cfg.get("calibration", e.get("sensor_id") or "", fallback=None),
+                        "suspect": e.get("suspect") or {}, "held_back_24h": held.get(e.get("sensor_id"), 0),
                         "reception": heard, "logs": {who: {"f": f"{who}-raw/{_log_days(raw[who])[0]}",
                                                            "find": _raw_mark(who, e.get("sensor_id") or "")}
                                                      for who in heard if who in raw and _log_days(raw[who])}})
@@ -1636,11 +1721,17 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
             queues.append((output.NAME, todo))
             log.info("Output on: %s", output.NAME)
 
-    # [calibration]: a sensor that reads a little off is corrected before anything uses its reading.
+    # [calibration]: a sensor that reads a little off is corrected before anything uses its reading;
+    # then [sanity]: a value no weather could produce is held back (sanity.py).
     corrections = calibration.rules(cfg)
+    watch = sanity.Watch(cfg, recall=lambda sensor_id: _believed_before(db_path, sensor_id))
 
     def emit(reading: Reading) -> dict:
         reading.fields = calibration.apply(reading.fields, corrections.get(reading.sensor_id.lower()))
+        outdoor = reading.type in OUTDOOR_TYPES
+        at = _epoch(reading.received_utc)
+        reading.fields, reading.suspect = watch.check(
+            reading.sensor_id, reading.fields, at, outdoor, _reference_temp(reading.sensor_id, at) if outdoor else None)
         entry = record_reading(reading, write_path, sensors, page, db_path)
         for name, todo in queues:
             try:

@@ -106,6 +106,13 @@ def _log_raw(raw_dir: Path, path_and_query: str) -> None:
         f.write(f"{stamp:%Y-%m-%dT%H:%M:%SZ}\t{path_and_query}\n")
 
 
+def without(query: str, fields) -> str:
+    """The hub's query string with the keys of these reading fields taken out."""
+    keep = [(k, v) for k, v in urllib.parse.parse_qsl(query, keep_blank_values=True)
+            if HUB_FIELDS.get(k) not in fields]
+    return urllib.parse.urlencode(keep)
+
+
 def _relay(relay_url: str, path_and_query: str, method: str = "GET", body: bytes | None = None,
            ctype: str | None = None, agent: str | None = None) -> tuple[int, str, bytes] | None:
     req = urllib.request.Request(relay_url + path_and_query, data=body, method=method)
@@ -132,6 +139,10 @@ def _make_hub_handler(cfg: configparser.ConfigParser, emit):
     # anything else is relayed but not kept. Matters once 443 faces the internet.
     hub_id = cfg.get("hub", "hub_id", fallback="").strip().upper()
     raw_dir = _raw_dir(cfg)
+    # [sanity] hold_back_from_acurite: what sanity.py held back is taken out of the
+    # reading before it is passed on, so AcuRite (and Weather Underground through
+    # it) never shows it. Off unless set: AcuRite gets what the hub sent.
+    hold_back = cfg.getboolean("sanity", "hold_back_from_acurite", fallback=False)
 
     class HubHandler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -150,6 +161,7 @@ def _make_hub_handler(cfg: configparser.ConfigParser, emit):
             # The Access sends its readings in the query string; firmware 051 uses POST.
             _log_raw(raw_dir, f"{method} {self.path}" + (f" {body[:500]!r}" if body else ""))
             parsed = urllib.parse.urlparse(self.path)
+            relayed = self.path
             if parsed.path == HUB_UPDATE_PATH:
                 query = parsed.query
                 if body and "form-urlencoded" in self.headers.get("Content-Type", ""):
@@ -161,7 +173,12 @@ def _make_hub_handler(cfg: configparser.ConfigParser, emit):
                     return
                 try:
                     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                    e = emit(reading(query, now))
+                    r = reading(query, now)
+                    e = emit(r)
+                    if hold_back and r.suspect:
+                        relayed = parsed._replace(query=without(parsed.query, r.suspect)).geturl()
+                        if body and "form-urlencoded" in self.headers.get("Content-Type", ""):
+                            body = without(body.decode(errors="replace"), r.suspect).encode()
                     log.info("HUB %s %s %s", e["type"], e["name"],
                              {k: e["fields"].get(k) for k in ("temp_f", "humidity_pct", "wind_mph") if k in e["fields"]})
                 except Exception as exc:
@@ -173,7 +190,7 @@ def _make_hub_handler(cfg: configparser.ConfigParser, emit):
                 self._answer(404, "text/plain", b"not found")
                 return
 
-            answer = (_relay(relay_url, self.path, method, body, self.headers.get("Content-Type"),
+            answer = (_relay(relay_url, relayed, method, body, self.headers.get("Content-Type"),
                              self.headers.get("User-Agent"))
                       if relay_on else None)
             if relay_on:

@@ -45,6 +45,7 @@
   .row > span:last-child { text-align: right; }
   .low { color: var(--warn); }
   .foot { margin-top: 8px; font-size: 13px; color: var(--muted); }
+  .foot.low { color: var(--warn); }
   .arrow { display: inline-block; font-size: 16px; line-height: 1; }
   .sky { display: flex; align-items: center; gap: 16px; }
   .sky .moon { font-size: 56px; line-height: 1; }
@@ -441,7 +442,21 @@ function sensorFoot(s) {
     const weak = r.percent != null && r.percent < 90;
     parts.push(`<span title="${title}"${weak ? ' class="low"' : ''}>📡 ${text}</span>`);
   }
-  return parts.length ? `<div class="foot">${parts.join(' · ')}</div>` : '';
+  return heldBack(s) + (parts.length ? `<div class="foot">${parts.join(' · ')}</div>` : '');
+}
+
+// What sanity.py held back from this sensor: the card shows the last value believed,
+// and says why the newest one wasn't. Worked-out values (dew point and the like)
+// held with their temperature or humidity aren't listed again.
+const HELD_NAMES = {temp_f: 'temperature', humidity_pct: 'humidity', pressure_inhg: 'pressure', wind_mph: 'wind',
+  wind_avg_mph: 'average wind', wind_gust_mph: 'gust', wind_dir_deg: 'wind direction', wind_gust_dir_deg: 'gust direction',
+  rain_hour_in: 'rain this hour', rain_day_in: 'rain today', uv_index: 'UV', light_lux: 'light',
+  last_strike_mi: 'strike distance'};
+function heldBack(s) {
+  const lines = Object.entries(s.suspect || {}).filter(([name]) => HELD_NAMES[name]).map(([name, h]) =>
+    `<div class="foot low" title="held back since ${esc(new Date(h.since).toLocaleString())}">` +
+    `⚠ ${HELD_NAMES[name]} not believed: ${esc(h.why)}</div>`);
+  return lines.join('');
 }
 
 function wind(f) {

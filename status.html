@@ -115,16 +115,19 @@ function show(d) {
   ];
   $("station").innerHTML = station.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join("");
 
-  $("sensors").innerHTML = rows(["Sensor", "Last heard", "Battery", "Reception", "Its lines"], (d.sensors || []).map(s => {
+  $("sensors").innerHTML = rows(["Sensor", "Last heard", "Battery", "Reception", "Held back, last 24 h", "Its lines"], (d.sensors || []).map(s => {
     const rec = Object.entries(s.reception || {}).map(([who, r]) =>
       `${esc(who)} ${r.percent != null ? `${r.percent}%` : `${r.heard} heard`}` +
       (r.every_s ? ` every ${Math.round(r.every_s)} s` : "") + (r.snr_db != null ? `, SNR ${r.snr_db} dB` : "")).join("<br>");
     const logs = Object.entries(s.logs || {}).map(([who, l]) => logLink(l.f, `${who} ${day(l.f)}`, l.find)).join(" ");
     const low = s.battery && s.battery !== "normal";
     const cal = s.calibration ? `<div class="detail">calibrated: ${esc(s.calibration)}</div>` : "";
+    const now = Object.entries(s.suspect || {}).filter(([, h]) => !h.why.startsWith("worked out"))
+      .map(([name, h]) => `<div class="detail bad">${esc(name)}: ${esc(h.why)}</div>`).join("");
+    const held = (s.held_back_24h ? `<span class="bad">${s.held_back_24h}</span>` : "0") + now;
     return `<tr><td>${esc(s.name || s.id)}<div class="detail">${esc(s.type)} ${esc(s.id)}</div>${cal}</td>` +
       `<td>${ago(s.updated, QUIET_S)}</td><td class="${low ? "bad" : ""}">${esc(s.battery || "—")}</td>` +
-      `<td>${rec || "—"}</td><td>${logs || "—"}</td></tr>`;
+      `<td>${rec || "—"}</td><td>${held}</td><td>${logs || "—"}</td></tr>`;
   }));
 
   $("sources").innerHTML = rows(["Receiver", "Last heard", "What it heard, by day (UTC)"], (d.sources || []).map(s =>

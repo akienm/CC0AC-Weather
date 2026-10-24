@@ -54,6 +54,24 @@ system = us
 ; 1234 = temp_f -1.5, humidity_pct +3
 ; 5678 = wind_mph x1.1, wind_dir_deg +20, rain_day_in x0.95
 
+[sanity]
+; Readings no weather could produce are held back, not believed: past what any
+; station reads (a 200 mph gust), a jump faster than weather moves, an outdoor
+; temperature far from the other outdoor sensors', or one frozen for hours. A
+; held-back value is kept in the database and the raw logs, but nothing counts
+; it: records, summaries, alerts, uploads and MQTT all skip it. The dashboard
+; says what was held back and why, the charts show it faded, and the status
+; page counts it. The README says how each check works.
+enabled = yes
+; How far (°F) an outdoor temperature may be from the middle of the other outdoor
+; sensors' before it is held back. Needs at least two others to compare with.
+reference_f = 20
+; An outdoor temperature that hasn't changed at all for this many hours is held back.
+stuck_hours = 4
+; yes: what was held back is also taken out of the reading passed on to AcuRite,
+; so the AcuRite app and anything AcuRite forwards it to never show it.
+hold_back_from_acurite = no
+
 [hub]
 ; AcuRite Access 09155M hub relay. The hub reports each reading over HTTPS to
 ; the "Server Name" on its local page (http://<hub IP>/). Point that at this
