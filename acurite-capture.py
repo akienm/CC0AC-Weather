@@ -1810,9 +1810,12 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
     def outdoor_days() -> list[dict]:
         return [{"id": e["id"], "name": e["name"], "days": e["days"]}
                 for e in summaries(db_path, sensors, {"days": "1000000"})["sensors"] if e["outdoor"]]
-    where = _station(cfg) if cfg.getboolean("climate", "normals", fallback=True) else {}
+    where = _station(cfg)
+    bases = (cfg.getfloat("climate", "heating_base_f", fallback=65.0),
+             cfg.getfloat("climate", "cooling_base_f", fallback=65.0))
     threading.Thread(target=climate.run, args=(where.get("latitude"), where.get("longitude"), write_path,
-                                               outdoor_days), daemon=True, name="climate").start()
+                                               outdoor_days, cfg.getboolean("climate", "normals", fallback=True),
+                                               bases), daemon=True, name="climate").start()
 
     source_threads = []
     for source in load_sources():

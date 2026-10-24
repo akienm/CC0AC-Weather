@@ -33,6 +33,7 @@ import sqlite3
 from datetime import date, datetime, timezone
 
 import units
+from climate import degree_days   # the dashboard's degree days are the same
 
 CARDINALS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
 # The counts under each table, in the stored units: (label, field, test, threshold).
@@ -112,14 +113,6 @@ def gather_year(con: sqlite3.Connection, sensor_id: str, year: int) -> tuple[dic
             after = date(year + m // 12, m % 12 + 1, 1).toordinal()
             winds[m] = blew_from(con, _bounds(sensor_id, date(year, m, 1).toordinal(), after))
     return days, winds
-
-
-def degree_days(high: float | None, low: float | None, base: float, heating: bool) -> float | None:
-    """One day's heating (or cooling) degree days, °F, from the middle of its high and low."""
-    if high is None or low is None:
-        return None
-    middle = (high + low) / 2
-    return max(0.0, base - middle) if heating else max(0.0, middle - base)
 
 
 def direction(x: float, y: float) -> str:

@@ -19,6 +19,21 @@ Normals are what a day is like on average, 1991-2020, for the station's
 Normals change once a decade, so they are fetched once and kept in
 normals.json beside current.json, fetched again after 180 days or when the
 location changes. The daemon writes climate.json / climate.js every hour.
+
+Degree days and evapotranspiration come from each day's high and low, so they
+need no extra sensor:
+
+  * Heating (cooling) degree days: how far the middle of a day's high and low
+    is below (above) [climate] heating_base_f (cooling_base_f), 65°F unless
+    set; for today so far, this month, and the season. The heating season runs
+    from July 1 and the cooling season from January 1, the Weather Service's
+    way; south of the equator the two swap.
+  * ET0, the reference evapotranspiration: how much water a well-watered lawn
+    gives up in a day, the usual guide to how much to water. Worked out by
+    Hargreaves and Samani's formula (FAO Irrigation Paper 56, equation 52),
+    which needs only the temperatures and [station] latitude; it is a little
+    rougher than the full Penman-Monteith, which needs sunshine the sensors
+    don't measure well. In inches, like rain.
 """
 
 from __future__ import annotations
@@ -69,6 +84,65 @@ def records(days: list[dict], today: str) -> dict:
 def month_rain(days: list[dict], today: str) -> float | None:
     rain = [d["rain_in"] for d in days if d["day"][:7] == today[:7] and d.get("rain_in") is not None]
     return round(sum(rain), 2) if rain else None
+
+
+# ── Degree days and evapotranspiration ────────────────────────────────────────
+
+def degree_days(high: float | None, low: float | None, base: float, heating: bool) -> float | None:
+    """One day's heating (or cooling) degree days, °F, from the middle of its high and low."""
+    if high is None or low is None:
+        return None
+    middle = (high + low) / 2
+    return max(0.0, base - middle) if heating else max(0.0, middle - base)
+
+
+def season_start(today: str, heating: bool, lat: float | None) -> str:
+    """The day a season began: heating from July 1, cooling from January 1 (swapped south of the equator)."""
+    year = int(today[:4])
+    from_july = heating != (lat is not None and lat < 0)
+    if not from_july:
+        return f"{year}-01-01"
+    return f"{year if today[5:] >= '07-01' else year - 1}-07-01"
+
+
+def extraterrestrial(lat: float, day: str) -> float:
+    """Ra, the sun's energy at the top of the air above lat on day, MJ/m²/day (FAO-56 equation 21)."""
+    j = date.fromisoformat(day).timetuple().tm_yday
+    phi = math.radians(lat)
+    dr = 1 + 0.033 * math.cos(2 * math.pi * j / 365)
+    decl = 0.409 * math.sin(2 * math.pi * j / 365 - 1.39)
+    ws = math.acos(max(-1.0, min(1.0, -math.tan(phi) * math.tan(decl))))   # polar day and night
+    return (24 * 60 / math.pi * 0.0820 * dr
+            * (ws * math.sin(phi) * math.sin(decl) + math.cos(phi) * math.cos(decl) * math.sin(ws)))
+
+
+def et0(high: float | None, low: float | None, lat: float | None, day: str) -> float | None:
+    """A day's reference evapotranspiration, inches, by Hargreaves-Samani (FAO-56 equation 52)."""
+    if high is None or low is None or lat is None:
+        return None
+    hi, lo = (high - 32) * 5 / 9, (low - 32) * 5 / 9
+    mm = 0.0023 * ((hi + lo) / 2 + 17.8) * math.sqrt(max(0.0, hi - lo)) * 0.408 * extraterrestrial(lat, day)
+    return max(0.0, mm) / 25.4
+
+
+def _total(values) -> float | None:
+    have = [v for v in values if v is not None]
+    return round(sum(have), 2) if have else None
+
+
+def degree_days_and_et0(days: list[dict], today: str, lat: float | None, bases: tuple[float, float]) -> dict:
+    """One sensor's days → {"heating": {today, month, season, season_from}, "cooling": {...}, "et0": {today, month}}."""
+    out = {}
+    for kind, base, heating in (("heating", bases[0], True), ("cooling", bases[1], False)):
+        start = season_start(today, heating, lat)
+        dd = {d["day"]: degree_days(d.get("temp_max"), d.get("temp_min"), base, heating) for d in days}
+        out[kind] = {"today": _total([dd.get(today)]),
+                     "month": _total(v for day, v in dd.items() if day[:7] == today[:7]),
+                     "season": _total(v for day, v in dd.items() if start <= day <= today),
+                     "season_from": start}
+    e = {d["day"]: et0(d.get("temp_max"), d.get("temp_min"), lat, d["day"]) for d in days if d["day"][:7] == today[:7]}
+    out["et0"] = {"today": _total([e.get(today)]), "month": _total(e.values())}
+    return out
 
 
 # ── Normals ───────────────────────────────────────────────────────────────────
@@ -192,8 +266,10 @@ def normal_for(kept: dict | None, day: str) -> dict | None:
 
 # ── climate.json ──────────────────────────────────────────────────────────────
 
-def build(sensors: list[dict], today: str, kept_normals: dict | None) -> dict:
-    """sensors: [{id, name, days}] for the outdoor sensors (days oldest first, today last)."""
+def build(sensors: list[dict], today: str, kept_normals: dict | None,
+          lat: float | None = None, bases: tuple[float, float] = (65.0, 65.0)) -> dict:
+    """sensors: [{id, name, days}] for the outdoor sensors (days oldest first, today last).
+    lat: [station] latitude, for the evapotranspiration; bases: the heating and cooling degree-day bases, °F."""
     out = {"today": today, "normal": normal_for(kept_normals, today), "sensors": []}
     for s in sensors:
         now = next((d for d in s["days"] if d["day"] == today), {})
@@ -201,7 +277,8 @@ def build(sensors: list[dict], today: str, kept_normals: dict | None) -> dict:
                                "high": now.get("temp_max"), "low": now.get("temp_min"),
                                "month_rain": month_rain(s["days"], today),
                                "since": s["days"][0]["day"] if s["days"] else None,
-                               "records": records(s["days"], today)})
+                               "records": records(s["days"], today),
+                               **degree_days_and_et0(s["days"], today, lat, bases)})
     return out
 
 
@@ -213,14 +290,16 @@ def write(write_path: Path, doc: dict) -> None:
         tmp.replace(write_path / name)
 
 
-def run(lat: float | None, lon: float | None, write_path: Path, outdoor_days) -> None:
-    """Forever: climate.json every hour. outdoor_days() → the sensors for build()."""
+def run(lat: float | None, lon: float | None, write_path: Path, outdoor_days,
+        fetch_normals: bool = True, bases: tuple[float, float] = (65.0, 65.0)) -> None:
+    """Forever: climate.json every hour. outdoor_days() → the sensors for build().
+    fetch_normals=False keeps to records; lat is still used for the evapotranspiration."""
     while True:
         try:
             today = date.today().isoformat()
             kept = (normals(lat, lon, write_path / "normals.json", time.time())
-                    if lat is not None and lon is not None else None)
-            write(write_path, build(outdoor_days(), today, kept))
+                    if fetch_normals and lat is not None and lon is not None else None)
+            write(write_path, build(outdoor_days(), today, kept, lat, bases))
         except Exception:   # keep the thread; an hour later may go better
             log.exception("climate.json not written")
         time.sleep(EVERY_S - datetime.now().minute * 60 % EVERY_S + 60)   # just after the hour

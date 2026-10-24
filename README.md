@@ -473,6 +473,30 @@ same 30 years. They are fetched once, kept in `normals.json` and refreshed
 twice a year; `[climate] normals = false` keeps records only and fetches
 nothing. Everything is rewritten hourly to `climate.json` and `climate.js`.
 
+The same card counts **degree days** and **evapotranspiration**, both worked
+out from each day's high and low, so no extra sensor is needed:
+
+- Heating degree days measure how far a day's middle temperature (halfway
+  between its high and low) is below `[climate] heating_base_f`, and cooling
+  degree days how far it is above `cooling_base_f`. Both bases are 65°F unless
+  you change them. The card shows this month and the season so far, and leaves off a season with none yet. The
+  heating season runs from July 1 and the cooling season from January 1, as the
+  Weather Service counts them; south of the equator the two swap. Heating
+  degree days track the heating bill, and cooling degree days the air
+  conditioning. The NOAA summaries count them the same way.
+- **ET0** (reference evapotranspiration) is how much water a well-watered lawn
+  gives up in a day, the usual guide to how much to water. Rain minus ET0 is
+  roughly what the garden is short. It is worked out from the temperatures and
+  `[station] latitude` by Hargreaves and Samani's formula (FAO Irrigation Paper
+  56, equation 52). That formula is a little rougher than the full
+  Penman-Monteith, which needs sunshine readings the sensors don't take well.
+  The card shows it in your rain units, for today so far and this month. With
+  no latitude it is left off.
+
+*Status: measured 2026-10-24. The sun's energy matches FAO-56's worked example
+8, and a day's ET0 matches equation 52 worked by hand. Not yet compared with a
+nearby agricultural weather station's published ET0.*
+
 ### Barometer outlook
 
 The outdoor card has an **Outlook** row: a short forecast such as "Fine,
@@ -1150,7 +1174,7 @@ Run the tests before a pull request: `python3 -m unittest discover -s tests`.
 | `status.html` | The status page at `/status` (your network only); reads `/status.json` |
 | `wizard.py` | Finds the hub, reads its page, writes the setup page's answers into the settings |
 | `alerts.py` | Sends a message when readings stop and when they're back, and weather alerts (`--check`, `--test-alert`) |
-| `climate.py` | Records and the 1991-2020 normals: `climate.json` and the dashboard's Records card |
+| `climate.py` | Records, the 1991-2020 normals, degree days and ET0: `climate.json` and the dashboard's Records card |
 | `zambretti.py` | The barometer outlook on the outdoor card |
 | `mcp_server.py` | The read-only MCP server at `/mcp`, for AI assistants |
 | `importer.py` | `--import`: older readings from WeeWX, Cumulus, CSV files or Weather Underground |

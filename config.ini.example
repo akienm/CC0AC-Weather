@@ -301,7 +301,7 @@ contact = github.com/akienm/CC0AC-Weather
 ; miles (US), else Open-Meteo's history for the spot. Fetched once, kept in
 ; normals.json, refreshed twice a year. false = records only, nothing fetched.
 normals = true
-; The NOAA summaries' degree days (/noaa): a day's heating degree days are how
+; Degree days (the Records card and /noaa): a day's heating degree days are how
 ; far the middle of its high and low is below heating_base_f, its cooling
 ; degree days how far above cooling_base_f. In °F; 65 is the Weather Service's.
 heating_base_f = 65

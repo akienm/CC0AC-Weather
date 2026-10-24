@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.3.13)
+# How CC0AC-Weather installs and keeps itself up to date (1.3.14)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -116,6 +116,12 @@ the National Weather Service's plain-text table, with degree days, at `/noaa`
 on your own network, as a text file, or by `--noaa`. And `--import` now reads
 Cumulus's month logs. The README's "NOAA climate summaries" and "Bringing in
 older readings" explain them.
+
+1.3.14 adds degree days and evapotranspiration to the dashboard's Records card:
+heating and cooling degree days for today, the month and the season, and ET0,
+the water a lawn gives up, for today and the month. Both come from the highs
+and lows, so no new sensor is needed. The README's "Records and normals"
+explains them.
 
 ## When it checks
 

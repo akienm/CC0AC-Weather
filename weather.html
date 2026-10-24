@@ -711,6 +711,18 @@ function extremes(r) {
   return out.join('');
 }
 
+// Degree days are °F (or °C) below or above the base, added up: this month, and
+// the season since it began. A season with none yet (cooling in winter) is left off.
+function degreeDays(d, icon, word) {
+  if (!d || !d.season) return '';
+  const dd = v => Units.value('temperature', v ?? 0, true).toFixed(0);
+  const from = new Date(d.season_from + 'T12:00').toLocaleDateString([], { month: 'short', day: 'numeric' });
+  return row(`${icon} ${word} degree days`, `${dd(d.month)} <span class="ts">this month</span>`)
+    + row(`${icon} ${word} season`, `${dd(d.season)} <span class="ts">since ${from}</span>`);
+}
+
+const ET0 = '<span title="Evapotranspiration: the water a well-watered lawn gives up">ET0</span>';
+
 function climateCard(cl) {
   // The station's own sensor; internet weather only when there is none.
   const all = (cl && cl.sensors) || [];
@@ -724,6 +736,10 @@ function climateCard(cl) {
       ${row('🔺 High today', Units.num('temperature', s.high) + '°' + vsNormal('temperature', s.high, n.high, 0))}
       ${row('🔻 Low today', Units.num('temperature', s.low) + '°' + vsNormal('temperature', s.low, n.low, 0))}
       ${row('☔ Rain this month', Units.num('rain', s.month_rain) + (n.rain_mtd == null ? after('rain') : '') + vsNormal('rain', s.month_rain ?? 0, n.rain_mtd))}
+      ${degreeDays(s.heating, '♨️', 'Heating')}
+      ${degreeDays(s.cooling, '❄️', 'Cooling')}
+      ${row(`💧 ${ET0} today`, Units.text('rain', s.et0?.today))}
+      ${row(`💧 ${ET0} this month`, Units.text('rain', s.et0?.month))}
       ${extremes(r)}
       ${row('🌬️ Highest gust', recordText(r.all?.highest_gust, 'wind'))}
       ${row('🌧️ Wettest day', recordText(r.all?.wettest_day, 'rain'))}
