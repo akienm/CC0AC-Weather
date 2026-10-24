@@ -36,6 +36,7 @@ from datetime import datetime, timezone
 from email.message import EmailMessage
 from pathlib import Path
 
+import units
 from iolog import report
 
 log = logging.getLogger("acurite")
@@ -185,6 +186,7 @@ def weather_conditions(cfg: configparser.ConfigParser, snapshot: dict, now: floa
     frost, heat = _setting(cfg, "frost_f", 35), _setting(cfg, "heat_f", 105)
     drop = _setting(cfg, "pressure_drop_inhg", 0.06)
     fresh = _setting(cfg, "quiet_minutes", DEFAULT_QUIET_MINUTES) * 60
+    shown_in = units.chosen(cfg)   # the settings stay in °F, inHg and miles; the messages follow [units]
     outdoor = []
     for s in snapshot.get("sensors", []):
         try:
@@ -201,13 +203,13 @@ def weather_conditions(cfg: configparser.ConfigParser, snapshot: dict, now: floa
         cold = [(s["fields"]["temp_f"], s["name"]) for s in outdoor
                 if isinstance(s["fields"].get("temp_f"), (int, float))]
         t, name = min(cold) if cold else (None, "")
-        out["frost"] = (f"Frost risk: {t:.1f}°F at {name}." if t is not None
+        out["frost"] = (f"Frost risk: {units.show('temperature', t, shown_in)} at {name}." if t is not None
                         and (t <= frost or (was.get("frost") and t <= frost + 2)) else None)
     if "heat" in wanted:
         hot = [(s["fields"]["feels_like_f"], s["name"]) for s in outdoor
                if isinstance(s["fields"].get("feels_like_f"), (int, float))]
         t, name = max(hot) if hot else (None, "")
-        out["heat"] = (f"Dangerous heat: feels like {t:.0f}°F at {name}." if t is not None
+        out["heat"] = (f"Dangerous heat: feels like {units.show('temperature', t, shown_in, 0)} at {name}." if t is not None
                        and (t >= heat or (was.get("heat") and t >= heat - 3)) else None)
     if "lightning" in wanted:
         # A strike the station heard (its count rose: last_strike_heard) within
@@ -224,12 +226,12 @@ def weather_conditions(cfg: configparser.ConfigParser, snapshot: dict, now: floa
             if isinstance(f.get("last_strike_mi"), (int, float)) and f["last_strike_mi"] <= near and now - heard <= window:
                 close.append((f["last_strike_mi"], s.get("name", ""), f.get("strikes_today")))
         mi, name, today = min(close, key=lambda c: c[0]) if close else (None, "", None)
-        out["lightning"] = (f"Lightning: a strike {mi:g} mi away, heard at {name}"
+        out["lightning"] = (f"Lightning: a strike {units.show('distance', mi, shown_in)} away, heard at {name}"
                             + (f" ({today} today)." if isinstance(today, int) else ".")
                             if close else None)
     if "storm" in wanted:
         change = snapshot.get("pressure_change_3h")
-        out["storm"] = (f"The barometer has fallen {-change:.2f} inHg in 3 hours: a storm may be coming."
+        out["storm"] = (f"The barometer has fallen {units.show('pressure', -change, shown_in)} in 3 hours: a storm may be coming."
                         if isinstance(change, (int, float)) and (change <= -drop or (was.get("storm") and change <= -drop / 2))
                         else None)
     return out
@@ -237,7 +239,7 @@ def weather_conditions(cfg: configparser.ConfigParser, snapshot: dict, now: floa
 
 WEATHER_OVER = {"frost": "The frost risk is over.", "heat": "The dangerous heat is over.",
                 "storm": "The barometer has stopped falling fast.",
-                "lightning": "No lightning within {lightning_mi:g} mi for {lightning_minutes:g} minutes."}
+                "lightning": "No lightning within {lightning_distance} for {lightning_minutes:g} minutes."}
 
 
 def check_weather(cfg: configparser.ConfigParser, write_path: Path, now: float | None = None,
@@ -258,8 +260,9 @@ def check_weather(cfg: configparser.ConfigParser, write_path: Path, now: float |
         if now_says and not sent.get(kind):
             message, title = now_says, f"{name}: {now_says.split(':')[0].lower()}"
         elif not now_says and sent.get(kind):
-            message = WEATHER_OVER[kind].format(lightning_mi=_setting(cfg, "lightning_mi", 10),
-                                                lightning_minutes=_setting(cfg, "lightning_minutes", 30))
+            message = WEATHER_OVER[kind].format(
+                lightning_distance=units.show("distance", _setting(cfg, "lightning_mi", 10), units.chosen(cfg)),
+                lightning_minutes=_setting(cfg, "lightning_minutes", 30))
             title = f"{name}: {kind} over"
         else:
             continue

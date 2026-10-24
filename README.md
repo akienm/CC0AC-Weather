@@ -614,6 +614,52 @@ A page gets everything from two addresses on the same server:
     included, up to the latest reading. Weeks start on Sunday.
   - Finished days are kept in the database's `daily` table.
 
+### Units
+
+The pages and the alert messages show readings in US units unless `[units]`
+says otherwise:
+
+    [units]
+    system = metric       ; us, metric (°C, km/h, hPa, mm, km) or uk (°C, mph, hPa, mm, miles)
+    wind = knots          ; any one kind can differ: temperature f|c, wind mph|kmh|ms|knots,
+                          ; pressure inhg|hpa|mmhg, rain in|mm, distance mi|km
+
+Heights (elevation, cloud bases) follow the distance: feet with miles, metres
+with kilometres. This changes only what is shown. The station stores, uploads
+and publishes every reading in one set of units (°F, mph, inHg, inches, miles),
+so it can be changed at any time and the history stays whole. The data files
+(`current.json`, `/history.json`, `/summaries.json`) stay in those units too and
+carry the choice as `units`; MQTT, the MCP server and the weather networks are
+unchanged. Settings that name a unit, such as `frost_f` or `lightning_mi`, stay
+in it.
+
+### Calibration
+
+A sensor that reads a little off can be corrected, one line per sensor by the
+ID `[sensors]` uses:
+
+    [calibration]
+    00001234 = temp_f -1.5, humidity_pct +3
+    00005678 = wind_mph x1.1, wind_dir_deg +20, rain_day_in x0.95
+
+Each part is a field and an amount to add (`+` or `-`) or a number to multiply
+by (`x`). A field can be named in the unit you measured the error in:
+`temp_c -0.8`, `pressure_hpa +1.2`, `rain_day_mm`, `wind_kmh`, `wind_ms`. Rain
+takes only `x`, since an amount added would rain on every reading. The fields:
+`temp_f`, `humidity_pct`, `wind_mph`, `wind_avg_mph`, `wind_gust_mph`,
+`wind_dir_deg`, `wind_gust_dir_deg`, `rain_hour_in`, `rain_day_in`,
+`pressure_inhg`, `uv_index`, `light_lux`, `last_strike_mi`.
+
+The correction is made as each reading arrives, before it is stored, shown or
+sent, so the database, the records and every upload hold the corrected value.
+Dew point, heat index, wind chill and feels-like are worked out again from the
+corrected temperature, humidity and wind. What the sensor actually sent stays in
+the raw logs and the database's `query` column. A change applies from then on;
+readings already stored stay as they were. The status page shows each sensor's
+line, and a part that can't be read is named in the service log and left out.
+A good way to find the amount: set a trusted thermometer beside the sensor, in
+the shade, for an hour, and compare.
+
 ## MQTT and Home Assistant
 
 With `[mqtt] enabled = true` and a broker's `host` (and `username` and
@@ -959,6 +1005,9 @@ Run the tests before a pull request: `python3 -m unittest discover -s tests`.
 | `sources/console_upload.py` | Console uploads: Ambient Weather, Ecowitt and Wunderground formats |
 | `diagnostics.py` | `--diagnostics` and the status page's download: one file to attach to a problem report |
 | `iolog.py` | The send logs: what was sent to each service and what came back |
+| `units.py` | `[units]`: the units the pages and alert messages show readings in |
+| `units.js` | The same for the pages: converts each stored reading for display |
+| `calibration.py` | `[calibration]`: corrects a sensor that reads a little off |
 | `SUPPORTED.md` | Which brands work how, and how sure we are (made by `setup/supported.py`) |
 | `tests/` | `python3 -m unittest discover tests`; `rtl_433_samples.jsonl` is one recorded line per radio model |
 | `outputs/__init__.py` | How to add an output: somewhere readings are sent |

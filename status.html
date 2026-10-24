@@ -121,7 +121,8 @@ function show(d) {
       (r.every_s ? ` every ${Math.round(r.every_s)} s` : "") + (r.snr_db != null ? `, SNR ${r.snr_db} dB` : "")).join("<br>");
     const logs = Object.entries(s.logs || {}).map(([who, l]) => logLink(l.f, `${who} ${day(l.f)}`, l.find)).join(" ");
     const low = s.battery && s.battery !== "normal";
-    return `<tr><td>${esc(s.name || s.id)}<div class="detail">${esc(s.type)} ${esc(s.id)}</div></td>` +
+    const cal = s.calibration ? `<div class="detail">calibrated: ${esc(s.calibration)}</div>` : "";
+    return `<tr><td>${esc(s.name || s.id)}<div class="detail">${esc(s.type)} ${esc(s.id)}</div>${cal}</td>` +
       `<td>${ago(s.updated, QUIET_S)}</td><td class="${low ? "bad" : ""}">${esc(s.battery || "—")}</td>` +
       `<td>${rec || "—"}</td><td>${logs || "—"}</td></tr>`;
   }));

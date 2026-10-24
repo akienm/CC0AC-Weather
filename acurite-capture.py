@@ -56,11 +56,13 @@ from pathlib import Path
 from sources import FIELDS, OUTDOOR_TYPES, Reading, derive
 from sources import acurite_access, online
 import alerts
+import calibration
 import climate
 import diagnostics
 import importer
 import iolog
 import mcp_server
+import units
 import upkeep
 import wizard
 import zambretti
@@ -474,11 +476,14 @@ def import_raw(cfg: configparser.ConfigParser) -> None:
     """Load every reading in the raw hub logs into the store. Safe to run again:
     readings already there are skipped."""
     con = open_db(_db_path(cfg))
+    corrections = calibration.rules(cfg)
     added = skipped = other = 0
     for reading in acurite_access.raw_readings(cfg):
         if reading is None:
             other += 1
-        elif store_reading(con, reading):
+            continue
+        reading.fields = calibration.apply(reading.fields, corrections.get(reading.sensor_id.lower()))
+        if store_reading(con, reading):
             added += 1
         else:
             skipped += 1
@@ -1133,6 +1138,7 @@ def system_status(cfg: configparser.ConfigParser, write_path: Path, now: float |
                 receivers[who] = r["last"]
         sensors.append({"id": e.get("sensor_id"), "name": e.get("name"), "type": e.get("type"),
                         "updated": e.get("updated"), "battery": (e.get("fields") or {}).get("battery"),
+                        "calibration": cfg.get("calibration", e.get("sensor_id") or "", fallback=None),
                         "reception": heard, "logs": {who: {"f": f"{who}-raw/{_log_days(raw[who])[0]}",
                                                            "find": _raw_mark(who, e.get("sensor_id") or "")}
                                                      for who in heard if who in raw and _log_days(raw[who])}})
@@ -1172,10 +1178,10 @@ def system_status(cfg: configparser.ConfigParser, write_path: Path, now: float |
 #
 # [web] pages names a folder of your own: a page, stylesheet, script or image
 # put there is served by its name, and one named like a shipped page (theme.css,
-# weather.html, charts.html) replaces it. An update never touches that folder.
+# weather.html, charts.html, units.js) replaces it. An update never touches that folder.
 
 DEFAULT_TITLE = "CC0AC Weather"
-SHIPPED_PAGES = ("weather.html", "charts.html", "theme.css")
+SHIPPED_PAGES = ("weather.html", "charts.html", "theme.css", "units.js")
 PAGE_TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "application/javascript",
               ".png": "image/png", ".jpg": "image/jpeg", ".svg": "image/svg+xml",
               ".ico": "image/x-icon", ".webp": "image/webp"}
@@ -1189,7 +1195,7 @@ DATA_FILES = {"/current.js": "application/javascript", "/current.json": "applica
 # From outside your network (anything through the router's port forward) only the
 # dashboard and the charts are served, with what those two pages load; everything
 # else answers 404. Your own network gets every page, the data files and /config.cgi.
-OUTSIDE_PATHS = {"/", "/weather.html", "/charts.html", "/theme.css",
+OUTSIDE_PATHS = {"/", "/weather.html", "/charts.html", "/theme.css", "/units.js",
                  "/current.js", "/forecast.js", "/climate.js", "/history.json"}
 
 # /config.cgi edits config.ini in the browser: one pane, Save and Revert. It is
@@ -1288,6 +1294,8 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
                       config_path: Path | None = None, mcp: bool = True,
                       cfg: configparser.ConfigParser | None = None):
     page_dir = Path(__file__).resolve().parent
+    # The charts read the [units] choice from /history.json.
+    shown_in = units.chosen(cfg) if cfg is not None else units.SYSTEMS["us"]
 
     def read_data(name: str) -> dict | None:
         try:
@@ -1534,7 +1542,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
                 self.send_error(404, "No database yet")
                 return
             try:
-                data = {"title": title, **answer(db_path, sensors or {}, q)}
+                data = {"title": title, "units": shown_in, **answer(db_path, sensors or {}, q)}
             except ValueError as e:
                 self.send_error(400, str(e))
                 return
@@ -1611,6 +1619,7 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
     # The dashboard reads these settings from current.json; it cannot read config.ini.
     # The lower pane is a row of [buttons], each loading its page below; none set, no pane.
     page = {"title": _title(cfg), "version": _version(), "lower_buttons": _buttons(cfg), "station": _station(cfg),
+            "units": units.chosen(cfg),
             "outdoor_rows": _card_rows(cfg, "outdoor_rows"),
             "sensor_rows": _card_rows(cfg, "sensor_rows")}
     db_path = _db_path(cfg)
@@ -1627,7 +1636,11 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
             queues.append((output.NAME, todo))
             log.info("Output on: %s", output.NAME)
 
+    # [calibration]: a sensor that reads a little off is corrected before anything uses its reading.
+    corrections = calibration.rules(cfg)
+
     def emit(reading: Reading) -> dict:
+        reading.fields = calibration.apply(reading.fields, corrections.get(reading.sensor_id.lower()))
         entry = record_reading(reading, write_path, sensors, page, db_path)
         for name, todo in queues:
             try:

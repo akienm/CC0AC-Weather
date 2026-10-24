@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.3.8)
+# How CC0AC-Weather installs and keeps itself up to date (1.3.9)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -86,6 +86,13 @@ downloads the diagnostics file, which is what to attach when asking for help.
 The diagnostics file now also leaves out station IDs and the position inside a
 CWOP packet; before this, a CWOP upload's position could reach the service log
 it includes.
+
+1.3.9 shows readings in the units you choose: `[units] system = metric` (or
+`uk`), with any one kind changed on its own, on the dashboard, the charts and
+in alert messages. What is stored and uploaded is unchanged, so the history
+stays whole. It also adds `[calibration]`, a fixed correction for a sensor that
+reads a little off, made before a reading is stored, shown or sent on; the raw
+logs keep what the sensor sent, and the status page shows each sensor's line.
 
 ## When it checks
 

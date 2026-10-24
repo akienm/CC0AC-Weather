@@ -7,6 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.32/dist/uPlot.min.css">
 <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.32/dist/uPlot.iife.min.js"></script>
+<script src="units.js"></script>
 <style>
   :root {
     --bg: #000;
@@ -183,27 +184,31 @@ function draw(d) {
   document.getElementById("written").textContent =
     `${fmt.format(new Date(d.from * 1000))} – ${fmt.format(new Date(d.to * 1000))} · ${stepLabel(d.step)} averages`;
 
+  // Readings come in the stored units; shown in those [units] in config.ini chose (units.js).
+  Units.use(d.units);
   const o = d.outdoor, t = d.t;
+  const as = (kind, values) => (values || []).map(v => Units.value(kind, v));
+  const deg = Units.label("temperature");
 
-  plot("Outdoor temperature °F", {
-    axes: axes("°F"),
+  plot(`Outdoor temperature ${deg}`, {
+    axes: axes(deg),
     series: [{}, line("Temp", COLORS[0]), line("Low", C.band, { width: 1 }), line("High", C.band, { width: 1 }),
              line("Dew point", COLORS[2]), line("Feels like", COLORS[1], { dash: [4, 4] })],
     bands: [{ series: [3, 2], fill: C["band-fill"] }],
     scales: { x: { time: true } },
-  }, [t, o.temp_f, o.temp_min, o.temp_max, o.dew_point_f, o.feels_like_f]);
+  }, [t, ...[o.temp_f, o.temp_min, o.temp_max, o.dew_point_f, o.feels_like_f].map(v => as("temperature", v))]);
 
   plot("Wind", {
-    axes: axes("mph", "direction °"),
+    axes: axes(Units.label("wind"), "direction °"),
     series: [{}, line("Speed", COLORS[0]), line("Gust", COLORS[1], { width: 1 }),
              { label: "From", stroke: COLORS[2], scale: "r", paths: () => null, points: { show: true, size: 4, fill: COLORS[2] } }],
     scales: { r: { range: [0, 360] } },
-  }, [t, o.wind_mph, o.wind_gust_mph, o.wind_dir_deg]);
+  }, [t, as("wind", o.wind_mph), as("wind", o.wind_gust_mph), o.wind_dir_deg]);
 
-  plot("Pressure inHg", {
-    axes: axes("inHg"),
+  plot(`Pressure ${Units.label("pressure")}`, {
+    axes: axes(Units.label("pressure")),
     series: [{}, line("Pressure", COLORS[0])],
-  }, [t, o.pressure_inhg]);
+  }, [t, as("pressure", o.pressure_inhg)]);
 
   const tot = d.rain_totals;
   const since = tot.since ? new Date(tot.since + "T00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "start";
@@ -211,14 +216,15 @@ function draw(d) {
   totals.className = "totals";
   totals.innerHTML = [["Today", tot.today], ["This week", tot.week], ["This month", tot.month],
                       ["This year", tot.year], [`Since ${since}`, tot.all]]
-    .map(([k, v]) => `<div><span>${k}</span><b>${v.toFixed(2)}″</b></div>`).join("");
+    .map(([k, v]) => `<div><span>${k}</span><b>${Units.text("rain", v)}</b></div>`).join("");
   const per = { 3600: "hour", 86400: "day", 604800: "week" }[d.rain.step] || `${d.rain.step / 3600} hours`;
-  plot(`Rain, inches per ${per}`, {
-    axes: axes("in"),
+  const rainUnit = Units.label("rain");
+  plot(`Rain, ${rainUnit === "in" ? "inches" : rainUnit} per ${per}`, {
+    axes: axes(rainUnit),
     series: [{}, { label: "Rain", stroke: COLORS[0], fill: C.rain,
                    paths: uPlot.paths.bars({ size: [0.8, 40], align: 1 }), points: { show: false } }],
-    scales: { y: { range: (u, min, max) => [0, Math.max(0.1, max * 1.1)] } },
-  }, [d.rain.t, d.rain.in], totals);
+    scales: { y: { range: (u, min, max) => [0, Math.max(Units.value("rain", 0.1), max * 1.1)] } },
+  }, [d.rain.t, as("rain", d.rain.in)], totals);
 
   plot("UV and light", {
     axes: axes("UV index", "lux"),
@@ -227,10 +233,10 @@ function draw(d) {
   }, [t, o.uv_index, o.light_lux]);
 
   const rooms = d.rooms;
-  plot("Indoor temperature °F", {
-    axes: axes("°F"),
+  plot(`Indoor temperature ${deg}`, {
+    axes: axes(deg),
     series: [{}, ...rooms.map((r, i) => line(r.name, COLORS[i % COLORS.length]))],
-  }, [t, ...rooms.map(r => r.temp_f)]);
+  }, [t, ...rooms.map(r => as("temperature", r.temp_f))]);
 
   plot("Humidity %", {
     axes: axes("%"),

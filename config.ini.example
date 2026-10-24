@@ -32,6 +32,28 @@ write_path = ~/AcuRite
 ; The same for the other sensors' cards. Rows: humidity, dew_point
 ; 1 = dew_point
 
+[units]
+; How the pages and alert messages show readings. What is stored and uploaded is
+; always the same (°F, mph, inHg, inches, miles), so this can change any time.
+; system = us, metric (°C, km/h, hPa, mm, km) or uk (°C, mph, hPa, mm, miles).
+; Any one kind can differ from the system:
+;   temperature = f | c
+;   wind = mph | kmh | ms | knots
+;   pressure = inhg | hpa | mmhg
+;   rain = in | mm
+;   distance = mi | km      (heights follow it: feet or metres)
+; Settings that name their unit (frost_f, lightning_mi under alerts) stay in it.
+system = us
+
+[calibration]
+; A sensor that reads a little off, corrected: sensor ID = field and an amount to
+; add (+/-) or a number to multiply by (x), comma-separated. A field can be named
+; in the unit you measured the error in: temp_c, pressure_hpa, rain_day_mm, wind_kmh.
+; Rain takes only x. Applied before a reading is stored, shown or sent; the raw
+; logs keep what the sensor sent. The status page shows each sensor's line.
+; 1234 = temp_f -1.5, humidity_pct +3
+; 5678 = wind_mph x1.1, wind_dir_deg +20, rain_day_in x0.95
+
 [hub]
 ; AcuRite Access 09155M hub relay. The hub reports each reading over HTTPS to
 ; the "Server Name" on its local page (http://<hub IP>/). Point that at this

@@ -142,12 +142,14 @@
 
 <div class="credit">CC0AC Weather <span id="version"></span> · made by Akien MacIain and Claude Code ·
   free under the MIT License · <a href="https://github.com/akienm/CC0AC-Weather" target="_blank" rel="noopener">source and help</a><span id="status-link" hidden> · <a href="/status">status</a></span></div>
+<script src="units.js"></script>
 <script>
 // The status page answers only on your own network; the link shows only where it would open.
 fetch("/status", {cache: "no-store"}).then(r => { if (r.ok) document.getElementById("status-link").hidden = false; }, () => {});
 // Data arrives as current.js (window.ACURITE_CURRENT = {...}), written beside this
 // page by acurite-capture.py. A <script> tag can load it from a file:// URL or any
-// static host, where fetch() would be blocked.
+// static host, where fetch() would be blocked. units.js beside it shows each reading
+// in the units [units] in config.ini chose (current.js carries the choice).
 //
 // Each pane keeps its own clock and redraws only when its own data changed, so a
 // swiped hourly strip or an open day stays put until there is news:
@@ -209,11 +211,11 @@ function hourlyCard(fc, moonEmoji) {
       ? `<span class="day">${d.toLocaleDateString([], { weekday: 'short' })}</span>`
       : d.toLocaleTimeString([], { hour: 'numeric' });
     const w = h.wind_mph == null ? '' :
-      `${h.wind_from ? windArrow(cardinalDeg(h.wind_from)) : ''} ${h.wind_mph}`;
+      `${h.wind_from ? windArrow(cardinalDeg(h.wind_from)) : ''} ${Units.num('wind', h.wind_mph)}`;
     return `<div class="hour" title="${h.sky}">
       <div class="ts">${label}</div>
       <div class="e">${skyEmoji(h.sky, h.day, moonEmoji)}</div>
-      <div class="t">${h.temp_f}°</div>
+      <div class="t">${Units.num('temperature', h.temp_f, 0)}°</div>
       <div>${popText(h.pop) || '&nbsp;'}</div>
       <div class="ts">${w}</div>
     </div>`;
@@ -237,7 +239,8 @@ function dailyCard(fc, moonEmoji) {
   }
   const rows = days.map(d => {
     const lead = d.day || d.night;
-    const hi = d.day ? `${d.day.temp_f}°` : '', lo = d.night ? `${d.night.temp_f}°` : '';
+    const hi = d.day ? `${Units.num('temperature', d.day.temp_f, 0)}°` : '',
+          lo = d.night ? `${Units.num('temperature', d.night.temp_f, 0)}°` : '';
     const pop = Math.max(d.day?.pop ?? 0, d.night?.pop ?? 0);
     const name = d.day ? d.day.name : d.night.name;
     const detail = [d.day, d.night].filter(Boolean)
@@ -256,6 +259,12 @@ function dailyCard(fc, moonEmoji) {
   </div>`;
 }
 
+// Feet or metres, rounded to `step` of them, e.g. "4,500 ft".
+function height(ft, step = 1) {
+  const h = Units.value('height', ft);
+  return h == null ? '—' : `${(Math.round(h / step) * step).toLocaleString()} ${Units.label('height')}`;
+}
+
 const CLOUD_WORDS = { FEW: 'few clouds', SCT: 'scattered clouds', BKN: 'broken clouds',
                       OVC: 'overcast', VV: 'sky obscured', CLR: 'clear', SKC: 'clear' };
 
@@ -263,10 +272,10 @@ function observationRows(fc) {
   const o = fc && fc.observation;
   if (!o) return '';
   const clouds = (o.clouds || []).map(c =>
-    `${CLOUD_WORDS[c.amount] || c.amount}${c.base_ft != null ? ` at ${(Math.round(c.base_ft / 100) * 100).toLocaleString()} ft` : ''}`
+    `${CLOUD_WORDS[c.amount] || c.amount}${c.base_ft != null ? ` at ${height(c.base_ft, 100)}` : ''}`
   ).join(', ') || (o.sky ? '—' : '—');
-  const where = `${o.name || o.station}, ${o.distance_mi} mi away · ${o.time ? ageSpan(o.time, '', Infinity) : ''}`;
-  return `${row('👁️ Visibility', o.visibility_mi == null ? '—' : `${o.visibility_mi} mi`)}
+  const where = `${o.name || o.station}, ${Units.text('distance', o.distance_mi)} away · ${o.time ? ageSpan(o.time, '', Infinity) : ''}`;
+  return `${row('👁️ Visibility', Units.text('distance', o.visibility_mi, o.visibility_mi < 3 ? 1 : 0))}
       ${row('🌥️ Sky', o.sky || '—')}
       ${row('☁️ Clouds', clouds)}
       <div class="ts" style="grid-column: 1 / -1">visibility and clouds from ${where}; cloud heights are above the airport</div>`;
@@ -357,7 +366,7 @@ function skyCard(station, s) {
       ${row('⏳ Daylight', length)}
       ${row('📍 Latitude', ns(station.latitude, 'N', 'S'))}
       ${row('📍 Longitude', ns(station.longitude, 'E', 'W'))}
-      ${row('⛰️ Elevation', station.elevation_ft == null ? '—' : `${Math.round(station.elevation_ft).toLocaleString()} ft`)}
+      ${row('⛰️ Elevation', height(station.elevation_ft))}
       ${observationRows(window.ACURITE_FORECAST)}
     </div>
   </div>`;
@@ -376,8 +385,8 @@ function uvLevel(v) {
 // Forecasters call a 3-hour change under 0.02 inHg steady.
 function trend(change) {
   if (change == null) return '';
-  const c = Number(change);
-  return Math.abs(c) < 0.02 ? ' → steady' : c > 0 ? ` ↗ +${c.toFixed(2)}` : ` ↘ ${c.toFixed(2)}`;
+  const c = Number(change), shown = Units.value('pressure', c, true).toFixed(Units.places('pressure'));
+  return Math.abs(c) < 0.02 ? ' → steady' : c > 0 ? ` ↗ +${shown}` : ` ↘ ${shown}`;
 }
 
 function age(iso) {
@@ -437,8 +446,8 @@ function sensorFoot(s) {
 
 function wind(f) {
   if (f.wind_mph == null) return '—';
-  const speed = num(f.wind_avg_mph ?? f.wind_mph);
-  return f.wind_dir_deg == null ? `${speed} mph` : `${speed} mph from ${card(f.wind_dir_deg)} ${windArrow(f.wind_dir_deg)}`;
+  const speed = Units.text('wind', f.wind_avg_mph ?? f.wind_mph, 1);
+  return f.wind_dir_deg == null ? speed : `${speed} from ${card(f.wind_dir_deg)} ${windArrow(f.wind_dir_deg)}`;
 }
 
 // The outdoor temperature's color: the National Weather Service's own temperature map
@@ -465,6 +474,8 @@ function tempColor(t) {
   return `rgb(${a.map((x, j) => Math.round(x + (b[j] - x) * k)).join(',')})`;
 }
 
+const tempLetter = () => Units.label('temperature').slice(1);
+
 function outdoorCard(s, data, sk) {
   const f = s.fields;
   const icon = sk ? (sk.up ? '☀️' : sk.moon.emoji) : '';
@@ -472,7 +483,7 @@ function outdoorCard(s, data, sk) {
     <div class="age">${ageSpan(s.updated)}</div>
     <div class="hero">
       <div><div class="name"><span>${s.name}</span></div><div class="icon">${icon}</div></div>
-      <div class="temp" style="color:${tempColor(f.temp_f)}">${num(f.temp_f)}°<small>F</small></div>
+      <div class="temp" style="color:${tempColor(f.temp_f)}">${Units.num('temperature', f.temp_f)}°<small>${tempLetter()}</small></div>
     </div>
     <div class="rows">${rows(OUTDOOR_ROWS, data.outdoor_rows, f, data)}</div>
     ${sensorFoot(s)}
@@ -482,27 +493,27 @@ function outdoorCard(s, data, sk) {
 // The rows of each kind of card, by the names [outdoor_rows] and [sensor_rows] in
 // config.ini use, in the order shown when the config doesn't say.
 const OUTDOOR_ROWS = {
-  feels_like:  f => row('🌡️ Feels like', num(f.feels_like_f) + '°'),
+  feels_like:  f => row('🌡️ Feels like', Units.num('temperature', f.feels_like_f) + '°'),
   humidity:    f => row('💧 Humidity', num(f.humidity_pct, 0) + '%'),
-  dew_point:   f => row('🌫️ Dew point', num(f.dew_point_f) + '°'),
+  dew_point:   f => row('🌫️ Dew point', Units.num('temperature', f.dew_point_f) + '°'),
   wind:        f => row('💨 Wind', wind(f)),
-  gust:        f => row('🌬️ Gust', num(f.wind_gust_mph) + ' mph'),
-  pressure:    (f, data) => row('⏲️ Pressure', num(f.pressure_inhg, 2) + ' inHg' + trend(data.pressure_change_3h)),
+  gust:        f => row('🌬️ Gust', Units.text('wind', f.wind_gust_mph, 1)),
+  pressure:    (f, data) => row('⏲️ Pressure', Units.text('pressure', f.pressure_inhg) + trend(data.pressure_change_3h)),
   // Zambretti, worked out from the barometer alone (zambretti.py); shown once there are 3 hours of trend.
   outlook:     (f, data) => f.pressure_inhg == null || !data.zambretti ? ''
                  : row('🔮 Outlook', esc(data.zambretti)),
-  rain_today:  f => row('☔ Rain today', num(f.rain_day_in, 2) + ' in'),
-  rain_rate:   f => row('🌧️ Rain rate', num(f.rain_hour_in, 2) + ' in/h'),
+  rain_today:  f => row('☔ Rain today', Units.text('rain', f.rain_day_in)),
+  rain_rate:   f => row('🌧️ Rain rate', Units.text('rain', f.rain_hour_in) + '/h'),
   uv:          f => row('🔆 UV index', uvLevel(f.uv_index)),
   light:       f => row('☀️ Light', num(f.light_lux, 0) + ' lux'),
   // strikes_today is worked out by the server from the sensor's running count (record_reading).
   lightning:   f => row('⚡ Lightning', f.strikes_today == null ? '—'
                  : `${f.strikes_today} strike${f.strikes_today == 1 ? '' : 's'} today`),
-  last_strike: f => row('⚡ Last strike', f.last_strike_mi == null ? '—' : `${f.last_strike_mi} mi`),
+  last_strike: f => row('⚡ Last strike', Units.text('distance', f.last_strike_mi)),
 };
 const SENSOR_ROWS = {
   humidity:  f => row('💧 Humidity', num(f.humidity_pct, 0) + '%'),
-  dew_point: f => row('🌫️ Dew point', num(f.dew_point_f) + '°'),
+  dew_point: f => row('🌫️ Dew point', Units.num('temperature', f.dew_point_f) + '°'),
 };
 
 // The rows named in the config first, in its order, then the rest in their usual order.
@@ -516,7 +527,7 @@ function sensorCard(s, data) {
   const f = s.fields;
   return `<div class="card">
     <div class="name"><span>${s.name}</span>${ageSpan(s.updated)}</div>
-    <div class="big">${num(f.temp_f)}°<small>F</small></div>
+    <div class="big">${Units.num('temperature', f.temp_f)}°<small>${tempLetter()}</small></div>
     <div class="rows">${rows(SENSOR_ROWS, data.sensor_rows, f, data)}</div>
     ${sensorFoot(s)}
   </div>`;
@@ -611,6 +622,7 @@ function drawCurrent() {
     document.getElementById('title').textContent = data.title;
     document.title = data.title;
   }
+  Units.use(data.units);
   const sk = sky(data.station);
   const sensors = data.sensors;   // in display order ([sensor_order] in config.ini)
   pane('p-outdoor', data.written,
@@ -631,11 +643,11 @@ function drawForecast() {
   // Hours that have passed drop off the strip, so the first hour shown is in its key.
   const now = Date.now();
   const first = fc.hourly && fc.hourly.periods.find(h => new Date(h.start).getTime() + 3600000 > now);
-  pane('p-hourly', [fc.hourly?.updated, err.forecast, first?.start, showHours, moonEmoji].join('|'),
+  pane('p-hourly', [fc.hourly?.updated, err.forecast, first?.start, showHours, moonEmoji, Units.key()].join('|'),
        hourlyCard(fc, moonEmoji));
-  pane('p-daily', [fc.daily?.updated, err.forecast, moonEmoji].join('|'), dailyCard(fc, moonEmoji));
+  pane('p-daily', [fc.daily?.updated, err.forecast, moonEmoji, Units.key()].join('|'), dailyCard(fc, moonEmoji));
   // Sun & moon move slowly; a ten-minute bucket redraws it often enough.
-  if (data) pane('p-sky', [JSON.stringify(fc.observation), err.observation, Math.floor(now / 600000)].join('|'),
+  if (data) pane('p-sky', [JSON.stringify(fc.observation), err.observation, Math.floor(now / 600000), Units.key()].join('|'),
                  skyCard(data.station, sk));
   const alerts = JSON.stringify(fc.alerts || []);
   if (drawn.alerts !== alerts) { drawn.alerts = alerts; renderAlerts(fc); }
@@ -647,16 +659,20 @@ function drawForecast() {
 
 const shortDay = d => new Date(d + 'T12:00').toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 
+// A temperature is followed by ° alone; anything else by its unit.
+const after = kind => kind === 'temperature' ? '°' : ' ' + Units.label(kind);
+
 // How far a value is from the normal, coloured warm or cool.
-function vsNormal(value, normal, places = 0, unit = '°') {
-  if (value == null || normal == null) return '';
-  const d = Number(value) - Number(normal);
+function vsNormal(kind, value, normal, places = Units.places(kind)) {
+  const v = Units.value(kind, value), n = Units.value(kind, normal);
+  if (v == null || n == null) return '';
+  const d = v - n;
   const cls = Math.abs(d) < 0.5 * 10 ** -places ? '' : d > 0 ? 'above' : 'below';
-  return ` · normal ${num(normal, places)}${unit} <span class="${cls}">(${d >= 0 ? '+' : ''}${d.toFixed(places)})</span>`;
+  return ` · normal ${n.toFixed(places)}${after(kind)} <span class="${cls}">(${d >= 0 ? '+' : ''}${d.toFixed(places)})</span>`;
 }
 
-function recordText(r, places = 1, unit = '°') {
-  return r ? `${num(r.value, places)}${unit} <span class="ts">${shortDay(r.day)}</span>` : '—';
+function recordText(r, kind, places) {
+  return r ? `${Units.num(kind, r.value, places)}${after(kind)} <span class="ts">${shortDay(r.day)}</span>` : '—';
 }
 
 // Hottest and coldest this month, this year and ever; a longer period's record
@@ -668,7 +684,7 @@ function extremes(r) {
     for (const [period, label] of [['month', 'this month'], ['year', 'this year'], ['all', 'ever']]) {
       const rec = r[period]?.[key];
       if (!rec || (shown && rec.day === shown.day && rec.value === shown.value)) continue;
-      out.push(row(`${icon} ${word} ${label}`, recordText(rec)));
+      out.push(row(`${icon} ${word} ${label}`, recordText(rec, 'temperature', 1)));
       shown = rec;
     }
   }
@@ -681,17 +697,17 @@ function climateCard(cl) {
   const s = all.find(x => !/^(open-meteo|nws-)/.test(x.id)) || all[0];
   if (!s) return '';
   const n = cl.normal || {}, r = s.records || {};
-  const where = n.source ? (n.station ? `${n.source}, ${esc(n.station)} (${n.miles} mi)` : n.source) : '';
+  const where = n.source ? (n.station ? `${n.source}, ${esc(n.station)} (${Units.text('distance', n.miles, 1)})` : n.source) : '';
   return `<div class="card outdoor">
     <div class="name"><span>📊 Records &amp; normals · ${esc(s.name)}</span></div>
     <div class="rows">
-      ${row('🔺 High today', num(s.high) + '°' + vsNormal(s.high, n.high))}
-      ${row('🔻 Low today', num(s.low) + '°' + vsNormal(s.low, n.low))}
-      ${row('☔ Rain this month', num(s.month_rain, 2) + (n.rain_mtd == null ? ' in' : '') + vsNormal(s.month_rain ?? 0, n.rain_mtd, 2, ' in'))}
+      ${row('🔺 High today', Units.num('temperature', s.high) + '°' + vsNormal('temperature', s.high, n.high, 0))}
+      ${row('🔻 Low today', Units.num('temperature', s.low) + '°' + vsNormal('temperature', s.low, n.low, 0))}
+      ${row('☔ Rain this month', Units.num('rain', s.month_rain) + (n.rain_mtd == null ? after('rain') : '') + vsNormal('rain', s.month_rain ?? 0, n.rain_mtd))}
       ${extremes(r)}
-      ${row('🌬️ Highest gust', recordText(r.all?.highest_gust, 0, ' mph'))}
-      ${row('🌧️ Wettest day', recordText(r.all?.wettest_day, 2, ' in'))}
-      ${row('⏲️ Pressure range', r.all?.lowest_pressure ? `${num(r.all.lowest_pressure.value, 2)} – ${num(r.all.highest_pressure.value, 2)} inHg` : '—')}
+      ${row('🌬️ Highest gust', recordText(r.all?.highest_gust, 'wind'))}
+      ${row('🌧️ Wettest day', recordText(r.all?.wettest_day, 'rain'))}
+      ${row('⏲️ Pressure range', r.all?.lowest_pressure ? `${Units.num('pressure', r.all.lowest_pressure.value)} – ${Units.text('pressure', r.all.highest_pressure.value)}` : '—')}
     </div>
     <div class="ts" style="margin-top:8px">records since ${s.since ? shortDay(s.since) : '—'}${where ? ' · ' + where : ''}</div>
   </div>`;
@@ -699,7 +715,7 @@ function climateCard(cl) {
 
 function drawClimate() {
   const cl = window.ACURITE_CLIMATE;
-  pane('p-climate', JSON.stringify(cl || null), climateCard(cl));
+  pane('p-climate', JSON.stringify(cl || null) + Units.key(), climateCard(cl));
 }
 
 // ── Loading ──────────────────────────────────────────────────────────────────
