@@ -27,18 +27,74 @@ their trademark; it is used here only to say which hardware this works with.
 
 ## What it does
 
-- **Keeps every reading** from your station, for good, in files you own (SQLite and CSV).
-- **Dashboard and charts** in any browser, phone included, with the forecast, alerts,
-  records against the 30-year normals, and an outlook from your own barometer.
-- **Leaves what you have working:** the AcuRite app and Weather Underground carry on.
-- **Sends your station on** to Windy, PWSweather, Weathercloud, CWOP, and MQTT /
-  Home Assistant, if you want.
-- **Phone alerts** when readings stop, and for frost, heat, a falling barometer or lightning close by.
-- **Answers AI assistants** (MCP): ask "how cold did it get last night?"
-- **Other brands** by console upload or radio; **no station at all** works too,
-  from the internet's weather.
-- **Wall displays:** turns an old Android phone into a locked-down weather kiosk.
-- **Looks after itself:** updates if you say yes, disk health, weekly backup.
+Everything it does, in one list. **\*** marks what is written but not yet
+tested: run, that is, not just read. [The table below](#what-it-runs-on-and-whats-been-tested)
+says what each tested part ran on.
+
+**Your readings, kept**
+- Every reading from your station, for good, in files you own: SQLite and CSV, with
+  each sensor's raw uploads and radio lines kept beside them.
+- Older readings brought in\*: from WeeWX, Cumulus, a CSV file or Weather Underground.
+- A weekly backup of the settings and every reading to a folder or a Windows share\*.
+
+**Where the readings come from**
+- An AcuRite **Access** hub, either plugged into the Pi or pointed at it; the
+  smartHUB\*.
+- An **RTL-SDR radio dongle** hearing the sensors itself, no hub needed: AcuRite
+  Atlas and towers on real gear; the 5-in-1, Iris and 200-odd other models from
+  recordings only\*.
+- **Other brands' consoles** uploading to it: Ambient Weather, Ecowitt, Fine Offset
+  and anything in Wunderground format\*.
+- **No station at all:** the National Weather Service or Open-Meteo as the only
+  source\*.
+
+**What you see**
+- A **dashboard** in any browser, phone included: the outdoor card, the hourly and
+  7-day forecast, weather alerts from the National Weather Service, sun and moon,
+  a card for every room, and records against the 1991-2020 normals.
+- **Charts** of every reading: today, 24 hours, a week, a month, a year, all time
+  or any range of dates. A room's card opens its own line.
+- An **outlook from your own barometer**, worked out with no internet.
+- **Names, icons and links** for each sensor, set in its own section of config.ini.
+- **Your own look:** one `theme.css` for the colors and font, a folder for pages of
+  your own, buttons for radar maps or webcams, your station's name on every page.
+- **Your units:** US, metric or UK, or any mix.
+- The dashboard **inside another page**, such as a home page or Home Assistant\*.
+- **NOAA-style climate summaries** for a month or a year.
+- A **status page**: every sensor's battery and signal, every receiver, the raw
+  logs, uptime, disks and the last backup.
+- **Settings in the browser**, checked before they're saved.
+- **Wall displays:** an old Android phone turned into a locked-down weather
+  kiosk\*.
+
+**Readings you can trust**
+- **Calibration** for a sensor that reads a little off.
+- Readings no weather could produce are **held back**, not recorded as weather.
+
+**Sending it on**
+- Leaves what you have working: the AcuRite app and Weather Underground carry on.
+- **MQTT and Home Assistant**, with the sensors set up in Home Assistant for you.
+- A **webhook**\* and **InfluxDB**\*.
+- **Weather networks:** Windy\*, PWSweather\*, Weathercloud\* and CWOP\*.
+- **AI assistants** (MCP): ask "how cold did it get last night?" Claude Code
+  connects directly; Claude Desktop through `mcp-remote`\*.
+
+**Telling you**
+- **Phone alerts** (ntfy) when readings stop, and for frost, heat, a falling
+  barometer or lightning close by; by email\* too.
+
+**Looking after itself**
+- **Updates** only if you say yes, each one tried and rolled back if it doesn't
+  work\*.
+- **Disk health** checked daily\*.
+- **https** on the same port, with a free certificate and a free DuckDNS name kept
+  pointed at your house.
+- A **diagnostics file** to attach when something reads wrong, with keys,
+  addresses, names and location taken out.
+
+**Installing**
+- A ready-made Raspberry Pi card\*, a one-line installer for Linux\*, Mac\* and
+  Windows\*, or Docker\*.
 
 ## Install
 
