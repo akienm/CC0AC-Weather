@@ -49,7 +49,7 @@ import time
 import urllib.parse
 import urllib.request
 from collections import deque
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
@@ -83,7 +83,28 @@ def load_config(path: Path) -> configparser.ConfigParser:
         log.error("Copy config.ini.example to %s and edit it.", path)
         sys.exit(1)
     cfg.read(path)
+    if add_new_settings(path):
+        cfg.read(path)
     return cfg
+
+
+def add_new_settings(path: Path, example: Path = Path(__file__).resolve().parent / "config.ini.example") -> list[str]:
+    """Settings that came with an update, written into config.ini as they stand by
+    default (every upload off), so they can be found where the rest are. Only added at the end: nothing already
+    in the file is touched."""
+    try:
+        text = path.read_text()
+        added, names = wizard.missing_sections(text, example.read_text())
+        if added:
+            with open(path, "a") as f:      # appended, so the file keeps its owner and permissions
+                f.write(("" if text.endswith("\n") or not text else "\n") +
+                        f"\n; ── Added by {_version().split('/')[0]} on {date.today()}: settings newer than "
+                        f"this file, at their defaults ──\n\n" + added)
+            log.info("Config: added new settings, at their defaults: %s", ", ".join(f"[{n}]" for n in names))
+        return names
+    except OSError as e:
+        log.warning("Config: could not add new settings to %s: %s", path, e)
+        return []
 
 
 ZONEINFO = Path("/usr/share/zoneinfo")

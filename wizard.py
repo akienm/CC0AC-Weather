@@ -156,6 +156,37 @@ def replace_entries(text: str, section: str, values: dict[str, str]) -> str:
     return set_values(text, section, {**{k: None for k in old}, **values})
 
 
+_GROUP = re.compile(r"^\s*;\s*──")     # "; ── Weather networks ──": a heading over the sections below it
+
+
+def missing_sections(text: str, example: str) -> tuple[str, list[str]]:
+    """The example's sections this config doesn't have, as the example writes them
+    (comments and all, so a new feature shows up at its default and explained), and
+    their names. A heading over a group goes with the first of them that's missing. A section already here is left exactly as it is."""
+    try:
+        cfg = configparser.ConfigParser(interpolation=None)
+        cfg.read_string(text)
+        have = {s.lower() for s in cfg.sections()}
+    except configparser.Error:
+        return "", []       # a file it can't read is the user's to fix, not to add to
+    lines = example.splitlines()
+    starts = [i for i, line in enumerate(lines) if _SECTION.match(line)] + [len(lines)]
+    blocks, names, lead = [], [], []
+    for start, end in zip(starts, starts[1:]):
+        block = lines[start:end]
+        heading = next((i for i, line in enumerate(block) if _GROUP.match(line)), len(block))
+        block, below = block[:heading], block[heading:]
+        name = _SECTION.match(lines[start]).group(1).strip()
+        if name.lower() not in have:
+            while block and not block[-1].strip():
+                block.pop()
+            blocks.append("\n".join(lead + block))
+            names.append(name)
+            lead = []
+        lead = below or lead
+    return "\n\n".join(blocks) + "\n" if blocks else "", names
+
+
 def apply_setup(text: str, answers: dict) -> str:
     """config.ini with the setup page's answers written in.
 

@@ -215,7 +215,9 @@ cp ~/dev/src/CC0AC-Weather/config.ini.example ~/.cc0ac-weather/config.ini
 
 Edit `~/.cc0ac-weather/config.ini`: `write_path`, your sensor names under
 `[sensors]` (and the order to show them in under `[sensor_order]`), `hub_id` under `[hub]` (the hub's MAC, from its local web page),
-and `[web] enabled = true`. Then install the service:
+and `[web] enabled = true`. Settings that a later update brings are added to the
+end of this file at their defaults (every upload off), so it always lists every
+option there is. Then install the service:
 
 ```bash
 sudo cp ~/dev/src/CC0AC-Weather/cc0ac-weather@.service /etc/systemd/system/
