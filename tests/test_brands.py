@@ -215,12 +215,12 @@ class Diagnostics(unittest.TestCase):
 
     def test_settings_leave_out_names_and_location(self):
         cfg = configparser.ConfigParser()
-        cfg.read_string("[sensors]\n00000505 = Back porch\n[forecast]\nlatitude = 1.23\n"
+        cfg.read_string("[sensors]\n00004321 = Back porch\n[forecast]\nlatitude = 1.23\n"
                         "[console]\nport = 12346\nstation = AA:BB\n[hub]\nport = 443\nhub_id = 24C8\n")
         out = diagnostics.settings(cfg)
         for secret in ("Back porch", "1.23", "AA:BB", "24C8"):
             self.assertNotIn(secret, out)
-        self.assertIn("00000505", out)
+        self.assertIn("00004321", out)
         self.assertIn("port = 12346", out)
 
 

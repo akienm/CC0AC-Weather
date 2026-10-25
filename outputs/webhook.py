@@ -25,6 +25,7 @@ import logging
 import threading
 import time
 
+import sensor_config
 from iolog import report
 from outputs._station import SOFTWARE, needs, post
 from sources import FIELDS, OUTDOOR_TYPES, Reading
@@ -52,7 +53,7 @@ def headers(cfg: configparser.ConfigParser) -> dict:
 
 
 def body(cfg: configparser.ConfigParser, reading: Reading) -> dict:
-    name = cfg.get("sensors", reading.sensor_id, fallback="") if cfg.has_section("sensors") else ""
+    name = sensor_config.title(cfg, reading.sensor_id)
     return {"sensor_id": reading.sensor_id, "name": name or reading.name or "", "type": reading.type,
             "outdoor": reading.type in OUTDOOR_TYPES, "source": reading.source,
             "time": reading.sensor_utc or reading.received_utc,

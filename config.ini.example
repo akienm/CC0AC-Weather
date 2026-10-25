@@ -5,18 +5,35 @@
 write_path = ~/AcuRite
 
 [sensors]
-; Map your sensor IDs to display names. Hub sensor IDs are listed on the hub's
-; local page (http://<hub IP>/), e.g.  00005358 = Kitchen
-; Run:  python3 acurite-capture.py --discover
-; to find your sensor IDs. Then add them here.
+; Each sensor has its own section, named by its ID, at the end of this file:
 ;
-; 1234 = Backyard
-; 5678 = Garage
-; 9012 = Roof
+;   [00001234]
+;   title = Living Room
+;   icon = 🛋️
+;   link = indoor
+;   calibration = temp_f -1.5
+;
+; title: the name its card and every page show (unset, the ID).
+; icon: an emoji, or a live one that changes by itself, worked out here from
+;   [station] latitude and longitude:
+;     sky   the sun while it's up, else the moon in its phase (the outdoor cards' own)
+;     moon  the moon in its phase
+;   Unset, an outdoor card shows sky and the rest none.
+; link: the chart its card opens: outdoor, wind, pressure, rain, light, indoor,
+;   humidity, or none. Unset, an outdoor card opens outdoor and the rest indoor,
+;   with that sensor's line picked out.
+; calibration: see [calibration].
+; The cards show in the order the sections come in; move a section to move its
+; card. A sensor first heard from the hub gets a bare section at the end, its ID
+; for a title, until you fill it in. Hub sensor IDs are on the hub's local page
+; (http://<hub IP>/), or run:  python3 acurite-capture.py --discover
+;
+; The older form still reads: names here (1234 = Backyard), and the order in
+; [sensor_order]. Where a sensor has both, its own section has the last word,
+; and the sensors with sections come first. The setup page writes the new form.
 
 [sensor_order]
-; The order sensors are shown in, on every page: number = sensor ID.
-; Sensors not listed come after, by name.
+; The older form's order: number = sensor ID. Sensors not listed come after, by name.
 ; 1 = 5678
 ; 2 = 1234
 
@@ -32,6 +49,10 @@ write_path = ~/AcuRite
 ; The same for the other sensors' cards. Rows: humidity, dew_point
 ; 1 = dew_point
 
+[sun_moon]
+; The Sun & moon card's icon: an emoji, or a live one (sky, moon; see [sensors]).
+icon = moon
+
 [units]
 ; How the pages and alert messages show readings. What is stored and uploaded is
 ; always the same (°F, mph, inHg, inches, miles), so this can change any time.
@@ -46,7 +67,8 @@ write_path = ~/AcuRite
 system = us
 
 [calibration]
-; A sensor that reads a little off, corrected: sensor ID = field and an amount to
+; A sensor that reads a little off, corrected, either as calibration = in its own
+; section or here, by its ID: sensor ID = field and an amount to
 ; add (+/-) or a number to multiply by (x), comma-separated. A field can be named
 ; in the unit you measured the error in: temp_c, pressure_hpa, rain_day_mm, wind_kmh.
 ; Rain takes only x. Applied before a reading is stored, shown or sent; the raw

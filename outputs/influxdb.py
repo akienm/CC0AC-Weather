@@ -20,6 +20,7 @@ import configparser
 import logging
 import urllib.parse
 
+import sensor_config
 from iolog import report
 from outputs._station import _utc, needs, post
 from sources import Reading
@@ -45,7 +46,7 @@ def _key(text: str) -> str:
 
 def line(cfg: configparser.ConfigParser, reading: Reading) -> str | None:
     """The reading as one line of line protocol; None when it has no fields."""
-    name = cfg.get("sensors", reading.sensor_id, fallback="") if cfg.has_section("sensors") else ""
+    name = sensor_config.title(cfg, reading.sensor_id)
     tags = {"sensor_id": reading.sensor_id, "name": name or reading.name or "",
             "type": reading.type or "", "source": reading.source}
     fields = []

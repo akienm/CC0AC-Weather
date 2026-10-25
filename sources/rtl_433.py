@@ -39,6 +39,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+import sensor_config
 from sources import FIELDS, Reading, derive
 
 log = logging.getLogger("acurite")
@@ -250,7 +251,7 @@ def readings(lines, receiver: str, rain: RainCounter, sensors: dict | None = Non
 
 
 def _sensors(cfg: configparser.ConfigParser) -> set:
-    return set(cfg.options("sensors")) if cfg.has_section("sensors") else set()
+    return set(sensor_config.titles(cfg))
 
 
 def run(cfg: configparser.ConfigParser, emit) -> None:

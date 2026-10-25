@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.3.16)
+# How CC0AC-Weather installs and keeps itself up to date (1.3.17)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -135,6 +135,14 @@ comments and all, at its default: every upload (Windy, PWSweather, Weathercloud,
 CWOP, MQTT, a webhook, InfluxDB) stays off until you fill it in and turn it on,
 so nothing about the station changes. What is already in the file is never
 touched, and the log says which sections were added.
+
+1.3.17 gives each sensor its own section in config.ini, named by its ID, with a
+`title`, an `icon` (an emoji, or `sky` or `moon`, which change by themselves) and
+the chart its card opens when tapped. A sensor first heard from the hub is added as a
+bare section, titled by its ID until you name it. The older `[sensors]` and
+`[sensor_order]` still read, so an existing config shows exactly as before; the
+setup page writes the new form when next saved. The outdoor card's sun-and-moon
+icon works as it always has; it is now the `sky` icon, and can be set in the config.
 
 ## When it checks
 

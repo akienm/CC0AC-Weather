@@ -10,6 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import alerts   # noqa: E402
 import wizard   # noqa: E402
+import sensor_config   # noqa: E402
 
 HERE = Path(__file__).resolve().parent.parent
 HUB_PAGE = """<script>$('txtVer').value = '051';
@@ -17,12 +18,12 @@ $('txtMac').value = '24C86E000001';
 $('txtSer').value = 'atlasapi.myacurite.com';
 $('txtID').value = 'KXXTEST1';
 $('txtPS').value = 'secret-never-read';
-$('txtDev').value = '00000505';
+$('txtDev').value = '00004321';
 $('txtEle').value = '6031';</script>
 <p>PRESSURE: 24.21 Inch</p>
 <table><tbody><tr><td># </td><td>Type      </td><td>Id      </td><td>Last Time (UTC)   </td><td>Signal</td><td>Battery</td></tr>
-<tr><td>0</td><td>tower</td><td>00005358</td><td>2026-10-12T17:27:03</td><td>4</td><td>Normal</td></tr>
-           <tr><td>1</td><td>Atlas</td><td>00000505</td><td>2026-10-12T17:27:08</td><td>3</td><td>Low</td></tr>
+<tr><td>0</td><td>tower</td><td>00001111</td><td>2026-10-12T17:27:03</td><td>4</td><td>Normal</td></tr>
+           <tr><td>1</td><td>Atlas</td><td>00004321</td><td>2026-10-12T17:27:08</td><td>3</td><td>Low</td></tr>
 </tbody></table>"""
 
 
@@ -34,7 +35,7 @@ class HubPage(unittest.TestCase):
         self.assertEqual(hub["elevation_ft"], "6031")
         self.assertEqual(hub["pressure_inhg"], 24.21)
         self.assertEqual([(s["type"], s["id"], s["battery"]) for s in hub["sensors"]],
-                         [("tower", "00005358", "Normal"), ("Atlas", "00000505", "Low")])
+                         [("tower", "00001111", "Normal"), ("Atlas", "00004321", "Low")])
         self.assertNotIn("secret-never-read", json.dumps(hub))
 
     def test_leases_newest_first(self):
@@ -50,7 +51,7 @@ class ConfigEditing(unittest.TestCase):
         self.text = (HERE / "config.ini.example").read_text()
 
     def answers(self, **kw):
-        a = {"sensors": [{"id": "00005358", "name": "Kitchen"}, {"id": "00000505", "name": "Outside"}],
+        a = {"sensors": [{"id": "00001111", "name": "Kitchen"}, {"id": "00004321", "name": "Outside"}],
              "station": {"name": "Test Station", "latitude": "32.5", "longitude": "-108.25", "elevation_ft": "6031"},
              "forecast": True, "alerts": {"ntfy_topic": "weather-abc", "quiet_minutes": "30", "smtp_password": ""}}
         a.update(kw)
@@ -60,8 +61,9 @@ class ConfigEditing(unittest.TestCase):
         out = wizard.apply_setup(self.text, self.answers())
         cfg = configparser.ConfigParser()
         cfg.read_string(out)
-        self.assertEqual(dict(cfg["sensors"]), {"00005358": "Kitchen", "00000505": "Outside"})
-        self.assertEqual(dict(cfg["sensor_order"]), {"1": "00005358", "2": "00000505"})
+        self.assertEqual(sensor_config.titles(cfg), {"00001111": "Kitchen", "00004321": "Outside"})
+        self.assertEqual(dict(cfg["sensors"]), {})
+        self.assertLess(out.index("[00001111]"), out.index("[00004321]"))
         self.assertEqual(cfg.get("station", "latitude"), "32.5")
         self.assertEqual(cfg.get("station", "name"), "Test Station")
         self.assertTrue(cfg.getboolean("forecast", "enabled"))
@@ -75,13 +77,13 @@ class ConfigEditing(unittest.TestCase):
 
     def test_second_save_replaces_not_appends(self):
         once = wizard.apply_setup(self.text, self.answers())
-        twice = wizard.apply_setup(once, self.answers(sensors=[{"id": "00000505", "name": "Yard"}]))
+        twice = wizard.apply_setup(once, self.answers(sensors=[{"id": "00004321", "name": "Yard"}]))
         cfg = configparser.ConfigParser()
         cfg.read_string(twice)
-        self.assertEqual(dict(cfg["sensors"]), {"00000505": "Yard"})
-        self.assertEqual(dict(cfg["sensor_order"]), {"1": "00000505"})
+        self.assertEqual(sensor_config.titles(cfg), {"00004321": "Yard"})
+        self.assertNotIn("[00001111]", twice)
         self.assertEqual(twice.count("[alerts]"), 1)
-        self.assertEqual(wizard.apply_setup(twice, self.answers(sensors=[{"id": "00000505", "name": "Yard"}])), twice)
+        self.assertEqual(wizard.apply_setup(twice, self.answers(sensors=[{"id": "00004321", "name": "Yard"}])), twice)
 
     def test_blank_password_keeps_the_saved_one(self):
         once = wizard.apply_setup(self.text, self.answers(alerts={"email_to": "a@b.c", "smtp_password": "pw1"}))

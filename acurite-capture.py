@@ -65,6 +65,7 @@ import mcp_server
 import noaa
 import sanity
 import secure_web
+import sensor_config
 import units
 import upkeep
 import wizard
@@ -127,23 +128,22 @@ def apply_timezone(cfg: configparser.ConfigParser) -> None:
 
 
 def sensor_map(cfg: configparser.ConfigParser) -> dict[str, str]:
-    """{sensor_id: display name} from [sensors], in display order: the sensors
-    listed in [sensor_order] by their numbers, then the rest by name."""
-    if not cfg.has_section("sensors"):
-        return {}
-    names = dict(cfg.items("sensors"))
-    ordered = []
-    if cfg.has_section("sensor_order"):
-        slots = sorted(cfg.items("sensor_order"),
-                       key=lambda kv: (0, int(kv[0]), "") if kv[0].isdigit() else (1, 0, kv[0]))
-        for _, sid in slots:
-            sid = sid.strip().lower()
-            if sid not in names:
-                log.warning("[sensor_order] lists %s, which isn't in [sensors]; left out", sid)
-            elif sid not in ordered:
-                ordered.append(sid)
-    rest = sorted((s for s in names if s not in ordered), key=lambda s: names[s].lower())
-    return {s: names[s] for s in ordered + rest}
+    """{sensor_id: display name}, in display order: each sensor's own section in
+    the order they come in the file, then the older [sensors] (sensor_config.py)."""
+    return sensor_config.titles(cfg)
+
+
+def add_heard_sensor(path: Path | None, sensor_id: str, kind: str) -> None:
+    """A sensor of the house's own heard for the first time: a bare section for it
+    at the end of config.ini, its ID for a title until someone gives it one."""
+    if path is None:
+        return
+    try:
+        with open(path, "a") as f:      # appended, so the file keeps its owner and permissions
+            f.write(sensor_config.new_section(sensor_id, kind, date.today().isoformat()))
+        log.info("Config: a new sensor, %s (%s); added [%s] for its title and icon", sensor_id, kind, sensor_id)
+    except OSError as e:
+        log.warning("Config: could not add new sensor %s to %s: %s", sensor_id, path, e)
 
 
 def display_order(sensors: dict, sensor_id: str, name: str) -> tuple:
@@ -1274,7 +1274,7 @@ def system_status(cfg: configparser.ConfigParser, write_path: Path, now: float |
                 receivers[who] = r["last"]
         sensors.append({"id": e.get("sensor_id"), "name": e.get("name"), "type": e.get("type"),
                         "updated": e.get("updated"), "battery": (e.get("fields") or {}).get("battery"),
-                        "calibration": cfg.get("calibration", e.get("sensor_id") or "", fallback=None),
+                        "calibration": sensor_config.calibration(cfg).get((e.get("sensor_id") or "").lower()),
                         "suspect": e.get("suspect") or {}, "held_back_24h": held.get(e.get("sensor_id"), 0),
                         "reception": heard, "logs": {who: {"f": f"{who}-raw/{_log_days(raw[who])[0]}",
                                                            "find": _raw_mark(who, e.get("sensor_id") or "")}
@@ -1788,7 +1788,8 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
     page = {"title": _title(cfg), "version": _version(), "lower_buttons": _buttons(cfg), "station": _station(cfg),
             "units": units.chosen(cfg),
             "outdoor_rows": _card_rows(cfg, "outdoor_rows"),
-            "sensor_rows": _card_rows(cfg, "sensor_rows")}
+            "sensor_rows": _card_rows(cfg, "sensor_rows"),
+            "sensor_cards": sensor_config.cards(cfg), "sun_moon_icon": sensor_config.sun_moon_icon(cfg)}
     db_path = _db_path(cfg)
     with _current_lock:
         _seed_heard(db_path, time.time())
@@ -1809,6 +1810,11 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
     watch = sanity.Watch(cfg, recall=lambda sensor_id: _believed_before(db_path, sensor_id))
 
     def emit(reading: Reading) -> dict:
+        sid = reading.sensor_id.lower()
+        if (reading.source in sensor_config.OWN_SOURCES and sid and sid not in sensors
+                and sensor_config.is_sensor(sid) and re.fullmatch(r"[0-9a-z-]{1,24}", sid)):
+            sensors[reading.sensor_id.lower()] = reading.sensor_id.lower()
+            add_heard_sensor(config_path, reading.sensor_id.lower(), reading.type or "unknown")
         reading.fields = calibration.apply(reading.fields, corrections.get(reading.sensor_id.lower()))
         outdoor = reading.type in OUTDOOR_TYPES
         at = _epoch(reading.received_utc)

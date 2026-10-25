@@ -24,6 +24,7 @@ import socket
 import struct
 import time
 
+import sensor_config
 from iolog import report
 from sources import FIELDS, Reading
 
@@ -179,7 +180,7 @@ def messages(cfg: configparser.ConfigParser, reading: Reading) -> list[tuple[str
     out = []
     if cfg.getboolean("mqtt", "discovery", fallback=True):
         ha = cfg.get("mqtt", "discovery_prefix", fallback="homeassistant").strip().strip("/")
-        name = cfg.get("sensors", sid, fallback="") if cfg.has_section("sensors") else ""
+        name = sensor_config.title(cfg, sid)
         device = {"identifiers": [f"cc0ac-weather-{sid}"], "model": reading.type or "sensor",
                   "name": name or reading.name or f"{reading.type} {sid}"}
         # The hub's sensors, and AcuRite's heard by radio (their IDs are all digits).

@@ -27,6 +27,8 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import sensor_config
+
 CONFIG_DIR = Path.home() / ".cc0ac-weather"
 HERE = Path(__file__).resolve().parent
 RAW_DIRS = ("hub-raw", "console-raw", "radio-raw")
@@ -79,8 +81,9 @@ def settings(cfg: configparser.ConfigParser) -> str:
             if keys is None or k in keys:
                 out.append(f"{k} = {'****' if k in ('station', 'hub_id') and v else v}")
         out.append("")
-    if cfg.has_section("sensors"):
-        out.append("[sensors] IDs (names left out): " + ", ".join(cfg.options("sensors")))
+    ids = sensor_config.titles(cfg)
+    if ids:
+        out.append("Sensor IDs (names left out): " + ", ".join(ids))
     return "\n".join(out) + "\n"
 
 
@@ -128,7 +131,7 @@ def service_log() -> str:
 def bundle(cfg: configparser.ConfigParser, out_dir: Path | None = None) -> Path:
     out_dir = out_dir or Path.home()
     path = out_dir / f"cc0ac-diagnostics-{datetime.now():%Y%m%d-%H%M}.tar.gz"
-    names = [v for _, v in cfg.items("sensors", raw=True)] if cfg.has_section("sensors") else []
+    names = [t for sid, t in sensor_config.titles(cfg).items() if t != sid]
     # Station IDs, keys and the like, wherever they turn up (a CWOP answer names its station).
     names += [v.strip() for s in cfg.sections() if s != "sensors"
               for k, v in cfg.items(s, raw=True) if k in SECRET_KEYS and len(v.strip()) >= 4]

@@ -27,6 +27,7 @@ import configparser
 import logging
 import re
 
+import sensor_config
 from sources import derive
 
 log = logging.getLogger("acurite")
@@ -79,14 +80,13 @@ def parse(text: str) -> tuple[dict[str, tuple[str, float]], list[str]]:
 
 
 def rules(cfg: configparser.ConfigParser) -> dict[str, dict]:
-    """{sensor_id: its rules} from [calibration]; a part that can't be read is named in the log and left out."""
-    if not cfg.has_section("calibration"):
-        return {}
+    """{sensor_id: its rules} from each sensor's calibration = (or the older [calibration]);
+    a part that can't be read is named in the log and left out."""
     out = {}
-    for sensor_id, text in cfg.items("calibration"):
+    for sensor_id, text in sensor_config.calibration(cfg).items():
         found, problems = parse(text)
         for p in problems:
-            log.warning("[calibration] %s: %s; left out", sensor_id, p)
+            log.warning("calibration for %s: %s; left out", sensor_id, p)
         if found:
             out[sensor_id.strip().lower()] = found
             log.info("Calibration for %s: %s", sensor_id, text.strip())

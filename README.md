@@ -213,8 +213,8 @@ mkdir -p ~/.cc0ac-weather
 cp ~/dev/src/CC0AC-Weather/config.ini.example ~/.cc0ac-weather/config.ini
 ```
 
-Edit `~/.cc0ac-weather/config.ini`: `write_path`, your sensor names under
-`[sensors]` (and the order to show them in under `[sensor_order]`), `hub_id` under `[hub]` (the hub's MAC, from its local web page),
+Edit `~/.cc0ac-weather/config.ini`: `write_path`, a section per sensor, named by
+its ID, with its `title` (see [Sensors: names, icons and links](#sensors-names-icons-and-links)), `hub_id` under `[hub]` (the hub's MAC, from its local web page),
 and `[web] enabled = true`. Settings that a later update brings are added to the
 end of this file at their defaults (every upload off), so it always lists every
 option there is. Then install the service:
@@ -603,6 +603,39 @@ and its year agree.
 real station: a month takes about 2 seconds and a year 1.5; the
 tests check every column on made-up readings.
 
+### Sensors: names, icons and links
+
+Each sensor has its own section in config.ini, named by its ID, at the end of
+the file:
+
+```ini
+[00001234]
+title = Living Room
+icon = 🛋️
+
+[00005678]
+title = Atlas
+icon = sky
+link = outdoor
+```
+
+`title` is the name every page shows. `icon` is an emoji shown before it, or a
+live icon that changes by itself, worked out on the station from `[station]`
+latitude and longitude: `sky` (the sun while it's up, else the moon in its
+phase) or `moon` (the moon in its phase). An outdoor card shows `sky` unless you
+say otherwise, and `[sun_moon] icon` sets the Sun & moon card's, `moon` unless you
+say otherwise. Tap a card and it opens its chart: an outdoor card the outdoor
+temperature, the rest the indoor temperature with that sensor's line picked out.
+`link =` chooses another (`outdoor`, `wind`, `pressure`, `rain`, `light`,
+`indoor`, `humidity`) or `none`. A sensor's corrections can go here too, as
+`calibration =` (see [Calibration](#calibration)).
+
+The cards show in the order the sections come in; move a section to move its
+card. A sensor first heard from the hub (or a console) gets a bare section at
+the end, its ID for a title, until you fill it in; one a radio dongle hears
+doesn't, since it hears the neighbours' too. The setup page writes this form. The older one, names under
+`[sensors]` and their order under `[sensor_order]`, still reads.
+
 ### Making it yours
 
 **Name.** `[station] name = Hilltop Weather` puts your station's name in the
@@ -700,8 +733,8 @@ in it.
 
 ### Calibration
 
-A sensor that reads a little off can be corrected, one line per sensor by the
-ID `[sensors]` uses:
+A sensor that reads a little off can be corrected, as `calibration =` in its
+own section or one line per sensor here, by its ID:
 
     [calibration]
     00001234 = temp_f -1.5, humidity_pct +3
@@ -779,7 +812,7 @@ cc0ac-weather/00005678/humidity_pct  44
 ```
 
 Home Assistant's MQTT integration finds the sensors by itself (MQTT
-discovery): each one appears as a device named as in `[sensors]`, with an
+discovery): each one appears as a device named by its `title`, with an
 entity per field in the right units (Home Assistant converts them for a metric
 house). Batteries show as battery problem sensors, on when low. A sensor not
 heard for `stale_after_minutes` (60) shows as unavailable rather than its last
@@ -975,9 +1008,9 @@ rtl_test -t                             # the dongle is found and tuned
 python3 acurite-capture.py --discover   # lists sensor IDs in range
 ```
 
-Name the sensors you want under `[sensors]` (neighbours' are heard too) and
+Give the sensors you want a section each (neighbours' are heard too) and
 set `[capture] enabled = true`. AcuRite sensors get the same IDs and names the
-hub gives them, so a hub and a dongle can share one `[sensors]` list. Dew
+hub gives them, so a hub and a dongle share the same sections. Dew
 point, heat index, wind chill and feels-like are worked out from what the
 sensors send, and rain today and in the last hour from the rain gauge's
 running total, as the hub does. `[weather_underground] enabled = true` with a
@@ -1050,7 +1083,7 @@ copy comes here. No radio and no hub needed.
 
 3. Within a minute or two the dashboard shows `console-outdoor`,
    `console-indoor`, and `console-ch1` to `console-ch8` for extra room
-   sensors. Name them under `[sensors]` like any other.
+   sensors, each given a bare section in config.ini to title like any other.
 
 Every upload is kept in `~/.cc0ac-weather/console-raw/` (a Weather Underground
 password shows as ****), and any field the program doesn't read yet is named
@@ -1223,6 +1256,7 @@ Run the tests before a pull request: `python3 -m unittest discover -s tests`.
 | `iolog.py` | The send logs: what was sent to each service and what came back |
 | `units.py` | `[units]`: the units the pages and alert messages show readings in |
 | `units.js` | The same for the pages: converts each stored reading for display |
+| `sensor_config.py` | each sensor's own section: its title, icon, chart link and calibration |
 | `calibration.py` | `[calibration]`: corrects a sensor that reads a little off |
 | `secure_web.py` | `[web] certificate` and `[duckdns]`: https beside http on the same port, and keeping a DuckDNS name pointed home |
 | `sanity.py` | `[sanity]`: holds back readings no weather could produce |

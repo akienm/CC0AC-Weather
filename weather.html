@@ -25,7 +25,12 @@
   .stale { color: var(--warn) !important; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
   .card { background: var(--surface); border: 1px solid var(--border); padding: 14px; }
-  .card.outdoor { grid-column: 1 / -1; position: relative; }
+  .card { position: relative; }
+  .card.outdoor { grid-column: 1 / -1; }
+  /* A sensor card opens its chart: the name is the link, stretched over the card. */
+  a.to-chart { color: inherit; text-decoration: none; }
+  a.to-chart::after { content: ''; position: absolute; inset: 0; }
+  .card:has(a.to-chart):hover { border-color: var(--accent); }
   /* The outdoor headline: the name above the sky icon on the left, and the temperature
      beside them as tall as both together, to read from across the room. */
   .hero { display: flex; align-items: center; gap: 16px; }
@@ -96,6 +101,7 @@
   .above { color: #f96; } .below { color: #6cf; }
   /* weather.html?embed, for an iframe on another page: no lower pane, no charts link. */
   .embed .lower, .embed h1 a.charts, .embed .credit, .embed .pages { display: none !important; }
+  .embed a.to-chart { pointer-events: none; }
   .pages { margin: 24px 0 0; text-align: center; font-size: 13px; }
   .pages a { color: var(--accent); text-decoration: none; margin: 0 8px; white-space: nowrap; }
   .credit { margin: 8px 0 8px; text-align: center; font-size: 12px; color: var(--muted); }
@@ -350,7 +356,7 @@ function sky(station) {
   return { sun, up, moon: moon(now) };
 }
 
-function skyCard(station, s) {
+function skyCard(station, s, icon) {
   if (!s) return '';
   const { sun, moon: mo } = s;
   const length = sun.polar ? '—' : (() => {
@@ -362,7 +368,7 @@ function skyCard(station, s) {
   return `<div class="card outdoor">
     <div class="name"><span>Sun &amp; moon</span><span class="ts">${s.up ? '☀️ sun is up' : '🌙 sun is down'}</span></div>
     <div class="sky">
-      <div class="moon">${mo.emoji}</div>
+      <div class="moon">${cardIcon(icon || 'moon', s)}</div>
       <div>${mo.name} · ${Math.round(mo.lit * 100)}% lit<br>
         <span class="ts">full moon in ${days(mo.toFull)} · new moon in ${days(mo.toNew)}</span></div>
     </div>
@@ -496,13 +502,31 @@ function tempColor(t) {
 
 const tempLetter = () => Units.label('temperature').slice(1);
 
+// [<sensor ID>] icon = in config.ini (sensor_config.py): an emoji, or one of these,
+// an icon that changes by itself.
+const LIVE_ICONS = {
+  sky:  sk => sk ? (sk.up ? '☀️' : sk.moon.emoji) : '',   // the sun while it's up, else the moon
+  moon: sk => sk ? sk.moon.emoji : '',                     // the moon in its phase
+};
+const cardIcon = (icon, sk) => icon in LIVE_ICONS ? LIVE_ICONS[icon](sk) : esc(icon || '');
+const dressOf = (s, data) => (data.sensor_cards || {})[String(s.sensor_id || '').toLowerCase()] || {};
+
+// The card's name, as a link to its chart ([<sensor ID>] link =; outdoor cards
+// open the outdoor temperature, the rest the indoor one with their line picked out).
+function cardName(s, data, outdoor) {
+  const link = dressOf(s, data).link || (outdoor ? 'outdoor' : 'indoor');
+  if (link === 'none' || !s.sensor_id) return `<span>${s.name}</span>`;
+  const href = `/charts.html?chart=${link}&sensor=${encodeURIComponent(s.sensor_id)}`;
+  return `<a class="to-chart" href="${href}" title="Chart">${s.name}</a>`;
+}
+
 function outdoorCard(s, data, sk) {
   const f = s.fields;
-  const icon = sk ? (sk.up ? '☀️' : sk.moon.emoji) : '';
+  const icon = cardIcon(dressOf(s, data).icon || 'sky', sk);
   return `<div class="card outdoor">
     <div class="age">${ageSpan(s.updated)}</div>
     <div class="hero">
-      <div><div class="name"><span>${s.name}</span></div><div class="icon">${icon}</div></div>
+      <div><div class="name">${cardName(s, data, true)}</div><div class="icon">${icon}</div></div>
       <div class="temp" style="color:${tempColor(f.temp_f)}">${Units.num('temperature', f.temp_f)}°<small>${tempLetter()}</small></div>
     </div>
     <div class="rows">${rows(OUTDOOR_ROWS, data.outdoor_rows, f, data)}</div>
@@ -543,10 +567,10 @@ function rows(catalog, order, f, data) {
   return names.map(n => catalog[n](f, data)).join('');
 }
 
-function sensorCard(s, data) {
-  const f = s.fields;
+function sensorCard(s, data, sk) {
+  const f = s.fields, icon = cardIcon(dressOf(s, data).icon, sk);
   return `<div class="card">
-    <div class="name"><span>${s.name}</span>${ageSpan(s.updated)}</div>
+    <div class="name"><span>${icon ? icon + ' ' : ''}${cardName(s, data, false)}</span>${ageSpan(s.updated)}</div>
     <div class="big">${Units.num('temperature', f.temp_f)}°<small>${tempLetter()}</small></div>
     <div class="rows">${rows(SENSOR_ROWS, data.sensor_rows, f, data)}</div>
     ${sensorFoot(s)}
@@ -648,7 +672,7 @@ function drawCurrent() {
   pane('p-outdoor', data.written,
        sensors.filter(s => OUTDOOR.includes(s.type)).map(s => outdoorCard(s, data, sk)).join(''));
   pane('p-rooms', data.written,
-       sensors.filter(s => !OUTDOOR.includes(s.type)).map(s => sensorCard(s, data)).join(''));
+       sensors.filter(s => !OUTDOOR.includes(s.type)).map(s => sensorCard(s, data, sk)).join(''));
   const w = document.getElementById('written');
   w.innerHTML = `${ageSpan(data.written, 'updated ')} · ${new Date(data.written).toLocaleString()}`;
   document.getElementById('error').textContent = '';
@@ -667,8 +691,8 @@ function drawForecast() {
        hourlyCard(fc, moonEmoji));
   pane('p-daily', [fc.daily?.updated, err.forecast, moonEmoji, Units.key()].join('|'), dailyCard(fc, moonEmoji));
   // Sun & moon move slowly; a ten-minute bucket redraws it often enough.
-  if (data) pane('p-sky', [JSON.stringify(fc.observation), err.observation, Math.floor(now / 600000), Units.key()].join('|'),
-                 skyCard(data.station, sk));
+  if (data) pane('p-sky', [JSON.stringify(fc.observation), err.observation, Math.floor(now / 600000), Units.key(), data.sun_moon_icon].join('|'),
+                 skyCard(data.station, sk, data.sun_moon_icon));
   const alerts = JSON.stringify(fc.alerts || []);
   if (drawn.alerts !== alerts) { drawn.alerts = alerts; renderAlerts(fc); }
   const warnings = JSON.stringify((data && data.warnings) || []);

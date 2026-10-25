@@ -23,6 +23,8 @@ import re
 import urllib.request
 from pathlib import Path
 
+import sensor_config
+
 LEASES = Path("/var/lib/misc/dnsmasq.leases")
 HUB_FIELDS = {"Mac": "hub_id", "Ver": "firmware", "Ser": "server", "ID": "wu_station",
               "Dev": "wu_sensor", "Ele": "elevation_ft"}       # never "PS": the WU password
@@ -177,7 +179,7 @@ def missing_sections(text: str, example: str) -> tuple[str, list[str]]:
         heading = next((i for i, line in enumerate(block) if _GROUP.match(line)), len(block))
         block, below = block[:heading], block[heading:]
         name = _SECTION.match(lines[start]).group(1).strip()
-        if name.lower() not in have:
+        if name.lower() not in have and not sensor_config.is_sensor(name):   # a sensor is the house's own
             while block and not block[-1].strip():
                 block.pop()
             blocks.append("\n".join(lead + block))
@@ -185,6 +187,63 @@ def missing_sections(text: str, example: str) -> tuple[str, list[str]]:
             lead = []
         lead = below or lead
     return "\n\n".join(blocks) + "\n" if blocks else "", names
+
+
+def _own_lines(lines: list[str], start: int, end: int) -> int:
+    """Where a section's own lines stop: before a heading over the sections below it."""
+    return next((i for i in range(start + 1, end) if _GROUP.match(lines[i])), end)
+
+
+def order_sections(text: str, names: list[str]) -> str:
+    """These sections in this order, where the first of them stands; everything else as it was."""
+    lines = text.splitlines()
+    spans = _section_spans(lines)
+    present = [n for n in names if n in spans]
+    if len(present) < 2:
+        return text
+    cut = {n: (spans[n][0], _own_lines(lines, *spans[n])) for n in present}
+    blocks = []
+    for n in present:
+        block = lines[slice(*cut[n])]
+        while block and not block[-1].strip():
+            block.pop()
+        blocks += block + [""]
+    first = min(a for a, _ in cut.values())
+    out, i = [], 0
+    while i < len(lines):
+        if i == first:
+            out += blocks
+        span = next((b for a, b in cut.values() if a == i), None)
+        if span is not None:
+            i = span
+            continue
+        out.append(lines[i])
+        i += 1
+    while out and not out[-1].strip():
+        out.pop()
+    return "\n".join(out) + "\n"
+
+
+def write_sensors(text: str, names: dict[str, str]) -> str:
+    """Each sensor its own section with its title, in this order; a sensor's section
+    not among them removed; the older [sensors] and [sensor_order] emptied (their
+    comments kept)."""
+    lines = text.splitlines()
+    spans = _section_spans(lines)
+    gone = [n for n in spans if sensor_config.is_sensor(n) and n.strip().lower() not in names]
+    for n in sorted(gone, key=lambda n: -spans[n][0]):
+        start, end = spans[n]
+        del lines[start:_own_lines(lines, start, end)]
+    text = "\n".join(lines) + "\n"
+    spelled = {n.strip().lower(): n for n in _section_spans(text.splitlines())}
+    for sid, name in names.items():
+        text = set_values(text, spelled.get(sid, sid), {"title": name})
+    text = order_sections(text, [spelled.get(sid, sid) for sid in names])
+    spans = _section_spans(text.splitlines())
+    for older in ("sensors", "sensor_order"):
+        if older in spans:
+            text = replace_entries(text, older, {})
+    return text
 
 
 def apply_setup(text: str, answers: dict) -> str:
@@ -197,11 +256,10 @@ def apply_setup(text: str, answers: dict) -> str:
               "backup": {"path", "user", "password", "keep"}}"""
     sensors = [s for s in answers.get("sensors", []) if str(s.get("id", "")).strip()]
     for s in sensors:
-        if not re.fullmatch(r"[0-9A-Za-z]{1,16}", str(s["id"]).strip()):
+        if not re.fullmatch(r"[0-9A-Za-z-]{1,24}", str(s["id"]).strip()) or not sensor_config.is_sensor(str(s["id"])):
             raise ValueError(f"not a sensor ID: {s['id']!r}")
-    names = {str(s["id"]).strip(): _one_line(s.get("name")) or f"Sensor {s['id']}" for s in sensors}
-    text = replace_entries(text, "sensors", names)
-    text = replace_entries(text, "sensor_order", {str(n): sid for n, sid in enumerate(names, 1)})
+    names = {str(s["id"]).strip().lower(): _one_line(s.get("name")) or f"Sensor {s['id']}" for s in sensors}
+    text = write_sensors(text, names)
     station = answers.get("station") or {}
     values = {"name": _one_line(station.get("name")) or None}
     for key, lo, hi in (("latitude", -90, 90), ("longitude", -180, 180), ("elevation_ft", -1500, 30000)):
@@ -265,14 +323,14 @@ def needs_setup(cfg: configparser.ConfigParser) -> bool:
     """No sensor named yet, and no internet weather: the first visit from home goes to /setup."""
     if cfg.getboolean("online", "enabled", fallback=False):
         return False
-    return not (cfg.has_section("sensors") and list(cfg["sensors"]))
+    return not sensor_config.titles(cfg)
 
 
 def setup_state(cfg: configparser.ConfigParser, leases: Path = LEASES) -> dict:
     """What the setup page shows: the hub as found, and the settings now."""
     current = {
-        "sensors": dict(cfg["sensors"]) if cfg.has_section("sensors") else {},
-        "sensor_order": dict(cfg["sensor_order"]) if cfg.has_section("sensor_order") else {},
+        "sensors": sensor_config.titles(cfg),
+        "sensor_order": {str(n): sid for n, sid in enumerate(sensor_config.titles(cfg), 1)},
         "station": {k: cfg.get("station", k, fallback="") for k in ("name", "latitude", "longitude", "elevation_ft", "timezone")},
         "forecast": cfg.getboolean("forecast", "enabled", fallback=False),
         "online": cfg.getboolean("online", "enabled", fallback=False),
