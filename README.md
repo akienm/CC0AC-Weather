@@ -619,7 +619,7 @@ icon = sky
 link = outdoor
 ```
 
-`title` is the name every page shows. `icon` is an emoji shown before it, or a
+`title` is the name every page shows. `icon` is an emoji shown beside the temperature, or a
 live icon that changes by itself, worked out on the station from `[station]`
 latitude and longitude: `sky` (the sun while it's up, else the moon in its
 phase) or `moon` (the moon in its phase). An outdoor card shows `sky` unless you

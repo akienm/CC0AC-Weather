@@ -44,6 +44,7 @@
   .name { color: var(--accent); font-size: 13px; margin-bottom: 8px; display: flex; justify-content: space-between; gap: 8px; }
   .big { font-size: 44px; line-height: 1.1; }
   .big small { font-size: 18px; color: var(--muted); }
+  .big .icon { font-size: 36px; margin-right: 10px; vertical-align: 4px; }
   .rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 4px 20px; margin-top: 10px; }
   .row { display: flex; justify-content: space-between; border-bottom: 1px dotted var(--border); padding: 2px 0; }
   .row > span:first-child { color: var(--muted); white-space: nowrap; margin-right: 12px; }
@@ -570,8 +571,8 @@ function rows(catalog, order, f, data) {
 function sensorCard(s, data, sk) {
   const f = s.fields, icon = cardIcon(dressOf(s, data).icon, sk);
   return `<div class="card">
-    <div class="name"><span>${icon ? icon + ' ' : ''}${cardName(s, data, false)}</span>${ageSpan(s.updated)}</div>
-    <div class="big">${Units.num('temperature', f.temp_f)}°<small>${tempLetter()}</small></div>
+    <div class="name"><span>${cardName(s, data, false)}</span>${ageSpan(s.updated)}</div>
+    <div class="big">${icon ? `<span class="icon">${icon}</span>` : ''}${Units.num('temperature', f.temp_f)}°<small>${tempLetter()}</small></div>
     <div class="rows">${rows(SENSOR_ROWS, data.sensor_rows, f, data)}</div>
     ${sensorFoot(s)}
   </div>`;

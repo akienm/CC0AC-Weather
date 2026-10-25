@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.3.17)
+# How CC0AC-Weather installs and keeps itself up to date (1.3.18)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -143,6 +143,8 @@ bare section, titled by its ID until you name it. The older `[sensors]` and
 `[sensor_order]` still read, so an existing config shows exactly as before; the
 setup page writes the new form when next saved. The outdoor card's sun-and-moon
 icon works as it always has; it is now the `sky` icon, and can be set in the config.
+
+1.3.18 moves a room card's icon from beside its name to beside its temperature, larger.
 
 ## When it checks
 
