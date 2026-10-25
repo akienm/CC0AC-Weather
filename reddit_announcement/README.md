@@ -1,8 +1,9 @@
 # Reddit announcement
 
-The post, ready to paste, and the screenshots to attach. The screenshots come
-from a test copy of the program, with a made-up station name, room names and
-location, fed by real readings.
+The post, ready to paste, and the screenshots to attach. The screenshots show
+real readings, with a made-up station name, room names and location.
+The revised announcement that followed it is in
+[revised-announcement.md](revised-announcement.md).
 
 | File | Shows |
 |---|---|
@@ -10,6 +11,7 @@ location, fed by real readings.
 | `charts.png` | The charts page, one week |
 | `phone.png` | The dashboard at phone width |
 | `custom-theme.png` | The dashboard restyled with a single `theme.css` |
+| `revised-announcement.md` | The revised announcement, as posted to r/AcuRite |
 
 ## Where
 
