@@ -10,6 +10,7 @@ services:
     restart: unless-stopped
     stop_grace_period: 40s
     ports:
+      - "443:443"       # the Access hub's uploads (HTTPS)
       - "12345:12345"   # dashboard and setup page
       - "12346:12346"   # console uploads
     volumes:

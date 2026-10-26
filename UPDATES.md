@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.3.18)
+# How CC0AC-Weather installs and keeps itself up to date (1.3.19)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -145,6 +145,17 @@ setup page writes the new form when next saved. The outdoor card's sun-and-moon
 icon works as it always has; it is now the `sky` icon, and can be set in the config.
 
 1.3.18 moves a room card's icon from beside its name to beside its temperature, larger.
+
+1.3.19 is a repair, from a Docker station's first week:
+- A new station, with no source switched on yet, ended at once, and the boot
+  loader restarted it every two seconds, so the setup page never stayed up. It
+  now keeps running until setup switches a source on. Docker's `compose.yaml`
+  also opens port 443, where the Access hub sends its readings.
+- One lightning strike counted as 256: that hub's running total went from 0 to
+  256 for it. A new time of the last strike now counts as a strike, and a rise
+  of a whole number of 256s counts as that many.
+- Low batteries, a sensor's or the hub's own, show on the dashboard and the
+  status page, and send one alert.
 
 ## When it checks
 

@@ -281,7 +281,7 @@ def check_weather(cfg: configparser.ConfigParser, write_path: Path, now: float |
 
 
 def check_upkeep(cfg: configparser.ConfigParser, problems: list[str], state_path: Path = STATE_FILE) -> str:
-    """One message when a disk or backup problem appears or gets worse, one when they're all gone."""
+    """One message when a disk, backup or battery problem appears or gets worse, one when they're all gone."""
     if not cfg.getboolean("alerts", "enabled", fallback=False):
         return "alerts off"
     state = _load_state(state_path)
@@ -294,7 +294,7 @@ def check_upkeep(cfg: configparser.ConfigParser, problems: list[str], state_path
             return "upkeep alert failed: " + "; ".join(trouble)
         did = f"upkeep alerted ({len(new)})"
     elif sent and not problems:
-        if send(cfg, f"{name}: looked after", "The disk and backup problems are gone."):
+        if send(cfg, f"{name}: looked after", "Those problems are gone."):
             return "upkeep all-clear failed"
         did = "upkeep all clear sent"
     else:

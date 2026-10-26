@@ -82,6 +82,8 @@ says what each tested part ran on.
 **Telling you**
 - **Phone alerts** (ntfy) when readings stop, and for frost, heat, a falling
   barometer or lightning close by; by email\* too.
+- **Low batteries**: a sensor's, and the hub's own (which AcuRite's app never
+  mentioned), on the dashboard, the status page and by alert.
 
 **Looking after itself**
 - **Updates** only if you say yes, each one tried and rolled back if it doesn't
@@ -482,7 +484,10 @@ Sun & moon card appears: sunrise, sunset, daylight and the moon phase, computed
 in the page with no outside service. The outdoor card shows everything the
 Atlas sends (feels-like, dew point, wind with direction arrow, gusts, rain, UV
 with its level, light, lightning) plus the 3-hour pressure trend. Lightning
-is the strikes since midnight, counted from the sensor's running total.
+is the strikes since midnight, counted from the sensor's running total and the
+time of its last strike. One Access hub's total went from 0 to 256 for a
+single strike, so a rise of a whole number of 256s counts as that many strikes;
+that rests on one strike so far.
 
 In the US, set `[forecast] enabled = true` (with `[station]` latitude and
 longitude) and the program also fetches from the National Weather Service
@@ -614,6 +619,8 @@ dashboard links to it at the bottom (from your own network only). It shows:
 
 - how long the program and the computer have been up, the newest reading, how
   far back the history goes and how big it is, and the last backup;
+- anything that needs looking after: a failing disk, a failed backup, a low
+  battery in a sensor or the hub;
 - each sensor: when it was last heard, its battery, how well each receiver
   hears it, and links to that sensor's own lines in each raw log;
 - each receiver (the hub, the radio, a console) and its raw logs by day;

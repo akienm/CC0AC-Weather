@@ -308,7 +308,7 @@ def _write_snapshot(write_path: Path, sensors: dict, page: dict | None, written:
     snapshot = {"written": written, "hub": hub,
                 **{k: v for k, v in (page or {}).items() if v},
                 **{k: v for k, v in _current_page.items() if v is not None},
-                "warnings": upkeep.problems(diagnostics.BOOT_ROOT),
+                "warnings": upkeep.problems(diagnostics.BOOT_ROOT) + upkeep.low_batteries(_current.values()),
                 "sensors": sorted(_current.values(),
                                   key=lambda e: display_order(sensors, e["sensor_id"], e["name"]))}
     body = json.dumps(snapshot, indent=1)
@@ -345,20 +345,33 @@ def refresh_snapshot(write_path: Path, sensors: dict, page: dict | None) -> None
 # since local midnight: each rise in the count, and the whole count when it is
 # smaller than the last one (it started again). Seeded from the store, so a
 # restart doesn't lose the day's strikes. A count the source already keeps per
-# day comes out the same. A rise also stamps last_strike_heard, our own time for
-# it, which the lightning alert reads (alerts.py).
-_strikes: dict[str, dict] = {}   # sensor_id → {"day", "today", "last", "rose"}, guarded by _current_lock
+# day comes out the same. A new time of the last strike counts as at least one
+# strike, whatever the count did. A rise also stamps last_strike_heard, our own
+# time for it, which the lightning alert reads (alerts.py).
+_strikes: dict[str, dict] = {}   # sensor_id → {"day", "today", "last", "at", "rose"}, guarded by _current_lock
+
+# A guess from one strike: an Access hub went from 0 to 256 for a single strike
+# (one new strike time, 2026-10-23), as if the count sat one byte up. So a rise
+# that is a whole number of 256s counts as that many strikes. A second strike
+# reading 512 would bear it out; 257 would say it was wrong.
+COUNT_STEP = 256
 
 
-def _count_strikes(sensor_id: str, count: int, day: str) -> int:
-    s = _strikes.setdefault(sensor_id, {"day": day, "today": 0, "last": None})
+def _count_strikes(sensor_id: str, count: int, day: str, struck_at: str | None = None) -> int:
+    s = _strikes.setdefault(sensor_id, {"day": day, "today": 0, "last": None, "at": None})
     if s["day"] != day:
         s["day"], s["today"] = day, 0
     grew = 0
     if s["last"] is not None:
         grew = count - s["last"] if count >= s["last"] else count
+        if grew and grew % COUNT_STEP == 0:
+            grew //= COUNT_STEP
+        if struck_at and struck_at != s["at"]:
+            grew = max(grew, 1)
     s["today"] += grew
     s["last"], s["rose"] = count, grew > 0
+    if struck_at:
+        s["at"] = struck_at
     return s["today"]
 
 
@@ -371,19 +384,19 @@ def _seed_strikes(db_path: Path | None, sensor_id: str, now: float) -> None:
     midnight = _day_bounds(day)[0]
     try:
         con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
-        before = con.execute("SELECT strike_count FROM readings WHERE sensor_id = ? AND strike_count IS NOT NULL"
+        before = con.execute("SELECT strike_count, last_strike_ts FROM readings WHERE sensor_id = ? AND strike_count IS NOT NULL"
                              " AND received_utc < ? ORDER BY received_utc DESC LIMIT 1",
                              (sensor_id, midnight)).fetchall()
-        today = con.execute("SELECT strike_count FROM readings WHERE sensor_id = ? AND strike_count IS NOT NULL"
+        today = con.execute("SELECT strike_count, last_strike_ts FROM readings WHERE sensor_id = ? AND strike_count IS NOT NULL"
                             " AND received_utc >= ? ORDER BY received_utc", (sensor_id, midnight)).fetchall()
         con.close()
     except sqlite3.Error as exc:
         log.warning("Strikes today start at 0, the store is unreadable: %s", exc)
         return
     if before:
-        _strikes[sensor_id] = {"day": day, "today": 0, "last": before[0][0]}
-    for (count,) in today:
-        _count_strikes(sensor_id, count, day)
+        _strikes[sensor_id] = {"day": day, "today": 0, "last": before[0][0], "at": before[0][1]}
+    for count, at in today:
+        _count_strikes(sensor_id, count, day, at)
 
 
 def record_reading(reading: Reading, write_path: Path, sensors: dict, page: dict | None = None,
@@ -421,7 +434,8 @@ def record_reading(reading: Reading, write_path: Path, sensors: dict, page: dict
         if isinstance(fields.get("strike_count"), (int, float)):
             if sensor_id not in _strikes:
                 _seed_strikes(db_path, sensor_id, _epoch(now))
-            entry["fields"]["strikes_today"] = _count_strikes(sensor_id, fields["strike_count"], _local_day(_epoch(now)))
+            entry["fields"]["strikes_today"] = _count_strikes(sensor_id, fields["strike_count"], _local_day(_epoch(now)),
+                                                             fields.get("last_strike_ts"))
             if _strikes[sensor_id]["rose"]:
                 entry["fields"]["last_strike_heard"] = now
         if reading.channel:
@@ -1304,7 +1318,8 @@ def system_status(cfg: configparser.ConfigParser, write_path: Path, now: float |
             "timezone": time.strftime("%Z"), "started": _iso(STARTED), "uptime_s": round(now - STARTED),
             "machine_uptime_s": _machine_uptime(), "readings_written": current.get("written"),
             "history": depth, "sensors": sensors, "sources": sources, "sends": sends,
-            "warnings": upkeep.problems(diagnostics.BOOT_ROOT), "backup": backup}
+            "warnings": upkeep.problems(diagnostics.BOOT_ROOT) + upkeep.low_batteries(current.get("sensors", [])),
+            "backup": backup}
 
 
 # ── Web server ───────────────────────────────────────────────────────────────
@@ -1839,6 +1854,8 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
 
     # Records and normals: climate.json every hour (climate.py).
     def outdoor_days() -> list[dict]:
+        if db_path is None or not db_path.exists():   # a new station: nothing recorded yet
+            return []
         return [{"id": e["id"], "name": e["name"], "days": e["days"]}
                 for e in summaries(db_path, sensors, {"days": "1000000"})["sensors"] if e["outdoor"]]
     where = _station(cfg)
@@ -1856,7 +1873,12 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
             source_threads.append(thread)
             log.info("Source on: %s", source.NAME)
     if not source_threads:
-        log.warning("No source switched on ([hub] or [capture] enabled); nothing to record")
+        # A new station has none until setup switches one on. Returning would end
+        # the program, and the boot loader takes a clean exit for a restart after
+        # saved settings: the setup page came up for a second at a time, forever.
+        log.warning("No source switched on ([hub] or [capture] enabled); nothing to record. "
+                    "The web server stays up for the setup page.")
+        threading.Event().wait()
     for thread in source_threads:
         thread.join()
     # A source reading recordings ([capture] read) finishes; let the outputs drain.
@@ -1927,7 +1949,11 @@ def main() -> None:
     if args.check:
         print(alerts.check(cfg, Path(cfg.get("device", "write_path")).expanduser()))
         print(alerts.check_weather(cfg, Path(cfg.get("device", "write_path")).expanduser()))
-        print(alerts.check_upkeep(cfg, upkeep.problems(diagnostics.BOOT_ROOT)))
+        try:
+            sensors = json.loads((Path(cfg.get("device", "write_path")).expanduser() / "current.json").read_text())["sensors"]
+        except (OSError, ValueError, KeyError):
+            sensors = []
+        print(alerts.check_upkeep(cfg, upkeep.problems(diagnostics.BOOT_ROOT) + upkeep.low_batteries(sensors)))
     elif args.test_alert:
         problems = alerts.send(cfg, f"{_title(cfg)}: test", "A test message from the weather station.")
         print("Sent." if not problems else "Not sent: " + "; ".join(problems))

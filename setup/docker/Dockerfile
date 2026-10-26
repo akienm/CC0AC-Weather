@@ -17,6 +17,7 @@ COPY . /opt/cc0ac-weather-src
 RUN rm -rf /opt/cc0ac-weather-src/.git /opt/cc0ac-weather-src/CLAUDE.md
 
 VOLUME /data
-# The dashboard and setup page; console uploads (Ambient, Ecowitt and others).
-EXPOSE 12345 12346
+# The Access hub's uploads; the dashboard and setup page; console uploads
+# (Ambient, Ecowitt and others).
+EXPOSE 443 12345 12346
 ENTRYPOINT ["sh", "/opt/cc0ac-weather-src/setup/docker/entrypoint.sh"]

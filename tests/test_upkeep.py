@@ -120,6 +120,15 @@ class WhatTheStationShows(unittest.TestCase):
             finally:
                 os.environ["HOME"] = home
 
+    def test_low_batteries_are_warnings_the_hubs_once(self):
+        sensors = [{"sensor_id": "00001234", "name": "Yard", "fields": {"battery": "normal", "hub_battery": "low"}},
+                   {"sensor_id": "00005678", "name": "Shed", "fields": {"battery": "low", "hub_battery": "low"}},
+                   {"sensor_id": "00009999", "fields": {"battery": "Low"}}]
+        self.assertEqual(upkeep.low_batteries(sensors), ["The hub's batteries are low.", "The battery in Shed is low.",
+                                                         "The battery in 00009999 is low."])
+        # New batteries: the hub's next readings say normal, and the warning goes.
+        self.assertEqual(upkeep.low_batteries([{"name": "Yard", "fields": {"battery": "normal", "hub_battery": "normal"}}]), [])
+
     def test_one_alert_then_one_all_clear(self):
         sent = []
         real = alerts.send

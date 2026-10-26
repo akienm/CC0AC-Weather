@@ -133,6 +133,20 @@ class Strikes(unittest.TestCase):
         self.assertEqual(capture._count_strikes("s", 14, "2026-10-25"), 0)
         self.assertEqual(capture._count_strikes("s", 15, "2026-10-25"), 1)
 
+    def test_one_strike_that_reads_256_counts_once(self):
+        # The pattern an Access hub sent on 2026-10-23: 0, then 256 with the first
+        # strike time, then 256 with that same time.
+        self.assertEqual(capture._count_strikes("s", 0, "2026-10-24"), 0)
+        self.assertEqual(capture._count_strikes("s", 256, "2026-10-24", "2026-10-24T09:10:25"), 1)
+        self.assertEqual(capture._count_strikes("s", 256, "2026-10-24", "2026-10-24T09:10:25"), 1)
+        self.assertEqual(capture._count_strikes("s", 512, "2026-10-24", "2026-10-24T11:00:00"), 2)
+
+    def test_a_new_strike_time_counts_even_when_the_count_stands(self):
+        capture._count_strikes("s", 7, "2026-10-24", "2026-10-24T09:00:00")
+        self.assertEqual(capture._count_strikes("s", 7, "2026-10-24", "2026-10-24T09:00:00"), 0)
+        self.assertEqual(capture._count_strikes("s", 7, "2026-10-24", "2026-10-24T09:30:00"), 1)
+        self.assertEqual(capture._count_strikes("s", 10, "2026-10-24", "2026-10-24T09:40:00"), 4)
+
     def test_a_restart_reads_the_day_back_from_the_store(self):
         now = datetime(2026, 10, 24, 15, 0).astimezone().timestamp()
         midnight = datetime(2026, 10, 24).astimezone().timestamp()

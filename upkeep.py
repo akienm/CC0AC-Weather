@@ -244,6 +244,19 @@ def write_record(result: dict) -> None:
 
 # ── What the station shows ───────────────────────────────────────────────────
 
+def low_batteries(sensors) -> list[str]:
+    """A line for each sensor whose battery reads low, and one for the hub's own.
+    A sensor sends only normal or low; the Access hub sends hubbattery with every
+    reading, though AcuRite's own app never said when it was low."""
+    out, hub = [], False
+    for e in sensors:
+        f = e.get("fields") or {}
+        if f.get("battery") and str(f["battery"]).lower() != "normal":
+            out.append(f"The battery in {e.get('name') or e.get('sensor_id')} is low.")
+        hub = hub or bool(f.get("hub_battery") and str(f["hub_battery"]).lower() != "normal")
+    return (["The hub's batteries are low."] if hub else []) + out
+
+
 def problems(boot_root: Path | None) -> list[str]:
     """Every standing problem, one line each, for the dashboard and the alerts."""
     out = []

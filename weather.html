@@ -294,7 +294,7 @@ function observationRows(fc) {
       <div class="ts" style="grid-column: 1 / -1">visibility and clouds from ${where}; cloud heights are above the airport</div>`;
 }
 
-// The computer itself: a failing disk or a failed backup (upkeep.py).
+// What needs looking after: a failing disk, a failed backup, a low battery (upkeep.py).
 function renderWarnings(data) {
   document.getElementById('warnings').innerHTML =
     ((data && data.warnings) || []).map(w => `<div class="warning">🛠️ ${esc(w)}</div>`).join('');
