@@ -115,7 +115,7 @@ says what each tested part ran on.
 | **Other brands' consoles** | — | Ambient Weather, Ecowitt and Wunderground-format uploads |
 | **No station** | the test suite only | the National Weather Service (US) or Open-Meteo (anywhere) as the only source: `[online]`, see [UPDATES.md](UPDATES.md#internet-weather-a-station-with-no-station) |
 | **Computer** | Raspberry Pi 400, Raspberry Pi OS (Debian 13); an Ubuntu laptop | other Pis (3 B+, 4, 5), Mac, Windows, Docker |
-| **Installing** | the boot loader's install, update and roll-back, in a test folder | the card image and the installers end to end on a fresh machine |
+| **Installing** | the boot loader's install, update and roll-back, in a test folder; Docker's first start on Windows 11 | the card image and the installers end to end on a fresh machine |
 | **Wall kiosk** | an Android 14 emulator | a real phone |
 | **Weather networks** | — | Windy, PWSweather, Weathercloud, CWOP with real accounts |
 | **MCP** | a test client over the network | Claude Desktop through `mcp-remote` |
@@ -213,7 +213,7 @@ prints an address: open it and answer the setup page.
 | **Debian or Ubuntu** (an old laptop works well) | the same line | Lists the wired ports your network isn't on and asks which one the hub's cable goes into; Enter for none. Stops if no other port reaches the internet. Without a terminal to ask: `--hub-network PORT` |
 | **Mac** | the same line **without** `sudo` | Needs Python 3 from python.org or Homebrew; runs while you're logged in. Untested: no Mac to test on |
 | **Windows 10/11** | in PowerShell: `irm https://raw.githubusercontent.com/akienm/CC0AC-Weather/main/setup/install.ps1 \| iex` | Installs Python if it's missing; starts when you log on. Untested |
-| **Docker** (anything) | `cd setup/docker && docker compose up -d` in a copy of this project | Readings and settings in the volume `cc0ac-weather-data`. Untested |
+| **Docker** (anything) | `cd setup/docker && docker compose up -d` in a copy of this project | Readings and settings in the volume `cc0ac-weather-data`. Tested to the setup page on Docker Desktop, Windows 11; not yet with a hub |
 
 Only a Pi or a Debian machine with a spare wired port can take the hub's
 cable. A laptop usually has one network port, and it's the one it reaches your

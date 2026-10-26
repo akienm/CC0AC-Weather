@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.3.19)
+# How CC0AC-Weather installs and keeps itself up to date (1.3.20)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -157,6 +157,12 @@ icon works as it always has; it is now the `sky` icon, and can be set in the con
 - Low batteries, a sensor's or the hub's own, show on the dashboard and the
   status page, and send one alert.
 
+1.3.20 lets the Docker image build from a Windows checkout. Git for Windows gave
+the container's start script Windows line endings, which the container's shell
+can't run, so it restarted forever. The repository now keeps Unix line endings
+everywhere, and the image strips Windows ones from its scripts besides. Tested
+with Docker Desktop on Windows 11: one start, and the setup page answers.
+
 ## When it checks
 
 At install the station picks a time to check, 06:00 unless you choose another,
@@ -219,7 +225,7 @@ back past it.
 |---|---|---|---|
 | Raspberry Pi (image) | flash the image | systemd | not yet with 1.2.0 |
 | Raspberry Pi / Debian / Ubuntu | `curl … setup/install.sh \| sudo bash` | systemd | not yet with 1.2.0 |
-| Docker | `docker compose up -d` in `setup/docker/` | the container | not yet |
+| Docker | `docker compose up -d` in `setup/docker/` | the container | first start, 1.3.20 (Docker Desktop, Windows 11) |
 | Windows 10/11 | `irm … setup/install.ps1 \| iex` in PowerShell | a scheduled task at logon | not yet |
 | macOS | `curl … setup/install.sh \| bash` (no sudo) | launchd | **no Mac to test on** |
 

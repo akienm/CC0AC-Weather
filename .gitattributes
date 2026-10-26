@@ -1,0 +1,4 @@
+# Every text file keeps LF line endings, on Windows checkouts too: the Docker
+# image runs the shell scripts under Linux, where "set -e\r" is an error.
+* text=auto eol=lf
+*.png binary

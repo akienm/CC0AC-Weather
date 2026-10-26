@@ -14,7 +14,10 @@ RUN apt-get update -qq \
 # The version in the image installs on the first start; after that the volume
 # holds the boot loader and its versions, and updates come from the releases.
 COPY . /opt/cc0ac-weather-src
-RUN rm -rf /opt/cc0ac-weather-src/.git /opt/cc0ac-weather-src/CLAUDE.md
+# A clone made on Windows before .gitattributes may have CRLF line endings,
+# which the shell can't run; strip them.
+RUN rm -rf /opt/cc0ac-weather-src/.git /opt/cc0ac-weather-src/CLAUDE.md \
+ && find /opt/cc0ac-weather-src -name '*.sh' -exec sed -i 's/\r$//' {} +
 
 VOLUME /data
 # The Access hub's uploads; the dashboard and setup page; console uploads
