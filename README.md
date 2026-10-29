@@ -74,7 +74,6 @@ Real readings, with a made-up station name, room names and location.
 </tr>
 </table>
 
-
 **Which stations and services it can work with:** [SUPPORTED.md](SUPPORTED.md)
 lists every station, sensor, console and service it knows how to talk to,
 AcuRite and other brands (Ambient Weather, Ecowitt, Fine Offset and its
@@ -221,8 +220,6 @@ To hear about the Pi itself losing power, add a free healthchecks.io check on
 the same page.
 It can also warn about the weather itself: frost, heat, a falling barometer
 and lightning close by (see [Weather alerts](#weather-alerts)).
-
-
 
 ## Looked after for you
 
