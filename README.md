@@ -1,8 +1,8 @@
 # CC0AC-Weather
 
 **Contents:**
-[Pictures](#pictures) ·
 [What it's for](#what-its-for) ·
+[Pictures](#pictures) ·
 [What it does, newest first](#what-it-does-newest-first)
 
 **Using it:**
@@ -44,6 +44,13 @@
 [Files](#files) ·
 [Credits, the name, and the license](#credits-the-name-and-the-license)
 
+## What it's for
+
+Keep your AcuRite weather station working on your own terms: your own
+dashboard, your own data files, Weather Underground uploads unchanged, and no
+dependence on AcuRite's cloud. Built by Claude Code ("cc0") with Akien
+MacIain; contributions welcome.
+
 ## Pictures
 
 Real readings, with a made-up station name, room names and location.
@@ -67,12 +74,6 @@ Real readings, with a made-up station name, room names and location.
 </tr>
 </table>
 
-## What it's for
-
-Keep your AcuRite weather station working on your own terms: your own
-dashboard, your own data files, Weather Underground uploads unchanged, and no
-dependence on AcuRite's cloud. Built by Claude Code ("cc0") with Akien
-MacIain; contributions welcome.
 
 **Which stations and services it can work with:** [SUPPORTED.md](SUPPORTED.md)
 lists every station, sensor, console and service it knows how to talk to,
@@ -90,8 +91,7 @@ it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
 
-**1.3.20** · Oct 26, 2026
-- **Docker**\* images build from a Windows checkout too.
+**1.3.20** · Oct 26, 2026: **Docker**\* images build from a Windows checkout too.
 
 **1.3.19** · Oct 26, 2026
 - A new station **waits for setup** instead of guessing.
@@ -99,33 +99,25 @@ tested part ran on.
   mentioned), on the dashboard, the status page and by alert.
 - One lightning strike counts once.
 
-**1.3.17–1.3.18** · Oct 24–25, 2026
-- **Names, icons and links** for each sensor, set in its own section of config.ini;
+**1.3.17–1.3.18** · Oct 24–25, 2026: **Names, icons and links** for each sensor, set in its own section of config.ini;
   a room card shows its icon beside the temperature.
 
-**1.3.16** · Oct 24, 2026
-- New settings appear in a config.ini made before them.
+**1.3.16** · Oct 24, 2026: New settings appear in a config.ini made before them.
 
-**1.3.15** · Oct 24, 2026
-- **https** on the same port, with a free certificate and a free DuckDNS name kept
+**1.3.15** · Oct 24, 2026: **https** on the same port, with a free certificate and a free DuckDNS name kept
   pointed at your house.
 
-**1.3.14** · Oct 24, 2026
-- **Degree days** and **evapotranspiration** on the Records card.
+**1.3.14** · Oct 24, 2026: **Degree days** and **evapotranspiration** on the Records card.
 
 **1.3.13** · Oct 24, 2026
 - **NOAA-style climate summaries** for a month or a year.
 - Older readings brought in from **Cumulus**\*.
 
-**1.3.12** · Oct 24, 2026
-- A **webhook**\* and **InfluxDB**\*.
+**1.3.12** · Oct 24, 2026: A **webhook**\* and **InfluxDB**\*.
 
-**1.3.11** · Oct 24, 2026
-- Links to the station's own pages (setup, status, charts) on the dashboard, shown
-  only inside your house.
+**1.3.11** · Oct 24, 2026: Links to the station's own pages (setup, status, charts) on the dashboard, shown only inside your house.
 
-**1.3.10** · Oct 24, 2026
-- Readings no weather could produce are **held back**, not recorded as weather.
+**1.3.10** · Oct 24, 2026: Readings no weather could produce are **held back**, not recorded as weather.
 
 **1.3.9** · Oct 24, 2026
 - **Your units:** US, metric or UK, or any mix.
@@ -137,19 +129,15 @@ tested part ran on.
 - A **diagnostics file** to attach when something reads wrong, with keys,
   addresses, names and location taken out.
 
-**1.3.7** · Oct 24, 2026
-- A **lightning alert** when strikes come close.
+**1.3.7** · Oct 24, 2026: A **lightning alert** when strikes come close.
 
 **1.3.6** · Oct 24, 2026
 - The station keeps **its own time zone**, wherever the computer thinks it is.
 - **24 hours** on the charts; lightning strikes counted for today.
 
-**1.3.4–1.3.5** · Oct 23, 2026
-- The hub's cable goes into **any wired port**, and the installer checks the way
-  out before it takes one.
+**1.3.4–1.3.5** · Oct 23, 2026: The hub's cable goes into **any wired port**, and the installer checks the way out before it takes one.
 
-**1.3.2** · Oct 23, 2026
-- Each sensor's **channel, battery and reception** on its card.
+**1.3.2** · Oct 23, 2026: Each sensor's **channel, battery and reception** on its card.
 
 **1.3.0** · Oct 21, 2026
 - **Weather alerts** by phone (ntfy) for frost, heat and a falling barometer;
@@ -175,17 +163,11 @@ tested part ran on.
 - **No station at all:** the National Weather Service or Open-Meteo as the only
   source\*.
 
-**Oct 16, 2026** (before version numbers)
-- **Other brands' consoles** uploading to it: Ambient Weather, Ecowitt, Fine Offset
-  and anything in Wunderground format\*; their sensors by radio too: the 5-in-1,
-  Iris and 200-odd other models, from recordings only\*.
+**Oct 16, 2026** (before version numbers): **Other brands' consoles** uploading to it: Ambient Weather, Ecowitt, Fine Offset and anything in Wunderground format\*; their sensors by radio too: the 5-in-1, Iris and 200-odd other models, from recordings only\*.
 
-**Oct 15, 2026**
-- **Wall displays:** an old Android phone turned into a locked-down weather
-  kiosk\*.
+**Oct 15, 2026**: **Wall displays:** an old Android phone turned into a locked-down weather kiosk\*.
 
-**Oct 14, 2026**
-- The **order of the rows** on each card, set in config.
+**Oct 14, 2026**: The **order of the rows** on each card, set in config.
 
 **Oct 12, 2026**
 - The **setup page**, and **phone alerts** (ntfy) when readings stop.
