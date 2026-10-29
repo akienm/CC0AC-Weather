@@ -10,8 +10,13 @@ The revised announcement that followed it is in
 | `dashboard.png` | The dashboard on a desktop browser |
 | `charts.png` | The charts page, one week |
 | `phone.png` | The dashboard at phone width |
+| `setup.png` | The setup page, the whole of it |
+| `status.png` | The status page: batteries, reception, receivers, where it sends |
+| `log.png` | The service log, opened from the status page |
+| `noaa.png` | A NOAA-style monthly climate summary |
 | `custom-theme.png` | The dashboard restyled with a single `theme.css` |
 | `revised-announcement.md` | The revised announcement, as posted to r/AcuRite |
+| `last-version-announcement.md` | Draft: the 1.3.20 "last version for a while" post, not yet posted |
 
 ## Where
 

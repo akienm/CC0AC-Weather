@@ -1,102 +1,220 @@
 # CC0AC-Weather
 
-![The dashboard: outdoor readings, the hourly and 7-day forecast, sun and moon, every room, and records against the normals](docs/dashboard.png)
+**Contents:**
+[Pictures](#pictures) ·
+[What it's for](#what-its-for) ·
+[What it does, newest first](#what-it-does-newest-first)
+
+**Using it:**
+[Install](#install) ·
+[What it runs on](#what-it-runs-on-and-whats-been-tested) ·
+[Theory of operation](#theory-of-operation) ·
+[The ready-made Pi card](#the-easy-way-a-ready-made-raspberry-pi-card) ·
+[Other computers](#other-computers-one-command) ·
+[Looked after for you](#looked-after-for-you) ·
+[Setup by hand](#setup-with-an-access-hub-by-hand) ·
+[The dashboard](#the-dashboard) ·
+[Charts](#charts) ·
+[Records and normals](#records-and-normals) ·
+[Barometer outlook](#barometer-outlook) ·
+[In another page](#putting-the-dashboard-in-another-page) ·
+[Settings in the browser](#settings-in-the-browser) ·
+[The status page](#the-status-page) ·
+[NOAA summaries](#noaa-climate-summaries) ·
+[Sensors](#sensors-names-icons-and-links) ·
+[Making it yours](#making-it-yours) ·
+[Units](#units) ·
+[Calibration](#calibration) ·
+[Readings that can't be right](#readings-that-cant-be-right) ·
+[MQTT and Home Assistant](#mqtt-and-home-assistant) ·
+[Webhook and InfluxDB](#webhook-and-influxdb) ·
+[AI assistants (MCP)](#asking-an-ai-assistant-mcp) ·
+[Weather networks](#weather-networks) ·
+[Weather alerts](#weather-alerts) ·
+[Older readings](#bringing-in-older-readings) ·
+[Radio capture](#radio-capture-no-hub) ·
+[Other brands](#other-brands-consoles-no-radio) ·
+[When something reads wrong](#when-something-reads-wrong) ·
+[Wall displays](#wall-displays-old-android-phones-as-weather-kiosks) ·
+[What leaves your house](#what-leaves-your-house) ·
+[Seeing it from outside](#seeing-it-from-outside-your-house)
+
+**Building on it:**
+[Contributing and architecture](#contributing-and-architecture) ·
+[Files](#files) ·
+[Credits, the name, and the license](#credits-the-name-and-the-license)
+
+## Pictures
+
+Real readings, with a made-up station name, room names and location.
+
+<table>
+<tr>
+<td width="50%"><a href="reddit_announcement/dashboard.png"><img src="reddit_announcement/dashboard.png" alt="The dashboard: outdoor readings, the hourly and 7-day forecast, sun and moon, and a card for every room"></a><br><b>The dashboard</b></td>
+<td width="50%"><a href="reddit_announcement/charts.png"><img src="reddit_announcement/charts.png" alt="The charts page over one week: outdoor temperature, wind, pressure, rain, UV and light, indoor temperature and humidity"></a><br><b>Charts</b>, one week</td>
+</tr>
+<tr>
+<td><a href="reddit_announcement/setup.png"><img src="reddit_announcement/setup.png" alt="The setup page: the hub found, the sensors named, the station's place, alerts, updates and backup"></a><br><b>Setup</b>: the whole of it</td>
+<td><a href="reddit_announcement/status.png"><img src="reddit_announcement/status.png" alt="The status page: every sensor's battery and reception, every receiver, and every service it sends to"></a><br><b>Status</b>: batteries, reception, where it sends</td>
+</tr>
+<tr>
+<td><a href="reddit_announcement/log.png"><img src="reddit_announcement/log.png" alt="The service log, one reading per line"></a><br><b>Logs</b>: the service log, from the status page</td>
+<td><a href="reddit_announcement/noaa.png"><img src="reddit_announcement/noaa.png" alt="A NOAA-style monthly climate summary"></a><br><b>NOAA climate summary</b>, one month</td>
+</tr>
+<tr>
+<td><a href="reddit_announcement/phone.png"><img src="reddit_announcement/phone.png" alt="The dashboard at phone width" width="60%"></a><br><b>On a phone</b></td>
+<td><a href="reddit_announcement/custom-theme.png"><img src="reddit_announcement/custom-theme.png" alt="The dashboard restyled by one theme.css file"></a><br><b>Your own look</b>: one <code>theme.css</code></td>
+</tr>
+</table>
+
+## What it's for
 
 Keep your AcuRite weather station working on your own terms: your own
 dashboard, your own data files, Weather Underground uploads unchanged, and no
 dependence on AcuRite's cloud. Built by Claude Code ("cc0") with Akien
 MacIain; contributions welcome.
 
-**Other brands** (Ambient Weather, Ecowitt, Fine Offset and its relabels,
-Bresser, La Crosse, and more) can feed it too, by console upload or by radio.
-Only AcuRite is tested on real hardware so far; [SUPPORTED.md](SUPPORTED.md)
-says what works how, and how sure we are.
+**Which stations and services it can work with:** [SUPPORTED.md](SUPPORTED.md)
+lists every station, sensor, console and service it knows how to talk to,
+AcuRite and other brands (Ambient Weather, Ecowitt, Fine Offset and its
+relabels, Bresser, La Crosse, and more), by console upload or by radio, and
+says how sure we are of each. Only AcuRite is tested on real hardware so far.
 
 Not affiliated with or endorsed by AcuRite or Chaney Instrument Co. AcuRite is
 their trademark; it is used here only to say which hardware this works with.
 
-**Contents:**
-[What it does](#what-it-does) ·
-[Install](#install) ·
-[What it runs on, and what's been tested](#what-it-runs-on-and-whats-been-tested) ·
-[Theory of operation](#theory-of-operation) ·
-[What leaves your house](#what-leaves-your-house) ·
-[Seeing it from outside your house](#seeing-it-from-outside-your-house) ·
-[Contributing and architecture](#contributing-and-architecture) ·
-[Credits, the name, and the license](#credits-the-name-and-the-license)
+## What it does, newest first
 
-## What it does
+Each line says the version (or, before version numbers, the date) that added
+it. **\*** marks what is written but not yet tested: run, that is, not just
+read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
+tested part ran on.
 
-Everything it does, in one list. **\*** marks what is written but not yet
-tested: run, that is, not just read. [The table below](#what-it-runs-on-and-whats-been-tested)
-says what each tested part ran on.
+**1.3.20** · Oct 26, 2026
+- **Docker**\* images build from a Windows checkout too.
 
-**Your readings, kept**
-- Every reading from your station, for good, in files you own: SQLite and CSV, with
-  each sensor's raw uploads and radio lines kept beside them.
-- Older readings brought in\*: from WeeWX, Cumulus, a CSV file or Weather Underground.
-- A weekly backup of the settings and every reading to a folder or a Windows share\*.
-
-**Where the readings come from**
-- An AcuRite **Access** hub, either plugged into the Pi or pointed at it; the
-  smartHUB\*.
-- An **RTL-SDR radio dongle** hearing the sensors itself, no hub needed: AcuRite
-  Atlas and towers on real gear; the 5-in-1, Iris and 200-odd other models from
-  recordings only\*.
-- **Other brands' consoles** uploading to it: Ambient Weather, Ecowitt, Fine Offset
-  and anything in Wunderground format\*.
-- **No station at all:** the National Weather Service or Open-Meteo as the only
-  source\*.
-
-**What you see**
-- A **dashboard** in any browser, phone included: the outdoor card, the hourly and
-  7-day forecast, weather alerts from the National Weather Service, sun and moon,
-  a card for every room, and records against the 1991-2020 normals.
-- **Charts** of every reading: today, 24 hours, a week, a month, a year, all time
-  or any range of dates. A room's card opens its own line.
-- An **outlook from your own barometer**, worked out with no internet.
-- **Names, icons and links** for each sensor, set in its own section of config.ini.
-- **Your own look:** one `theme.css` for the colors and font, a folder for pages of
-  your own, buttons for radar maps or webcams, your station's name on every page.
-- **Your units:** US, metric or UK, or any mix.
-- The dashboard **inside another page**, such as a home page or Home Assistant\*.
-- **NOAA-style climate summaries** for a month or a year.
-- A **status page**: every sensor's battery and signal, every receiver, the raw
-  logs, uptime, disks and the last backup.
-- **Settings in the browser**, checked before they're saved.
-- **Wall displays:** an old Android phone turned into a locked-down weather
-  kiosk\*.
-
-**Readings you can trust**
-- **Calibration** for a sensor that reads a little off.
-- Readings no weather could produce are **held back**, not recorded as weather.
-
-**Sending it on**
-- Leaves what you have working: the AcuRite app and Weather Underground carry on.
-- **MQTT and Home Assistant**, with the sensors set up in Home Assistant for you.
-- A **webhook**\* and **InfluxDB**\*.
-- **Weather networks:** Windy\*, PWSweather\*, Weathercloud\* and CWOP\*.
-- **AI assistants** (MCP): ask "how cold did it get last night?" Claude Code
-  connects directly; Claude Desktop through `mcp-remote`\*.
-
-**Telling you**
-- **Phone alerts** (ntfy) when readings stop, and for frost, heat, a falling
-  barometer or lightning close by; by email\* too.
-- **Low batteries**: a sensor's, and the hub's own (which AcuRite's app never
+**1.3.19** · Oct 26, 2026
+- A new station **waits for setup** instead of guessing.
+- **Low batteries** warn: a sensor's, and the hub's own (which AcuRite's app never
   mentioned), on the dashboard, the status page and by alert.
+- One lightning strike counts once.
 
-**Looking after itself**
-- **Updates** only if you say yes, each one tried and rolled back if it doesn't
-  work\*.
-- **Disk health** checked daily\*.
+**1.3.17–1.3.18** · Oct 24–25, 2026
+- **Names, icons and links** for each sensor, set in its own section of config.ini;
+  a room card shows its icon beside the temperature.
+
+**1.3.16** · Oct 24, 2026
+- New settings appear in a config.ini made before them.
+
+**1.3.15** · Oct 24, 2026
 - **https** on the same port, with a free certificate and a free DuckDNS name kept
   pointed at your house.
+
+**1.3.14** · Oct 24, 2026
+- **Degree days** and **evapotranspiration** on the Records card.
+
+**1.3.13** · Oct 24, 2026
+- **NOAA-style climate summaries** for a month or a year.
+- Older readings brought in from **Cumulus**\*.
+
+**1.3.12** · Oct 24, 2026
+- A **webhook**\* and **InfluxDB**\*.
+
+**1.3.11** · Oct 24, 2026
+- Links to the station's own pages (setup, status, charts) on the dashboard, shown
+  only inside your house.
+
+**1.3.10** · Oct 24, 2026
+- Readings no weather could produce are **held back**, not recorded as weather.
+
+**1.3.9** · Oct 24, 2026
+- **Your units:** US, metric or UK, or any mix.
+- **Calibration** for a sensor that reads a little off.
+
+**1.3.8** · Oct 24, 2026
+- A **status page**: every sensor's battery and signal, every receiver, the raw
+  logs, uptime, disks and the last backup.
 - A **diagnostics file** to attach when something reads wrong, with keys,
   addresses, names and location taken out.
 
-**Installing**
-- A ready-made Raspberry Pi card\*, a one-line installer for Linux\*, Mac\* and
-  Windows\*, or Docker\*.
+**1.3.7** · Oct 24, 2026
+- A **lightning alert** when strikes come close.
+
+**1.3.6** · Oct 24, 2026
+- The station keeps **its own time zone**, wherever the computer thinks it is.
+- **24 hours** on the charts; lightning strikes counted for today.
+
+**1.3.4–1.3.5** · Oct 23, 2026
+- The hub's cable goes into **any wired port**, and the installer checks the way
+  out before it takes one.
+
+**1.3.2** · Oct 23, 2026
+- Each sensor's **channel, battery and reception** on its card.
+
+**1.3.0** · Oct 21, 2026
+- **Weather alerts** by phone (ntfy) for frost, heat and a falling barometer;
+  by email\* too.
+- **Records against the 1991-2020 normals.**
+- An **outlook from your own barometer**, worked out with no internet.
+- The dashboard **inside another page**, such as a home page or Home Assistant\*.
+- **AI assistants** (MCP): ask "how cold did it get last night?" Claude Code
+  connects directly; Claude Desktop through `mcp-remote`\*.
+- Older readings brought in\* from **WeeWX, a CSV file or Weather Underground**.
+
+**1.2.1** · Oct 21, 2026
+- **Weather networks:** Windy\*, PWSweather\*, Weathercloud\* and CWOP\*.
+- **Home Assistant** sets the sensors up for itself, checked end to end.
+
+**1.2.0** · Oct 21, 2026
+- **Installers:** a one-line installer for Linux\*, Mac\* and Windows\*, or
+  Docker\*.
+- **Updates** only if you say yes, each one tried and rolled back if it doesn't
+  work\*.
+- **Disk health** checked daily\*, and a **weekly backup** of the settings and every
+  reading to a folder or a Windows share\*.
+- **No station at all:** the National Weather Service or Open-Meteo as the only
+  source\*.
+
+**Oct 16, 2026** (before version numbers)
+- **Other brands' consoles** uploading to it: Ambient Weather, Ecowitt, Fine Offset
+  and anything in Wunderground format\*; their sensors by radio too: the 5-in-1,
+  Iris and 200-odd other models, from recordings only\*.
+
+**Oct 15, 2026**
+- **Wall displays:** an old Android phone turned into a locked-down weather
+  kiosk\*.
+
+**Oct 14, 2026**
+- The **order of the rows** on each card, set in config.
+
+**Oct 12, 2026**
+- The **setup page**, and **phone alerts** (ntfy) when readings stop.
+- A **ready-made Raspberry Pi card**\*.
+
+**Oct 9, 2026**
+- An **RTL-SDR radio dongle** hearing the sensors itself, no hub needed: AcuRite
+  Atlas and towers on real gear.
+- **MQTT and Home Assistant.**
+- **Settings in the browser**, checked before they're saved.
+- Daily summaries.
+
+**Oct 8, 2026**
+- The Access hub **plugged straight into the Pi**, its settings untouched.
+- Every reading kept for good, in files you own: **SQLite** and CSV, with each
+  sensor's raw uploads and radio lines kept beside them.
+- **Charts** of every reading: today, a week, a month, a year, all time or any
+  range of dates. A room's card opens its own line.
+- **Your own look:** one `theme.css` for the colors and font, a folder for pages of
+  your own, buttons for radar maps or webcams, your station's name on every page.
+
+**Oct 5, 2026**
+- The **forecast**: hourly and 7-day, and alerts, from the National Weather Service.
+- **Sun and moon**, worked out in the page.
+
+**Oct 4, 2026**: the start
+- An AcuRite **Access** hub pointed at it, and the smartHUB\*: each reading recorded, then passed on unchanged, so the AcuRite app
+  and Weather Underground carry on.
+- A **dashboard** in any browser, phone included.
 
 ## Install
 
