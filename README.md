@@ -84,119 +84,54 @@ says how sure we are of each. Only AcuRite is tested on real hardware so far.
 Not affiliated with or endorsed by AcuRite or Chaney Instrument Co. AcuRite is
 their trademark; it is used here only to say which hardware this works with.
 
-## What it does, newest first
-
-Each line says the version (or, before version numbers, the date) that added
-it. **\*** marks what is written but not yet tested: run, that is, not just
-read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
-tested part ran on.
-
-**1.3.20** · Oct 26, 2026: **Docker**\* images build from a Windows checkout too.
-
-**1.3.19** · Oct 26, 2026
-- A new station **waits for setup** instead of guessing.
-- **Low batteries** warn: a sensor's, and the hub's own (which AcuRite's app never
-  mentioned), on the dashboard, the status page and by alert.
-- One lightning strike counts once.
-
-**1.3.17–1.3.18** · Oct 24–25, 2026: **Names, icons and links** for each sensor, set in its own section of config.ini;
-  a room card shows its icon beside the temperature.
-
-**1.3.16** · Oct 24, 2026: New settings appear in a config.ini made before them.
-
-**1.3.15** · Oct 24, 2026: **https** on the same port, with a free certificate and a free DuckDNS name kept
-  pointed at your house.
-
-**1.3.14** · Oct 24, 2026: **Degree days** and **evapotranspiration** on the Records card.
-
-**1.3.13** · Oct 24, 2026
-- **NOAA-style climate summaries** for a month or a year.
-- Older readings brought in from **Cumulus**\*.
-
-**1.3.12** · Oct 24, 2026: A **webhook**\* and **InfluxDB**\*.
-
-**1.3.11** · Oct 24, 2026: Links to the station's own pages (setup, status, charts) on the dashboard, shown only inside your house.
-
-**1.3.10** · Oct 24, 2026: Readings no weather could produce are **held back**, not recorded as weather.
-
-**1.3.9** · Oct 24, 2026
-- **Your units:** US, metric or UK, or any mix.
-- **Calibration** for a sensor that reads a little off.
-
-**1.3.8** · Oct 24, 2026
-- A **status page**: every sensor's battery and signal, every receiver, the raw
-  logs, uptime, disks and the last backup.
-- A **diagnostics file** to attach when something reads wrong, with keys,
-  addresses, names and location taken out.
-
-**1.3.7** · Oct 24, 2026: A **lightning alert** when strikes come close.
-
-**1.3.6** · Oct 24, 2026
-- The station keeps **its own time zone**, wherever the computer thinks it is.
-- **24 hours** on the charts; lightning strikes counted for today.
-
-**1.3.4–1.3.5** · Oct 23, 2026: The hub's cable goes into **any wired port**, and the installer checks the way out before it takes one.
-
-**1.3.2** · Oct 23, 2026: Each sensor's **channel, battery and reception** on its card.
-
-**1.3.0** · Oct 21, 2026
-- **Weather alerts** by phone (ntfy) for frost, heat and a falling barometer;
-  by email\* too.
-- **Records against the 1991-2020 normals.**
-- An **outlook from your own barometer**, worked out with no internet.
-- The dashboard **inside another page**, such as a home page or Home Assistant\*.
-- **AI assistants** (MCP): ask "how cold did it get last night?" Claude Code
-  connects directly; Claude Desktop through `mcp-remote`\*.
-- Older readings brought in\* from **WeeWX, a CSV file or Weather Underground**.
-
-**1.2.1** · Oct 21, 2026
-- **Weather networks:** Windy\*, PWSweather\*, Weathercloud\* and CWOP\*.
-- **Home Assistant** sets the sensors up for itself, checked end to end.
-
-**1.2.0** · Oct 21, 2026
-- **Installers:** a one-line installer for Linux\*, Mac\* and Windows\*, or
-  Docker\*.
-- **Updates** only if you say yes, each one tried and rolled back if it doesn't
-  work\*.
-- **Disk health** checked daily\*, and a **weekly backup** of the settings and every
-  reading to a folder or a Windows share\*.
-- **No station at all:** the National Weather Service or Open-Meteo as the only
-  source\*.
-
-**Oct 16, 2026** (before version numbers): **Other brands' consoles** uploading to it: Ambient Weather, Ecowitt, Fine Offset and anything in Wunderground format\*; their sensors by radio too: the 5-in-1, Iris and 200-odd other models, from recordings only\*.
-
-**Oct 15, 2026**: **Wall displays:** an old Android phone turned into a locked-down weather kiosk\*.
-
-**Oct 14, 2026**: The **order of the rows** on each card, set in config.
-
-**Oct 12, 2026**
-- The **setup page**, and **phone alerts** (ntfy) when readings stop.
-- A **ready-made Raspberry Pi card**\*.
-
-**Oct 9, 2026**
-- An **RTL-SDR radio dongle** hearing the sensors itself, no hub needed: AcuRite
-  Atlas and towers on real gear.
-- **MQTT and Home Assistant.**
-- **Settings in the browser**, checked before they're saved.
-- Daily summaries.
-
-**Oct 8, 2026**
-- The Access hub **plugged straight into the Pi**, its settings untouched.
-- Every reading kept for good, in files you own: **SQLite** and CSV, with each
-  sensor's raw uploads and radio lines kept beside them.
-- **Charts** of every reading: today, a week, a month, a year, all time or any
-  range of dates. A room's card opens its own line.
-- **Your own look:** one `theme.css` for the colors and font, a folder for pages of
-  your own, buttons for radar maps or webcams, your station's name on every page.
-
-**Oct 5, 2026**
-- The **forecast**: hourly and 7-day, and alerts, from the National Weather Service.
-- **Sun and moon**, worked out in the page.
-
-**Oct 4, 2026**: the start
-- An AcuRite **Access** hub pointed at it, and the smartHUB\*: each reading recorded, then passed on unchanged, so the AcuRite app
-  and Weather Underground carry on.
-- A **dashboard** in any browser, phone included.
+## What it does, alpha order
+- AcuRite Radios: Fully Supported
+- Acurite reporting (to their servers) supported (and optional)
+- Alerts in the UI
+- Alerts: Disk errors (disk health checked daily)
+- Alerts: Low Batt & Signal
+- Alerts: Weather Alerts (NWS)
+- Android 'side load' weather kiosk app
+- Automatic backups (defaults to weekly)
+- Automatic Updates (optional)
+- Barometric forcasting in the output (works even offline)
+- Calibration adjustments for sensors that are slightly off
+- Charts page
+- Climate summary for month or year
+- Computer support: Linux, MacOs, Raspian, Windows
+- Config page (only available on your local network)
+- Configurable UI (settings names and icons for sensors, reporting order, etc)
+- Cumulus support (weather db)
+- CWOP support
+- Dashboard page
+- Diagnostics file to help resolve issues
+- Docker (Windows and Linux)
+- Email and nfty weather alarts incl frost, heat, falling barometer, etc.
+- Evapotranspiration in the output
+- Home Assistant support (untested)
+- Http/s outout (defaults to port# 12345)
+- Influx DB
+- Install made easy! https://github.com/akienm/CC0AC-Weather#install
+- Lightning (Still calibrating)
+- MCP support for agenic inquiries
+- MQTT support
+- ntfy and email weather alarts
+- NWS or Open-Meteo Only operation for those with no sensors
+- PS Weather support
+- Raw Logs (only available on your local network)
+- Radios tested with: AcuRite Access & RTL-SDR V4
+- Sensor device support: AcuRite, and should work with all the commerical brands (tested in simulation)
+- Setup Page (only available on your local network)
+- Status page (only available on your local network)
+- System service support
+- User specificed unit types & time zone
+- Web interface designed for phones and and desktops
+- Webhook
+- WeatherCloud support
+- Weather Records kept for as long as you want. Including NWS.
+- Weahter Underground support
+- WeeWX support
+- Windy support
 
 ## Install
 
@@ -1460,6 +1395,120 @@ Run the tests before a pull request: `python3 -m unittest discover -s tests`.
 | `theme.css` | Colors and font for every page |
 | `examples/my-page.html` | A short page of your own to start from |
 | `cc0ac-weather@.service` | systemd unit |
+
+## Changelog
+
+Each line says the version (or, before version numbers, the date) that added
+it. **\*** marks what is written but not yet tested: run, that is, not just
+read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
+tested part ran on.
+
+**1.3.20** · Oct 26, 2026: **Docker**\* images build from a Windows checkout too.
+
+**1.3.19** · Oct 26, 2026
+- A new station **waits for setup** instead of guessing.
+- **Low batteries** warn: a sensor's, and the hub's own (which AcuRite's app never
+  mentioned), on the dashboard, the status page and by alert.
+- One lightning strike counts once.
+
+**1.3.17–1.3.18** · Oct 24–25, 2026: **Names, icons and links** for each sensor, set in its own section of config.ini;
+  a room card shows its icon beside the temperature.
+
+**1.3.16** · Oct 24, 2026: New settings appear in a config.ini made before them.
+
+**1.3.15** · Oct 24, 2026: **https** on the same port, with a free certificate and a free DuckDNS name kept
+  pointed at your house.
+
+**1.3.14** · Oct 24, 2026: **Degree days** and **evapotranspiration** on the Records card.
+
+**1.3.13** · Oct 24, 2026
+- **NOAA-style climate summaries** for a month or a year.
+- Older readings brought in from **Cumulus**\*.
+
+**1.3.12** · Oct 24, 2026: A **webhook**\* and **InfluxDB**\*.
+
+**1.3.11** · Oct 24, 2026: Links to the station's own pages (setup, status, charts) on the dashboard, shown only inside your house.
+
+**1.3.10** · Oct 24, 2026: Readings no weather could produce are **held back**, not recorded as weather.
+
+**1.3.9** · Oct 24, 2026
+- **Your units:** US, metric or UK, or any mix.
+- **Calibration** for a sensor that reads a little off.
+
+**1.3.8** · Oct 24, 2026
+- A **status page**: every sensor's battery and signal, every receiver, the raw
+  logs, uptime, disks and the last backup.
+- A **diagnostics file** to attach when something reads wrong, with keys,
+  addresses, names and location taken out.
+
+**1.3.7** · Oct 24, 2026: A **lightning alert** when strikes come close.
+
+**1.3.6** · Oct 24, 2026
+- The station keeps **its own time zone**, wherever the computer thinks it is.
+- **24 hours** on the charts; lightning strikes counted for today.
+
+**1.3.4–1.3.5** · Oct 23, 2026: The hub's cable goes into **any wired port**, and the installer checks the way out before it takes one.
+
+**1.3.2** · Oct 23, 2026: Each sensor's **channel, battery and reception** on its card.
+
+**1.3.0** · Oct 21, 2026
+- **Weather alerts** by phone (ntfy) for frost, heat and a falling barometer;
+  by email\* too.
+- **Records against the 1991-2020 normals.**
+- An **outlook from your own barometer**, worked out with no internet.
+- The dashboard **inside another page**, such as a home page or Home Assistant\*.
+- **AI assistants** (MCP): ask "how cold did it get last night?" Claude Code
+  connects directly; Claude Desktop through `mcp-remote`\*.
+- Older readings brought in\* from **WeeWX, a CSV file or Weather Underground**.
+
+**1.2.1** · Oct 21, 2026
+- **Weather networks:** Windy\*, PWSweather\*, Weathercloud\* and CWOP\*.
+- **Home Assistant** sets the sensors up for itself, checked end to end.
+
+**1.2.0** · Oct 21, 2026
+- **Installers:** a one-line installer for Linux\*, Mac\* and Windows\*, or
+  Docker\*.
+- **Updates** only if you say yes, each one tried and rolled back if it doesn't
+  work\*.
+- **Disk health** checked daily\*, and a **weekly backup** of the settings and every
+  reading to a folder or a Windows share\*.
+- **No station at all:** the National Weather Service or Open-Meteo as the only
+  source\*.
+
+**Oct 16, 2026** (before version numbers): **Other brands' consoles** uploading to it: Ambient Weather, Ecowitt, Fine Offset and anything in Wunderground format\*; their sensors by radio too: the 5-in-1, Iris and 200-odd other models, from recordings only\*.
+
+**Oct 15, 2026**: **Wall displays:** an old Android phone turned into a locked-down weather kiosk\*.
+
+**Oct 14, 2026**: The **order of the rows** on each card, set in config.
+
+**Oct 12, 2026**
+- The **setup page**, and **phone alerts** (ntfy) when readings stop.
+- A **ready-made Raspberry Pi card**\*.
+
+**Oct 9, 2026**
+- An **RTL-SDR radio dongle** hearing the sensors itself, no hub needed: AcuRite
+  Atlas and towers on real gear.
+- **MQTT and Home Assistant.**
+- **Settings in the browser**, checked before they're saved.
+- Daily summaries.
+
+**Oct 8, 2026**
+- The Access hub **plugged straight into the Pi**, its settings untouched.
+- Every reading kept for good, in files you own: **SQLite** and CSV, with each
+  sensor's raw uploads and radio lines kept beside them.
+- **Charts** of every reading: today, a week, a month, a year, all time or any
+  range of dates. A room's card opens its own line.
+- **Your own look:** one `theme.css` for the colors and font, a folder for pages of
+  your own, buttons for radar maps or webcams, your station's name on every page.
+
+**Oct 5, 2026**
+- The **forecast**: hourly and 7-day, and alerts, from the National Weather Service.
+- **Sun and moon**, worked out in the page.
+
+**Oct 4, 2026**: the start
+- An AcuRite **Access** hub pointed at it, and the smartHUB\*: each reading recorded, then passed on unchanged, so the AcuRite app
+  and Weather Underground carry on.
+- A **dashboard** in any browser, phone included.
 
 ## Credits, the name, and the license
 
