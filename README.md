@@ -3,16 +3,15 @@
 **Contents:**
 [What it's for](#what-its-for) ·
 [Pictures](#pictures) ·
-[What it does, newest first](#what-it-does-newest-first)
+[What it does, alpha order](#what-it-does-alpha-order)
 
 **Using it:**
 [Install](#install) ·
-[What it runs on](#what-it-runs-on-and-whats-been-tested) ·
-[Theory of operation](#theory-of-operation) ·
-[The ready-made Pi card](#the-easy-way-a-ready-made-raspberry-pi-card) ·
 [Other computers](#other-computers-one-command) ·
+[The ready-made Pi card](#the-easy-way-a-ready-made-raspberry-pi-card) ·
 [Looked after for you](#looked-after-for-you) ·
 [Setup by hand](#setup-with-an-access-hub-by-hand) ·
+[What it runs on](#what-it-runs-on-and-whats-been-tested) ·
 [The dashboard](#the-dashboard) ·
 [Charts](#charts) ·
 [Records and normals](#records-and-normals) ·
@@ -32,6 +31,7 @@
 [Weather networks](#weather-networks) ·
 [Weather alerts](#weather-alerts) ·
 [Older readings](#bringing-in-older-readings) ·
+[Theory of operation](#theory-of-operation) ·
 [Radio capture](#radio-capture-no-hub) ·
 [Other brands](#other-brands-consoles-no-radio) ·
 [When something reads wrong](#when-something-reads-wrong) ·
@@ -139,46 +139,33 @@ their trademark; it is used here only to say which hardware this works with.
 - **Any other computer:** [one command](#other-computers-one-command).
 - **By hand,** if you want to know every step: [Setup with an Access hub, by hand](#setup-with-an-access-hub-by-hand).
 
-## What it runs on, and what's been tested
+## Other computers: one command
 
-"Tested" here means run, not read: something happened and we watched it.
+Every installer below sets up the same program and then hands it to a small
+boot loader that starts it and keeps it patched
+([UPDATES.md](UPDATES.md)). Each is safe to run again. When it finishes it
+prints an address: open it and answer the setup page.
 
-| | Tested | Written, not yet tested |
+| Computer | Run this | Notes |
 |---|---|---|
-| **Station** | AcuRite Access hub with an Atlas and indoor towers, in a house every day since 4 October 2026 | smartHUB; the 5-in-1, Iris and other AcuRite sensors |
-| **Radio (no hub)** | RTL-SDR Blog V4 dongle hearing AcuRite sensors, live; 13 other models from recorded radio | the rest of [SUPPORTED.md](SUPPORTED.md) |
-| **Other brands' consoles** | — | Ambient Weather, Ecowitt and Wunderground-format uploads |
-| **No station** | the test suite only | the National Weather Service (US) or Open-Meteo (anywhere) as the only source: `[online]`, see [UPDATES.md](UPDATES.md#internet-weather-a-station-with-no-station) |
-| **Computer** | Raspberry Pi 400, Raspberry Pi OS (Debian 13); an Ubuntu laptop | other Pis (3 B+, 4, 5), Mac, Windows, Docker |
-| **Installing** | the boot loader's install, update and roll-back, in a test folder; Docker's first start on Windows 11 | the card image and the installers end to end on a fresh machine |
-| **Wall kiosk** | an Android 14 emulator | a real phone |
-| **Weather networks** | — | Windy, PWSweather, Weathercloud, CWOP with real accounts |
-| **MCP** | a test client over the network | Claude Desktop through `mcp-remote` |
+| **A Pi already running Raspberry Pi OS** | `curl -fsSL https://raw.githubusercontent.com/akienm/CC0AC-Weather/main/setup/install.sh \| sudo bash` | Takes over the Pi's network port for the hub, unless the Pi itself is plugged into your router there (`--no-hub-network` to be sure) |
+| **Debian or Ubuntu** (an old laptop works well) | the same line | Lists the wired ports your network isn't on and asks which one the hub's cable goes into; Enter for none. Stops if no other port reaches the internet. Without a terminal to ask: `--hub-network PORT` |
+| **Mac** | the same line **without** `sudo` | Needs Python 3 from python.org or Homebrew; runs while you're logged in. Untested: no Mac to test on |
+| **Windows 10/11** | in PowerShell: `irm https://raw.githubusercontent.com/akienm/CC0AC-Weather/main/setup/install.ps1 \| iex` | Installs Python if it's missing; starts when you log on. Untested |
+| **Docker** (anything) | `cd setup/docker && docker compose up -d` in a copy of this project | Readings and settings in the volume `cc0ac-weather-data`. Tested to the setup page on Docker Desktop, Windows 11; not yet with a hub |
 
-[SUPPORTED.md](SUPPORTED.md) has every brand and model, and how sure we are of each.
+Only a Pi or a Debian machine with a spare wired port can take the hub's
+cable. A laptop usually has one network port, and it's the one it reaches your
+network by; a USB network adapter adds a second, for the hub. The adapter's
+port has a name like `enx00e04c680001` (`ip -br link` lists them), and the
+installer offers it by that name. A laptop's own screen and keyboard then serve
+as the station's console, and its battery rides out a power cut. Everything else uses the radio dongle, a console upload from another
+brand, or the **internet's weather** (no station at all: `[online]` in the
+settings, see [UPDATES.md](UPDATES.md)).
 
-## Theory of operation
-
-The AcuRite **Access** hub (or smartHUB) uploads each sensor reading over HTTPS
-to a server named in its settings. CC0AC-Weather is that server:
-
-    sensors ──radio──▶ Access hub ──HTTPS──▶ this program (port 443)
-                                              ├─ current.json / current.js / history.csv / weather.db
-                                              ├─ relays the reading to AcuRite (optional; their app keeps working)
-                                              └─ web server ──▶ weather.html dashboard, charts.html charts
-    The hub uploads to Weather Underground itself; that is untouched.
-
-- One burst every 5 minutes, one request per sensor (Atlas, 5-in-1, Iris, towers, …).
-- `current.js` loads with a plain `<script>` tag, so the dashboard also works
-  opened as a file or from any static host — no web server required to view it.
-- `weather.db` (SQLite) keeps every reading for good, one row per sensor reading,
-  with each value in its own column and the hub's whole request kept beside it,
-  so nothing the hub sends is lost. `history.csv` is the same record as plain text.
-  Readings from before the database existed load from the raw hub logs:
-  `python3 acurite-capture.py --import-raw` (safe to run again).
-
-No hub? The older path still works: an RTL-SDR dongle and rtl_433 receive the
-sensors directly (see *Radio capture* below).
+From a copy of the project, add `--source .` (Windows: `-Source .`) to install
+that copy instead of downloading the newest release. The old
+`setup/install-pi.sh` still works and runs `install.sh`.
 
 ## The easy way: a ready-made Raspberry Pi card
 
@@ -235,33 +222,7 @@ the same page.
 It can also warn about the weather itself: frost, heat, a falling barometer
 and lightning close by (see [Weather alerts](#weather-alerts)).
 
-## Other computers: one command
 
-Every installer below sets up the same program and then hands it to a small
-boot loader that starts it and keeps it patched
-([UPDATES.md](UPDATES.md)). Each is safe to run again. When it finishes it
-prints an address: open it and answer the setup page.
-
-| Computer | Run this | Notes |
-|---|---|---|
-| **A Pi already running Raspberry Pi OS** | `curl -fsSL https://raw.githubusercontent.com/akienm/CC0AC-Weather/main/setup/install.sh \| sudo bash` | Takes over the Pi's network port for the hub, unless the Pi itself is plugged into your router there (`--no-hub-network` to be sure) |
-| **Debian or Ubuntu** (an old laptop works well) | the same line | Lists the wired ports your network isn't on and asks which one the hub's cable goes into; Enter for none. Stops if no other port reaches the internet. Without a terminal to ask: `--hub-network PORT` |
-| **Mac** | the same line **without** `sudo` | Needs Python 3 from python.org or Homebrew; runs while you're logged in. Untested: no Mac to test on |
-| **Windows 10/11** | in PowerShell: `irm https://raw.githubusercontent.com/akienm/CC0AC-Weather/main/setup/install.ps1 \| iex` | Installs Python if it's missing; starts when you log on. Untested |
-| **Docker** (anything) | `cd setup/docker && docker compose up -d` in a copy of this project | Readings and settings in the volume `cc0ac-weather-data`. Tested to the setup page on Docker Desktop, Windows 11; not yet with a hub |
-
-Only a Pi or a Debian machine with a spare wired port can take the hub's
-cable. A laptop usually has one network port, and it's the one it reaches your
-network by; a USB network adapter adds a second, for the hub. The adapter's
-port has a name like `enx00e04c680001` (`ip -br link` lists them), and the
-installer offers it by that name. A laptop's own screen and keyboard then serve
-as the station's console, and its battery rides out a power cut. Everything else uses the radio dongle, a console upload from another
-brand, or the **internet's weather** (no station at all: `[online]` in the
-settings, see [UPDATES.md](UPDATES.md)).
-
-From a copy of the project, add `--source .` (Windows: `-Source .`) to install
-that copy instead of downloading the newest release. The old
-`setup/install-pi.sh` still works and runs `install.sh`.
 
 ## Looked after for you
 
@@ -491,6 +452,24 @@ sends POST with everything in the query string; AcuRite rejects relayed
 readings unless the hub's own `Atlas/<fw>` User-Agent is passed along; and
 if the hub gets an error back it resends the same reading forever, so refusals
 are answered locally.
+
+## What it runs on, and what's been tested
+
+"Tested" here means run, not read: something happened and we watched it.
+
+| | Tested | Written, not yet tested |
+|---|---|---|
+| **Station** | AcuRite Access hub with an Atlas and indoor towers, in a house every day since 4 October 2026 | smartHUB; the 5-in-1, Iris and other AcuRite sensors |
+| **Radio (no hub)** | RTL-SDR Blog V4 dongle hearing AcuRite sensors, live; 13 other models from recorded radio | the rest of [SUPPORTED.md](SUPPORTED.md) |
+| **Other brands' consoles** | — | Ambient Weather, Ecowitt and Wunderground-format uploads |
+| **No station** | the test suite only | the National Weather Service (US) or Open-Meteo (anywhere) as the only source: `[online]`, see [UPDATES.md](UPDATES.md#internet-weather-a-station-with-no-station) |
+| **Computer** | Raspberry Pi 400, Raspberry Pi OS (Debian 13); an Ubuntu laptop | other Pis (3 B+, 4, 5), Mac, Windows, Docker |
+| **Installing** | the boot loader's install, update and roll-back, in a test folder; Docker's first start on Windows 11 | the card image and the installers end to end on a fresh machine |
+| **Wall kiosk** | an Android 14 emulator | a real phone |
+| **Weather networks** | — | Windy, PWSweather, Weathercloud, CWOP with real accounts |
+| **MCP** | a test client over the network | Claude Desktop through `mcp-remote` |
+
+[SUPPORTED.md](SUPPORTED.md) has every brand and model, and how sure we are of each.
 
 ### The dashboard
 
@@ -1093,6 +1072,29 @@ readings at once; the Records card counts them within the hour.
 **Status:** each format is checked by the tests on small sample files (the
 Cumulus ones written from Cumulus's documentation of its log); not yet measured
 on a real WeeWX database, Cumulus install or Weather Underground account.
+
+## Theory of operation
+
+The AcuRite **Access** hub (or smartHUB) uploads each sensor reading over HTTPS
+to a server named in its settings. CC0AC-Weather is that server:
+
+    sensors ──radio──▶ Access hub ──HTTPS──▶ this program (port 443)
+                                              ├─ current.json / current.js / history.csv / weather.db
+                                              ├─ relays the reading to AcuRite (optional; their app keeps working)
+                                              └─ web server ──▶ weather.html dashboard, charts.html charts
+    The hub uploads to Weather Underground itself; that is untouched.
+
+- One burst every 5 minutes, one request per sensor (Atlas, 5-in-1, Iris, towers, …).
+- `current.js` loads with a plain `<script>` tag, so the dashboard also works
+  opened as a file or from any static host — no web server required to view it.
+- `weather.db` (SQLite) keeps every reading for good, one row per sensor reading,
+  with each value in its own column and the hub's whole request kept beside it,
+  so nothing the hub sends is lost. `history.csv` is the same record as plain text.
+  Readings from before the database existed load from the raw hub logs:
+  `python3 acurite-capture.py --import-raw` (safe to run again).
+
+No hub? The older path still works: an RTL-SDR dongle and rtl_433 receive the
+sensors directly (see *Radio capture* below).
 
 ## Radio capture (no hub)
 
