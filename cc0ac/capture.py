@@ -73,11 +73,7 @@ from cc0ac.config import (
 )
 from cc0ac.forecast import run_forecast
 from cc0ac.recorder import (
-    current_lock,
-    record_reading,
-    reference_temp,
-    refresh_snapshot,
-    seed_heard,
+    Recorder,
 )
 from cc0ac.sources import OUTDOOR_TYPES, Reading, acurite_access, derive
 from cc0ac.store import (
@@ -232,9 +228,10 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
             "sensor_rows": card_rows(cfg, "sensor_rows"),
             "sensor_cards": sensor_config.cards(cfg), "sun_moon_icon": sensor_config.sun_moon_icon(cfg)}
     db_path = database_path(cfg)
-    with current_lock:
-        seed_heard(db_path, time.time())
-    refresh_snapshot(write_path, sensors, page)
+    recorder = Recorder()
+    with recorder.lock:
+        recorder.seed_heard(db_path, time.time())
+    recorder.refresh_snapshot(write_path, sensors, page)
 
     queues = []
     for output in load_outputs():
@@ -260,8 +257,8 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
         outdoor = reading.type in OUTDOOR_TYPES
         at = iso_to_epoch(reading.received_utc)
         reading.fields, reading.suspect = watch.check(
-            reading.sensor_id, reading.fields, at, outdoor, reference_temp(reading.sensor_id, at) if outdoor else None)
-        entry = record_reading(reading, write_path, sensors, page, db_path)
+            reading.sensor_id, reading.fields, at, outdoor, recorder.reference_temp(reading.sensor_id, at) if outdoor else None)
+        entry = recorder.record_reading(reading, write_path, sensors, page, db_path)
         for name, todo in queues:
             try:
                 todo.put_nowait(reading)

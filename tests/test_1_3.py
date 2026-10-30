@@ -379,9 +379,9 @@ class PressureSeed(unittest.TestCase):
                     row[at["pressure_inhg"]] = "30.10" if t < now - 2.5 * 3600 else "30.00"
                     f.write(",".join(row) + "\n")
             self.assertGreater(hist.stat().st_size, 512 * 1024)
-            recorder._pressure.clear()
-            recorder._seed_pressure(hist, now)
-            self.assertEqual(recorder._pressure_change(now, 30.0), -0.1)
+            rec = recorder.Recorder()
+            rec._seed_pressure(hist, now)
+            self.assertEqual(rec._pressure_change(now, 30.0), -0.1)
 
 if __name__ == "__main__":
     unittest.main()

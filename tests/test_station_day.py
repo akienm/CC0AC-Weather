@@ -117,37 +117,43 @@ class Strikes(unittest.TestCase):
     """The hub sends a sensor's running count; one strike once showed as 256."""
 
     def setUp(self):
-        recorder._strikes.clear()
+        self.rec = recorder.Recorder()
+
+    def test_each_recorder_counts_on_its_own(self):
+        other = recorder.Recorder()
+        self.rec._count_strikes("s", 10, "2026-10-24")
+        self.rec._count_strikes("s", 14, "2026-10-24")
+        self.assertEqual(other._count_strikes("s", 14, "2026-10-24"), 0)   # a new one has heard nothing
 
     def test_the_count_already_standing_is_not_todays(self):
-        self.assertEqual(recorder._count_strikes("s", 256, "2026-10-24"), 0)
-        self.assertEqual(recorder._count_strikes("s", 257, "2026-10-24"), 1)
-        self.assertEqual(recorder._count_strikes("s", 257, "2026-10-24"), 1)
+        self.assertEqual(self.rec._count_strikes("s", 256, "2026-10-24"), 0)
+        self.assertEqual(self.rec._count_strikes("s", 257, "2026-10-24"), 1)
+        self.assertEqual(self.rec._count_strikes("s", 257, "2026-10-24"), 1)
 
     def test_a_count_started_again_adds_its_whole_count(self):
-        recorder._count_strikes("s", 250, "2026-10-24")
-        recorder._count_strikes("s", 252, "2026-10-24")
-        self.assertEqual(recorder._count_strikes("s", 3, "2026-10-24"), 5)
+        self.rec._count_strikes("s", 250, "2026-10-24")
+        self.rec._count_strikes("s", 252, "2026-10-24")
+        self.assertEqual(self.rec._count_strikes("s", 3, "2026-10-24"), 5)
 
     def test_midnight_starts_the_day_at_zero(self):
-        recorder._count_strikes("s", 10, "2026-10-24")
-        recorder._count_strikes("s", 14, "2026-10-24")
-        self.assertEqual(recorder._count_strikes("s", 14, "2026-10-25"), 0)
-        self.assertEqual(recorder._count_strikes("s", 15, "2026-10-25"), 1)
+        self.rec._count_strikes("s", 10, "2026-10-24")
+        self.rec._count_strikes("s", 14, "2026-10-24")
+        self.assertEqual(self.rec._count_strikes("s", 14, "2026-10-25"), 0)
+        self.assertEqual(self.rec._count_strikes("s", 15, "2026-10-25"), 1)
 
     def test_one_strike_that_reads_256_counts_once(self):
         # The pattern an Access hub sent on 2026-10-23: 0, then 256 with the first
         # strike time, then 256 with that same time.
-        self.assertEqual(recorder._count_strikes("s", 0, "2026-10-24"), 0)
-        self.assertEqual(recorder._count_strikes("s", 256, "2026-10-24", "2026-10-24T09:10:25"), 1)
-        self.assertEqual(recorder._count_strikes("s", 256, "2026-10-24", "2026-10-24T09:10:25"), 1)
-        self.assertEqual(recorder._count_strikes("s", 512, "2026-10-24", "2026-10-24T11:00:00"), 2)
+        self.assertEqual(self.rec._count_strikes("s", 0, "2026-10-24"), 0)
+        self.assertEqual(self.rec._count_strikes("s", 256, "2026-10-24", "2026-10-24T09:10:25"), 1)
+        self.assertEqual(self.rec._count_strikes("s", 256, "2026-10-24", "2026-10-24T09:10:25"), 1)
+        self.assertEqual(self.rec._count_strikes("s", 512, "2026-10-24", "2026-10-24T11:00:00"), 2)
 
     def test_a_new_strike_time_counts_even_when_the_count_stands(self):
-        recorder._count_strikes("s", 7, "2026-10-24", "2026-10-24T09:00:00")
-        self.assertEqual(recorder._count_strikes("s", 7, "2026-10-24", "2026-10-24T09:00:00"), 0)
-        self.assertEqual(recorder._count_strikes("s", 7, "2026-10-24", "2026-10-24T09:30:00"), 1)
-        self.assertEqual(recorder._count_strikes("s", 10, "2026-10-24", "2026-10-24T09:40:00"), 4)
+        self.rec._count_strikes("s", 7, "2026-10-24", "2026-10-24T09:00:00")
+        self.assertEqual(self.rec._count_strikes("s", 7, "2026-10-24", "2026-10-24T09:00:00"), 0)
+        self.assertEqual(self.rec._count_strikes("s", 7, "2026-10-24", "2026-10-24T09:30:00"), 1)
+        self.assertEqual(self.rec._count_strikes("s", 10, "2026-10-24", "2026-10-24T09:40:00"), 4)
 
     def test_a_restart_reads_the_day_back_from_the_store(self):
         now = datetime(2026, 10, 24, 15, 0).astimezone().timestamp()
@@ -161,8 +167,8 @@ class Strikes(unittest.TestCase):
                             (store.epoch_to_iso(at), "s", count, f"q{i}"))
             con.commit()
             con.close()
-            recorder._seed_strikes(db, "s", now)
-        self.assertEqual(recorder._count_strikes("s", 259, store.epoch_to_day(now)), 4)
+            self.rec._seed_strikes(db, "s", now)
+        self.assertEqual(self.rec._count_strikes("s", 259, store.epoch_to_day(now)), 4)
 
     def test_the_card_gets_strikes_today(self):
         with tempfile.TemporaryDirectory() as d:
@@ -172,7 +178,7 @@ class Strikes(unittest.TestCase):
                 r = capture.Reading(source="acurite-access", sensor_id="s", type="Atlas",
                                     received_utc=at.strftime("%Y-%m-%dT%H:%M:%SZ"), raw=f"q{i}",
                                     fields={"strike_count": count})
-                entry = recorder.record_reading(r, out, {})
+                entry = self.rec.record_reading(r, out, {})
         self.assertEqual((entry["fields"]["strike_count"], entry["fields"]["strikes_today"]), (257, 1))
 
     def test_a_strike_is_stamped_only_when_the_count_rises(self):
@@ -182,7 +188,7 @@ class Strikes(unittest.TestCase):
                 at = f"2026-10-24T20:0{i}:00Z"
                 r = capture.Reading(source="acurite-access", sensor_id="s2", type="Atlas", received_utc=at,
                                     raw=f"r{i}", fields={"strike_count": count, "last_strike_mi": 6})
-                stamps.append(recorder.record_reading(r, Path(d), {})["fields"].get("last_strike_heard"))
+                stamps.append(self.rec.record_reading(r, Path(d), {})["fields"].get("last_strike_heard"))
         self.assertEqual(stamps, [None, None, "2026-10-24T20:02:00Z", "2026-10-24T20:02:00Z"])
 
 

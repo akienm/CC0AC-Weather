@@ -144,8 +144,10 @@ class Stored(unittest.TestCase):
         self.dir = tempfile.TemporaryDirectory()
         self.home = Path(self.dir.name)
         self.db = self.home / "w.db"
+        self.rec = recorder.Recorder()
 
     def tearDown(self):
+        self.rec.close()
         self.dir.cleanup()
 
     def test_a_database_from_before_gets_the_column(self):
@@ -179,7 +181,7 @@ class Stored(unittest.TestCase):
         def rec(i, fields, suspect=None):
             r = capture.Reading(source="acurite-access", sensor_id="sx", type="Atlas", received_utc=iso(T0 + i * 60),
                                 raw=f"card{i}", fields=fields, suspect=suspect or {})
-            return json.loads(json.dumps(recorder.record_reading(r, self.home, {}, db_path=self.db)))
+            return json.loads(json.dumps(self.rec.record_reading(r, self.home, {}, db_path=self.db)))
         rec(0, {"temp_f": 50, "wind_mph": 5})
         e = rec(1, {"temp_f": 50}, {"wind_mph": {"value": 200, "why": "too fast"}})
         self.assertEqual(e["fields"]["wind_mph"], 5)                        # the last believed
