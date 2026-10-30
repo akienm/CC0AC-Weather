@@ -113,6 +113,20 @@ class LastDay(unittest.TestCase):
         self.assertIn('"24h"', page.split("includes(h)")[0].rsplit("[", 1)[1])
 
 
+class Restart(unittest.TestCase):
+    def test_the_outlook_and_pressure_trend_survive_a_restart(self):
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d)
+            (out / "current.json").write_text(json.dumps({
+                "written": "2026-10-30T23:00:00Z", "hub": "24C86E000000", "pressure_change_3h": 0.02,
+                "zambretti": "Settled fine",
+                "sensors": [{"sensor_id": "00000505", "type": "Atlas", "name": "Atlas", "fields": {"pressure_inhg": 30.2}}]}))
+            recorder.Recorder().refresh_snapshot(out, {}, None)
+            now = json.loads((out / "current.json").read_text())
+        self.assertEqual((now["zambretti"], now["pressure_change_3h"]), ("Settled fine", 0.02))
+        self.assertEqual(now["sensors"][0]["sensor_id"], "00000505")
+
+
 class Strikes(unittest.TestCase):
     """The hub sends a sensor's running count; one strike once showed as 256."""
 

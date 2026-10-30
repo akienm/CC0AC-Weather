@@ -229,8 +229,11 @@ class Recorder:
                 if sid and isinstance(entry.get("fields"), dict):
                     entry["name"] = sensors.get(sid, entry.get("name") or f"{entry.get('type', 'unknown')} {sid}")
                     self._current.setdefault(sid, entry)
-            if old.get("pressure_change_3h") is not None:
-                self._current_page.setdefault("pressure_change_3h", old["pressure_change_3h"])
+            # The outlook comes from the barometer, which only the hub sends (about every
+            # 5 minutes); without these the card would lack it until the hub is next heard.
+            for key in ("pressure_change_3h", "zambretti"):
+                if old.get(key) is not None:
+                    self._current_page.setdefault(key, old[key])
             if self._current:
                 self._write_snapshot(write_path, sensors, page, old.get("written", ""), old.get("hub", ""))
 
