@@ -7,7 +7,6 @@ station's readings, and the year's numbers against that month's.
 """
 import argparse
 import configparser
-import importlib.util
 import json
 import sqlite3
 import sys
@@ -25,6 +24,10 @@ from cc0ac import importer     # noqa: E402
 from cc0ac import noaa         # noqa: E402
 
 from cc0ac import capture
+
+from cc0ac import store
+
+from cc0ac import web
 
 SENSOR = "00001234"
 
@@ -48,14 +51,14 @@ class Station(unittest.TestCase):
         self.dir = tempfile.TemporaryDirectory()
         self.root = Path(self.dir.name)
         self.db = self.root / "weather.db"
-        con = capture.open_db(self.db)
+        con = store.open_db(self.db)
         n = 0
         for day, hour, temp, rain, wind, gust, heading in (
                 (1, 3, 40.0, 0.0, 2.0, 4.0, 180), (1, 9, 50.0, 0.1, 4.0, 9.0, 180),
                 (1, 15, 70.0, 0.3, 10.0, 21.0, 200), (1, 21, 55.0, 0.3, 0.0, 3.0, 0),
                 (3, 4, 30.0, 0.0, 6.0, 8.0, 270), (3, 14, 44.0, 0.0, 6.0, 12.0, 270)):
             n += 1
-            capture.store_reading(con, capture.Reading(
+            store.store_reading(con, capture.Reading(
                 source="acurite-access", sensor_id=SENSOR, type="Atlas", received_utc=utc(2024, 5, day, hour, 0),
                 raw=f"fake-{n}", fields={"temp_f": temp, "rain_day_in": rain, "wind_mph": wind,
                                          "wind_gust_mph": gust, "wind_dir_deg": heading}))
@@ -66,7 +69,7 @@ class Station(unittest.TestCase):
 
     def summary(self, period, units=None):
         c = cfg(units=units or {})
-        return capture.noaa_summary(c, self.db, {SENSOR: "Back yard"}, {"period": period})
+        return store.noaa_summary(c, self.db, {SENSOR: "Back yard"}, {"period": period})
 
 
 class Month(Station):
@@ -98,7 +101,7 @@ class Month(Station):
 
     def test_a_sensor_without_readings_then_is_refused(self):
         with self.assertRaises(ValueError):
-            capture.noaa_summary(cfg(), self.db, {}, {"period": "2024-05", "sensor": "00009999"})
+            store.noaa_summary(cfg(), self.db, {}, {"period": "2024-05", "sensor": "00009999"})
         with self.assertRaises(ValueError):
             noaa.period("May 2024")
 
@@ -106,7 +109,7 @@ class Month(Station):
 class Year(Station):
     def test_a_year_from_the_daily_table_agrees_with_its_month(self):
         con = sqlite3.connect(self.db)
-        capture.roll_up(con, datetime(2024, 6, 1).timestamp())
+        store.roll_up(con, datetime(2024, 6, 1).timestamp())
         con.close()
         text = self.summary("2024")["text"]
         lines = text.splitlines()
@@ -125,7 +128,7 @@ class Year(Station):
 class Pages(Station):
     def setUp(self):
         super().setUp()
-        handler = capture._make_web_handler(self.root / "out", self.db, {SENSOR: "Back yard"}, cfg=cfg())
+        handler = web._make_web_handler(self.root / "out", self.db, {SENSOR: "Back yard"}, cfg=cfg())
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
 
@@ -147,7 +150,7 @@ class Pages(Station):
         self.assertIn('filename="NOAA-2024-05.txt"', headers["Content-Disposition"])
         self.assertTrue(text.startswith(" " * 10))
         for path in ("/noaa", "/noaa.json", "/noaa.txt", "/noaa.html"):
-            self.assertNotIn(path, capture.OUTSIDE_PATHS)
+            self.assertNotIn(path, web.OUTSIDE_PATHS)
 
     def test_a_bad_period_is_a_400(self):
         with self.assertRaises(urllib.error.HTTPError) as e:
@@ -221,8 +224,8 @@ class Cumulus(unittest.TestCase):
         (self.root / "Cumulus.ini").write_text("[Station]\nWindUnit=1\nPressureUnit=2\nRainUnit=1\nTempUnit=1\n")
         (self.root / "data" / "Oct24log.txt").write_text(LOG_US)
         db = self.root / "weather.db"
-        con = capture.open_db(db)
-        capture.store_reading(con, capture.Reading(source="acurite-access", sensor_id=SENSOR, type="Atlas",
+        con = store.open_db(db)
+        store.store_reading(con, capture.Reading(source="acurite-access", sensor_id=SENSOR, type="Atlas",
                                                    received_utc="2026-10-01T00:00:00Z", raw="live-1",
                                                    fields={"temp_f": 60.0}))
         con.close()

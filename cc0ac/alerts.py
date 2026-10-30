@@ -32,7 +32,7 @@ import smtplib
 import ssl
 import time
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime
 from email.message import EmailMessage
 from pathlib import Path
 

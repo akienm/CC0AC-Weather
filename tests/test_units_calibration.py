@@ -5,7 +5,6 @@ These need no network or radio; every file goes in a folder of its own that is
 thrown away afterwards.
 """
 import configparser
-import importlib.util
 import json
 import re
 import sqlite3
@@ -25,6 +24,12 @@ from cc0ac import calibration   # noqa: E402
 from cc0ac import units         # noqa: E402
 
 from cc0ac import capture
+
+from cc0ac import status
+
+from cc0ac import store
+
+from cc0ac import web
 
 US = units.SYSTEMS["us"]
 METRIC = units.SYSTEMS["metric"]
@@ -183,8 +188,8 @@ class Served(unittest.TestCase):
         (home / "out" / "current.json").write_text(json.dumps({"sensors": []}))
         cfg = config(device={"write_path": str(home / "out")}, storage={"database": str(home / "w.db")},
                      units={"system": "metric"})
-        capture.open_db(home / "w.db").close()
-        handler = capture._make_web_handler(home / "out", home / "w.db", {}, cfg=cfg)
+        store.open_db(home / "w.db").close()
+        handler = web._make_web_handler(home / "out", home / "w.db", {}, cfg=cfg)
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
 
@@ -199,7 +204,7 @@ class Served(unittest.TestCase):
 
     def test_the_script_and_the_choice_reach_the_page(self):
         self.assertIn(b"const Units", self.get("/units.js"))
-        self.assertIn("/units.js", capture.OUTSIDE_PATHS)
+        self.assertIn("/units.js", web.OUTSIDE_PATHS)
         self.assertEqual(json.loads(self.get("/history.json?hours=1"))["units"], METRIC)
 
     def test_the_pages_load_it(self):
@@ -217,13 +222,13 @@ class StatusShowsIt(unittest.TestCase):
                 {"sensor_id": "00001111", "name": "Trailer", "type": "tower", "fields": {}}]}))
             cfg = config(device={"write_path": str(home / "out")}, storage={"database": str(home / "w.db")}, hub={"raw_dir": str(home / "hub-raw")},
                          calibration={"00001111": "temp_f -1.5"})
-            capture.open_db(home / "w.db").close()
-            saved = capture.CONFIG_DIR
-            capture.CONFIG_DIR = home
+            store.open_db(home / "w.db").close()
+            saved = status.CONFIG_DIR
+            status.CONFIG_DIR = home
             try:
-                s = capture.system_status(cfg, home / "out")
+                s = status.system_status(cfg, home / "out")
             finally:
-                capture.CONFIG_DIR = saved
+                status.CONFIG_DIR = saved
         self.assertEqual(s["sensors"][0]["calibration"], "temp_f -1.5")
         self.assertIn("calibrated:", (HERE / "status.html").read_text())
 

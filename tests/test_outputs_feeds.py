@@ -184,7 +184,6 @@ class Influx(Sends):
 
 class Loaded(unittest.TestCase):
     def test_the_program_finds_both(self):
-        import importlib.util
         from cc0ac import capture
         names = {o.NAME for o in capture.load_outputs()}
         self.assertTrue({"webhook", "influxdb"} <= names)

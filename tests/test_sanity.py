@@ -5,7 +5,6 @@ These need no network or radio; every file goes in a folder of its own that is
 thrown away afterwards.
 """
 import configparser
-import importlib.util
 import json
 import sqlite3
 import sys
@@ -24,6 +23,12 @@ from cc0ac import sanity                    # noqa: E402
 from cc0ac.sources import acurite_access   # noqa: E402
 
 from cc0ac import capture
+
+from cc0ac import recorder
+
+from cc0ac import status
+
+from cc0ac import store
 
 T0 = 1_790_000_000.0
 
@@ -149,7 +154,7 @@ class Stored(unittest.TestCase):
         con.execute("INSERT INTO readings VALUES ('2026-10-24T00:00:00Z', 's', 50, 'q')")
         con.commit()
         con.close()
-        capture.open_db(self.db).close()
+        store.open_db(self.db).close()
         con = sqlite3.connect(self.db)
         self.assertEqual(con.execute("SELECT temp_f, suspect FROM readings").fetchone(), (50, None))
         con.close()
@@ -174,7 +179,7 @@ class Stored(unittest.TestCase):
         def rec(i, fields, suspect=None):
             r = capture.Reading(source="acurite-access", sensor_id="sx", type="Atlas", received_utc=iso(T0 + i * 60),
                                 raw=f"card{i}", fields=fields, suspect=suspect or {})
-            return json.loads(json.dumps(capture.record_reading(r, self.home, {}, db_path=self.db)))
+            return json.loads(json.dumps(recorder.record_reading(r, self.home, {}, db_path=self.db)))
         rec(0, {"temp_f": 50, "wind_mph": 5})
         e = rec(1, {"temp_f": 50}, {"wind_mph": {"value": 200, "why": "too fast"}})
         self.assertEqual(e["fields"]["wind_mph"], 5)                        # the last believed
@@ -185,9 +190,9 @@ class Stored(unittest.TestCase):
         self.assertNotIn("suspect", e)
 
     def store(self, rows):
-        con = capture.open_db(self.db)
+        con = store.open_db(self.db)
         for i, (sid, kind, at, fields, suspect) in enumerate(rows):
-            capture.store_reading(con, capture.Reading(source="t", sensor_id=sid, type=kind, received_utc=iso(at),
+            store.store_reading(con, capture.Reading(source="t", sensor_id=sid, type=kind, received_utc=iso(at),
                                                        raw=f"s{i}", fields=fields, suspect=suspect))
         con.commit()
         con.close()
@@ -197,7 +202,7 @@ class Stored(unittest.TestCase):
         self.store([("o", "Atlas", now - 600, {"temp_f": 50}, {}),
                     ("o", "Atlas", now - 300, {"temp_f": 50}, {"wind_gust_mph": {"value": 200, "why": "x"}}),
                     ("r", "tower", now - 300, {}, {"temp_f": {"value": 120, "why": "x"}})])
-        h = capture.history(self.db, {}, {"period": "24h"})
+        h = store.history(self.db, {}, {"period": "24h"})
         self.assertEqual([v for v in h["held"]["wind_gust_mph"] if v is not None], [200])
         self.assertTrue(all(v is None for v in h["outdoor"]["wind_gust_mph"]))
         room = next(r for r in h["rooms"] if r["id"] == "r")
@@ -209,7 +214,7 @@ class Stored(unittest.TestCase):
                     ("o", "Atlas", now - 300, {}, {"temp_f": {"value": 1, "why": "x"}}),
                     ("o", "Atlas", now - 2 * 86400, {}, {"temp_f": {"value": 1, "why": "x"}}),
                     ("o", "Atlas", now - 60, {"temp_f": 50}, {})])
-        self.assertEqual(capture._held_back(self.db, now), {"o": 2})
+        self.assertEqual(status._held_back(self.db, now), {"o": 2})
         page = (HERE / "status.html").read_text()
         self.assertIn("held_back_24h", page)
 
@@ -218,7 +223,7 @@ class Stored(unittest.TestCase):
         self.store([("o", "Atlas", now - 120, {"temp_f": 50, "humidity_pct": 40}, {}),
                     ("o", "Atlas", now - 60, {"humidity_pct": 41}, {"temp_f": {"value": 120, "why": "x"}}),
                     ("o", "Atlas", now - 5 * 3600, {"pressure_inhg": 30}, {})])
-        got = capture._believed_before(self.db, "o")
+        got = store.believed_before(self.db, "o")
         self.assertEqual({k: v[0] for k, v in got.items()}, {"temp_f": 50, "humidity_pct": 41})
 
 

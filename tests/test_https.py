@@ -7,7 +7,6 @@ Name cc0test and its token are made up.
 """
 import configparser
 import http.client
-import importlib.util
 import io
 import logging
 import os
@@ -163,7 +162,7 @@ class NoCertificate(unittest.TestCase):
 
 class TheDaemon(unittest.TestCase):
     def test_run_web_server_serves_the_dashboard_over_https(self):
-        from cc0ac import capture
+        from cc0ac import web
         with tempfile.TemporaryDirectory() as tmp:
             cert, key = make_cert(Path(tmp), "station")
             with socket.socket() as s:
@@ -172,7 +171,7 @@ class TheDaemon(unittest.TestCase):
             cfg = configparser.ConfigParser()
             cfg.read_string(f"[device]\nwrite_path = {tmp}\n[sensors]\n[web]\nport = {port}\ncertificate = {cert}\nkey = {key}\n"
                             f"[storage]\ndatabase = {tmp}/weather.db\n")
-            threading.Thread(target=capture.run_web_server, args=(cfg, Path(tmp)), daemon=True).start()
+            threading.Thread(target=web.run_web_server, args=(cfg, Path(tmp)), daemon=True).start()
             for _ in range(50):
                 try:
                     conn = http.client.HTTPSConnection("localhost", port, timeout=5, context=client_context(cert))

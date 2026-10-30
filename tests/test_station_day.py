@@ -5,10 +5,8 @@ These need no network or radio. Each one that sets a time zone puts the
 computer's back afterwards.
 """
 import configparser
-import importlib.util
 import json
 import os
-import sqlite3
 import sys
 import tempfile
 import time
@@ -25,6 +23,12 @@ from cc0ac import alerts             # noqa: E402
 from cc0ac import wizard             # noqa: E402
 
 from cc0ac import capture
+
+from cc0ac import config
+
+from cc0ac import recorder
+
+from cc0ac import store
 
 ZONE = "America/Denver"
 
@@ -52,27 +56,27 @@ class TimeZoneKept(unittest.TestCase):
 @unittest.skipUnless((Path("/usr/share/zoneinfo") / ZONE).is_file(), "no tz database on this computer")
 class StationTimeZone(TimeZoneKept):
     def test_today_starts_at_the_stations_midnight_on_a_utc_computer(self):
-        capture.apply_timezone(station(timezone=ZONE))
+        config.apply_timezone(station(timezone=ZONE))
         now = datetime.now().astimezone()
-        lo, hi, period = capture._history_bounds({"period": "today"}, 0, now)
+        lo, hi, period = store._history_bounds({"period": "today"}, 0, now)
         start = datetime.fromtimestamp(lo, ZoneInfo(ZONE))
         self.assertEqual((period, start.hour, start.minute), ("today", 0, 0))
         self.assertEqual(start.date(), datetime.now(ZoneInfo(ZONE)).date())
 
     def test_the_days_rain_and_records_follow_it_too(self):
-        capture.apply_timezone(station(timezone=ZONE))
+        config.apply_timezone(station(timezone=ZONE))
         # 03:00 UTC is the evening before, in Denver.
         at = datetime(2026, 10, 24, 3, 0, tzinfo=ZoneInfo("UTC")).timestamp()
-        self.assertEqual(capture._local_day(at), "2026-10-23")
+        self.assertEqual(store.epoch_to_day(at), "2026-10-23")
 
     def test_unset_leaves_the_computers_clock(self):
-        capture.apply_timezone(station())
+        config.apply_timezone(station())
         self.assertEqual(os.environ["TZ"], "UTC")
 
     def test_a_zone_this_computer_lacks_is_refused_loudly(self):
         for bad in ("Mars/Olympus_Mons", "../../etc/passwd", "America/Denver; rm"):
             with self.assertLogs(capture.log, "ERROR"):
-                capture.apply_timezone(station(timezone=bad))
+                config.apply_timezone(station(timezone=bad))
             self.assertEqual(os.environ["TZ"], "UTC")
 
     def test_the_boot_loader_schedules_in_it(self):
@@ -99,7 +103,7 @@ class SetupPage(unittest.TestCase):
 class LastDay(unittest.TestCase):
     def test_24_hours_is_from_this_time_yesterday(self):
         now = datetime(2026, 10, 24, 15, 30).astimezone()
-        lo, hi, period = capture._history_bounds({"period": "24h"}, 0, now)
+        lo, hi, period = store._history_bounds({"period": "24h"}, 0, now)
         self.assertEqual((period, hi - lo), ("24h", 86400))
         self.assertEqual(hi, now.timestamp())
 
@@ -113,52 +117,52 @@ class Strikes(unittest.TestCase):
     """The hub sends a sensor's running count; one strike once showed as 256."""
 
     def setUp(self):
-        capture._strikes.clear()
+        recorder._strikes.clear()
 
     def test_the_count_already_standing_is_not_todays(self):
-        self.assertEqual(capture._count_strikes("s", 256, "2026-10-24"), 0)
-        self.assertEqual(capture._count_strikes("s", 257, "2026-10-24"), 1)
-        self.assertEqual(capture._count_strikes("s", 257, "2026-10-24"), 1)
+        self.assertEqual(recorder._count_strikes("s", 256, "2026-10-24"), 0)
+        self.assertEqual(recorder._count_strikes("s", 257, "2026-10-24"), 1)
+        self.assertEqual(recorder._count_strikes("s", 257, "2026-10-24"), 1)
 
     def test_a_count_started_again_adds_its_whole_count(self):
-        capture._count_strikes("s", 250, "2026-10-24")
-        capture._count_strikes("s", 252, "2026-10-24")
-        self.assertEqual(capture._count_strikes("s", 3, "2026-10-24"), 5)
+        recorder._count_strikes("s", 250, "2026-10-24")
+        recorder._count_strikes("s", 252, "2026-10-24")
+        self.assertEqual(recorder._count_strikes("s", 3, "2026-10-24"), 5)
 
     def test_midnight_starts_the_day_at_zero(self):
-        capture._count_strikes("s", 10, "2026-10-24")
-        capture._count_strikes("s", 14, "2026-10-24")
-        self.assertEqual(capture._count_strikes("s", 14, "2026-10-25"), 0)
-        self.assertEqual(capture._count_strikes("s", 15, "2026-10-25"), 1)
+        recorder._count_strikes("s", 10, "2026-10-24")
+        recorder._count_strikes("s", 14, "2026-10-24")
+        self.assertEqual(recorder._count_strikes("s", 14, "2026-10-25"), 0)
+        self.assertEqual(recorder._count_strikes("s", 15, "2026-10-25"), 1)
 
     def test_one_strike_that_reads_256_counts_once(self):
         # The pattern an Access hub sent on 2026-10-23: 0, then 256 with the first
         # strike time, then 256 with that same time.
-        self.assertEqual(capture._count_strikes("s", 0, "2026-10-24"), 0)
-        self.assertEqual(capture._count_strikes("s", 256, "2026-10-24", "2026-10-24T09:10:25"), 1)
-        self.assertEqual(capture._count_strikes("s", 256, "2026-10-24", "2026-10-24T09:10:25"), 1)
-        self.assertEqual(capture._count_strikes("s", 512, "2026-10-24", "2026-10-24T11:00:00"), 2)
+        self.assertEqual(recorder._count_strikes("s", 0, "2026-10-24"), 0)
+        self.assertEqual(recorder._count_strikes("s", 256, "2026-10-24", "2026-10-24T09:10:25"), 1)
+        self.assertEqual(recorder._count_strikes("s", 256, "2026-10-24", "2026-10-24T09:10:25"), 1)
+        self.assertEqual(recorder._count_strikes("s", 512, "2026-10-24", "2026-10-24T11:00:00"), 2)
 
     def test_a_new_strike_time_counts_even_when_the_count_stands(self):
-        capture._count_strikes("s", 7, "2026-10-24", "2026-10-24T09:00:00")
-        self.assertEqual(capture._count_strikes("s", 7, "2026-10-24", "2026-10-24T09:00:00"), 0)
-        self.assertEqual(capture._count_strikes("s", 7, "2026-10-24", "2026-10-24T09:30:00"), 1)
-        self.assertEqual(capture._count_strikes("s", 10, "2026-10-24", "2026-10-24T09:40:00"), 4)
+        recorder._count_strikes("s", 7, "2026-10-24", "2026-10-24T09:00:00")
+        self.assertEqual(recorder._count_strikes("s", 7, "2026-10-24", "2026-10-24T09:00:00"), 0)
+        self.assertEqual(recorder._count_strikes("s", 7, "2026-10-24", "2026-10-24T09:30:00"), 1)
+        self.assertEqual(recorder._count_strikes("s", 10, "2026-10-24", "2026-10-24T09:40:00"), 4)
 
     def test_a_restart_reads_the_day_back_from_the_store(self):
         now = datetime(2026, 10, 24, 15, 0).astimezone().timestamp()
         midnight = datetime(2026, 10, 24).astimezone().timestamp()
         with tempfile.TemporaryDirectory() as d:
             db = Path(d) / "weather.db"
-            con = capture.open_db(db)
+            con = store.open_db(db)
             for i, (at, count) in enumerate([(midnight - 3600, 255), (midnight + 600, 256),
                                               (midnight + 1200, 256), (now - 60, 258)]):
                 con.execute("INSERT INTO readings (received_utc, sensor_id, strike_count, query) VALUES (?, ?, ?, ?)",
-                            (capture._iso(at), "s", count, f"q{i}"))
+                            (store.epoch_to_iso(at), "s", count, f"q{i}"))
             con.commit()
             con.close()
-            capture._seed_strikes(db, "s", now)
-        self.assertEqual(capture._count_strikes("s", 259, capture._local_day(now)), 4)
+            recorder._seed_strikes(db, "s", now)
+        self.assertEqual(recorder._count_strikes("s", 259, store.epoch_to_day(now)), 4)
 
     def test_the_card_gets_strikes_today(self):
         with tempfile.TemporaryDirectory() as d:
@@ -168,7 +172,7 @@ class Strikes(unittest.TestCase):
                 r = capture.Reading(source="acurite-access", sensor_id="s", type="Atlas",
                                     received_utc=at.strftime("%Y-%m-%dT%H:%M:%SZ"), raw=f"q{i}",
                                     fields={"strike_count": count})
-                entry = capture.record_reading(r, out, {})
+                entry = recorder.record_reading(r, out, {})
         self.assertEqual((entry["fields"]["strike_count"], entry["fields"]["strikes_today"]), (257, 1))
 
     def test_a_strike_is_stamped_only_when_the_count_rises(self):
@@ -178,7 +182,7 @@ class Strikes(unittest.TestCase):
                 at = f"2026-10-24T20:0{i}:00Z"
                 r = capture.Reading(source="acurite-access", sensor_id="s2", type="Atlas", received_utc=at,
                                     raw=f"r{i}", fields={"strike_count": count, "last_strike_mi": 6})
-                stamps.append(capture.record_reading(r, Path(d), {})["fields"].get("last_strike_heard"))
+                stamps.append(recorder.record_reading(r, Path(d), {})["fields"].get("last_strike_heard"))
         self.assertEqual(stamps, [None, None, "2026-10-24T20:02:00Z", "2026-10-24T20:02:00Z"])
 
 

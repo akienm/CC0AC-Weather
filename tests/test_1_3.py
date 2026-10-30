@@ -6,7 +6,6 @@ These need no network. On 2026-10-21 the normals were fetched live by hand
 """
 import argparse
 import configparser
-import importlib.util
 import json
 import sqlite3
 import sys
@@ -15,7 +14,7 @@ import threading
 import unittest
 import urllib.error
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
@@ -28,6 +27,12 @@ from cc0ac import mcp_server   # noqa: E402
 from cc0ac import zambretti    # noqa: E402
 
 from cc0ac import capture
+
+from cc0ac import recorder
+
+from cc0ac import store
+
+from cc0ac import web
 
 NOW = datetime(2026, 10, 21, 18, 0, tzinfo=timezone.utc).timestamp()
 
@@ -239,7 +244,7 @@ class McpOverHttp(unittest.TestCase):
         self.dir = tempfile.TemporaryDirectory()
         root = Path(self.dir.name)
         (root / "current.json").write_text(json.dumps({"written": "w", "sensors": []}))
-        handler = capture._make_web_handler(root, root / "none.db", {})
+        handler = web._make_web_handler(root, root / "none.db", {})
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
         self.url = f"http://127.0.0.1:{self.httpd.server_port}/mcp"
@@ -328,8 +333,8 @@ class Import(unittest.TestCase):
 
     def test_import_keeps_only_what_came_before_and_never_twice(self):
         db = self.root / "weather.db"
-        con = capture.open_db(db)
-        capture.store_reading(con, capture.Reading(source="acurite-access", sensor_id="00001234", type="Atlas",
+        con = store.open_db(db)
+        store.store_reading(con, capture.Reading(source="acurite-access", sensor_id="00001234", type="Atlas",
                                                    received_utc="2024-05-02T00:00:00Z", raw="live-1",
                                                    fields={"temp_f": 60.0}))
         con.close()
@@ -364,19 +369,19 @@ class PressureSeed(unittest.TestCase):
             hist = Path(d) / "history.csv"
             now = NOW
             with hist.open("w", encoding="utf-8") as f:
-                f.write(",".join(capture.HISTORY_FIELDS) + "\n")
-                at = {k: i for i, k in enumerate(capture.HISTORY_FIELDS)}
+                f.write(",".join(store.HISTORY_FIELDS) + "\n")
+                at = {k: i for i, k in enumerate(store.HISTORY_FIELDS)}
                 for n in range(4 * 3600):              # a row a second for 4 hours
                     t = now - 4 * 3600 + n
-                    row = [""] * len(capture.HISTORY_FIELDS)
+                    row = [""] * len(store.HISTORY_FIELDS)
                     row[at["timestamp"]] = datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                     row[at["sensor_id"]], row[at["type"]] = "00001234", "tower"
                     row[at["pressure_inhg"]] = "30.10" if t < now - 2.5 * 3600 else "30.00"
                     f.write(",".join(row) + "\n")
             self.assertGreater(hist.stat().st_size, 512 * 1024)
-            capture._pressure.clear()
-            capture._seed_pressure(hist, now)
-            self.assertEqual(capture._pressure_change(now, 30.0), -0.1)
+            recorder._pressure.clear()
+            recorder._seed_pressure(hist, now)
+            self.assertEqual(recorder._pressure_change(now, 30.0), -0.1)
 
 if __name__ == "__main__":
     unittest.main()

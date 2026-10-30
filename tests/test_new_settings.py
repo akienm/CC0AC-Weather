@@ -6,7 +6,6 @@ default (off) and explained, as config.ini.example has it; nothing already in th
 moves. Sensor 00001234 is made up.
 """
 import configparser
-import importlib.util
 import os
 import stat
 import sys
@@ -50,7 +49,7 @@ enabled = false
 
 
 def capture():
-    from cc0ac import capture as module
+    from cc0ac import config as module
     return module
 
 

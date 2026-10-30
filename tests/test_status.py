@@ -6,7 +6,6 @@ These need no network or radio: the uploads answer from a stand-in, and every
 file goes in a folder of its own that is thrown away afterwards.
 """
 import configparser
-import importlib.util
 import io
 import json
 import sys
@@ -30,7 +29,12 @@ from cc0ac import iolog         # noqa: E402
 from cc0ac.outputs import windy   # noqa: E402
 from cc0ac.sources import Reading   # noqa: E402
 
-from cc0ac import capture
+
+from cc0ac import status
+
+from cc0ac import store
+
+from cc0ac import web
 
 TODAY = f"{datetime.now(timezone.utc):%Y-%m-%d}"
 
@@ -41,13 +45,13 @@ class Kept(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
         self.home = Path(self.dir.name)
-        self.saved = (iolog.SENT_DIR, capture.CONFIG_DIR, diagnostics.CONFIG_DIR, diagnostics.service_log)
+        self.saved = (iolog.SENT_DIR, status.CONFIG_DIR, diagnostics.CONFIG_DIR, diagnostics.service_log)
         iolog.keep(self.home / "sent")
-        capture.CONFIG_DIR = diagnostics.CONFIG_DIR = self.home
+        status.CONFIG_DIR = diagnostics.CONFIG_DIR = self.home
         diagnostics.service_log = lambda: "service log line\n"
 
     def tearDown(self):
-        iolog.SENT_DIR, capture.CONFIG_DIR, diagnostics.CONFIG_DIR, diagnostics.service_log = self.saved
+        iolog.SENT_DIR, status.CONFIG_DIR, diagnostics.CONFIG_DIR, diagnostics.service_log = self.saved
         self.dir.cleanup()
 
 
@@ -120,7 +124,7 @@ class Station(Kept):
                                       '{"model" : "Acurite-Tower", "id" : 1, "channel" : "A"}\n')):
             (self.home / d).mkdir()
             (self.home / d / f"{TODAY}.log").write_text(line)
-        con = capture.open_db(self.home / "weather.db")
+        con = store.open_db(self.home / "weather.db")
         for i, at in enumerate(("2026-10-04T12:00:00Z", now)):
             con.execute("INSERT INTO readings (received_utc, sensor_id, query) VALUES (?, ?, ?)", (at, "00004683", f"q{i}"))
         con.commit()
@@ -131,7 +135,7 @@ class Station(Kept):
 
 class StatusData(Station):
     def test_everything_the_page_shows(self):
-        s = capture.system_status(self.station(), self.home / "out")
+        s = status.system_status(self.station(), self.home / "out")
         self.assertEqual((s["history"]["first"], s["history"]["readings"], s["history"]["sensors"]),
                          ("2026-10-04T12:00:00Z", 2, 1))
         self.assertGreater(s["history"]["bytes"], 0)
@@ -156,7 +160,7 @@ class StatusPages(Station):
             self.cfg.write(f)
         iolog.report("cwop", True, "sent FW9999>APRS,TCPIP*:@241200z3954.00N/10506.00W_000/000g000t050; "
                                    "answered # logresp FW9999 unverified")
-        handler = capture._make_web_handler(self.home / "out", self.home / "weather.db", {}, config_path=config,
+        handler = web._make_web_handler(self.home / "out", self.home / "weather.db", {}, config_path=config,
                                             cfg=self.cfg)
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
@@ -232,9 +236,9 @@ class PageLinks(unittest.TestCase):
         links = [urllib.parse.urlparse(h).path for h in re.findall(r'href="([^"]+)"', hidden)]
         self.assertEqual(links, ["/status", "/noaa", "/config.cgi", "/setup", "/log", "/diagnostics"])
         for path in links:
-            self.assertNotIn(path, capture.OUTSIDE_PATHS)
+            self.assertNotIn(path, web.OUTSIDE_PATHS)
         self.assertIn('getElementById("local-pages").hidden = false', page)
-        self.assertIn("/charts.html", capture.OUTSIDE_PATHS)
+        self.assertIn("/charts.html", web.OUTSIDE_PATHS)
 
 
 if __name__ == "__main__":

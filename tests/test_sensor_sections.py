@@ -5,7 +5,6 @@ python3 -m unittest tests/test_sensor_sections.py
 Sensors 00001234, 00005678 and 00009999 are made up.
 """
 import configparser
-import importlib.util
 import re
 import sys
 import tempfile

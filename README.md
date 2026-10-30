@@ -1360,7 +1360,14 @@ Run the tests before a pull request: `python3 -m unittest discover -s tests`.
 | File | Purpose |
 |---|---|
 | `acurite-capture.py` | Starts the station (a two-line launcher; the service file and boot loader run it) |
-| `cc0ac/capture.py` | The program: recording, database, web server, forecast; runs the sources and outputs |
+| `cc0ac/capture.py` | The program's entry point: command-line options, the daemon, `--import` and `--noaa`; runs the sources and outputs |
+| `cc0ac/recorder.py` | Recording: folds each reading into `current.json`, `history.csv` and the database; reception, lightning and pressure-trend state |
+| `cc0ac/store.py` | The database: storing readings, daily summaries, the history and summary queries behind the charts |
+| `cc0ac/config.py` | Reading and saving `config.ini`, and the options the pages and daemon share |
+| `cc0ac/forecast.py` | The National Weather Service (or Open-Meteo) forecast, observation and alerts |
+| `cc0ac/status.py` | `/status.json`: uptime, history depth, each receiver and service |
+| `cc0ac/web.py` | The web server: pages, data files, `/config.cgi`, `/status`, `/history.json` |
+| `cc0ac/fsutil.py` | Small file helpers (atomic writes) |
 | `upkeep.py` | Launcher for `cc0ac/upkeep.py`, which the boot loader runs: disk checks and backups |
 | `cc0ac/sources/__init__.py` | The Reading every source produces, its fields and units, and how to add a source |
 | `cc0ac/sources/acurite_access.py` | The Access hub source: listener, relay to AcuRite, raw log |

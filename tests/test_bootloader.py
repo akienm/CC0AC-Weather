@@ -64,8 +64,8 @@ def release(folder: Path, tag: str, version: str, behavior: str = "good", migrat
     (tree / "VERSION").write_text(version + "\n")
     (tree / "BEHAVIOR").write_text(behavior)
     (tree / "acurite-capture.py").write_text(FAKE_STATION)
-    for name in ("wizard.py", "config.ini.example"):
-        shutil.copy(REPO / name, tree / name)
+    shutil.copytree(REPO / "cc0ac", tree / "cc0ac", ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copy(REPO / "config.ini.example", tree / "config.ini.example")
     shutil.copy(REPO / "updates" / "bootloader.py", tree / "updates" / "bootloader.py")
     shutil.copy(REPO / "updates" / "migrations" / "0001_settings.py", tree / "updates" / "migrations")
     for name, text in (migrations or {}).items():
