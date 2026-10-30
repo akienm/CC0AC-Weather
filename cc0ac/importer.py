@@ -42,6 +42,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterator
@@ -74,11 +75,11 @@ def clean(fields: dict) -> dict:
 
 # ── Units, once, on the way in ────────────────────────────────────────────────
 
-def c_to_f(c):
+def c_to_f(c: float | None) -> float | None:
     return None if c is None else c * 9 / 5 + 32
 
 
-def scaled(v, k):
+def scaled(v: float | None, k: float) -> float | None:
     return None if v is None else v * k
 
 
@@ -190,7 +191,7 @@ def parse_time(text: str, utc: bool) -> float | None:
     return t.timestamp()
 
 
-def _value(text: str, field: str):
+def _value(text: str, field: str) -> float | None:
     text = (text or "").strip()
     if field == "wind_dir_deg" and text.upper() in CARDINALS:
         return CARDINALS.index(text.upper()) * 22.5
@@ -252,7 +253,7 @@ def cumulus_logs(path: Path) -> list[Path]:
     folder = path / "data" if (path / "data").is_dir() else path
     months = {m: n for n, m in enumerate(calendar.month_abbr) if m}
 
-    def when(f: Path):
+    def when(f: Path) -> tuple[int, int]:
         m = CUMULUS_LOG.fullmatch(f.name)
         assert m   # only matching names are sorted
         return int(m.group(2)), months.get(m.group(1), 0)
@@ -274,7 +275,7 @@ def cumulus_units(path: Path, metric: bool) -> tuple[dict, str]:
         cfg.read(ini, encoding="utf-8-sig")
         station = {k.lower(): v for k, v in (cfg["Station"].items() if cfg.has_section("Station") else [])}
 
-    def unit(key, default):
+    def unit(key: str, default: int) -> int:
         try:
             return int(station.get(key.lower(), default))
         except ValueError:
@@ -299,7 +300,7 @@ def _cumulus_time(day: str, hm: str) -> float | None:
         return None
 
 
-def rows_cumulus(path: Path, metric: bool = False, say=print) -> Iterator[dict]:
+def rows_cumulus(path: Path, metric: bool = False, say: Callable[[str], None] = print) -> Iterator[dict]:
     """A Cumulus month log a line at a time: date, time, then the fields by place."""
     k, told = cumulus_units(path, metric)
     say(f"  Cumulus units: {told}")
@@ -318,7 +319,7 @@ def rows_cumulus(path: Path, metric: bool = False, say=print) -> Iterator[dict]:
             if epoch is None:
                 continue
 
-            def at(n, conv=None):
+            def at(n: int, conv: Callable[[float], float | None] | None = None) -> float | None:
                 """Field n as Cumulus's documentation numbers them (1 is the date)."""
                 if len(f) < n or not NUMBER.fullmatch(f[n - 1]):
                     return None
@@ -373,7 +374,7 @@ def wu_fields(obs: dict) -> dict:
             "uv_index": obs.get("uvHigh")}
 
 
-def rows_wu(station: str, key: str, start: date, end: date, say=print) -> Iterator[dict]:
+def rows_wu(station: str, key: str, start: date, end: date, say: Callable[[str], None] = print) -> Iterator[dict]:
     day = start
     while day <= end:
         try:

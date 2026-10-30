@@ -35,7 +35,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-from cc0ac.sources import Reading, derive
+from cc0ac.sources import Emit, Reading, derive
 
 log = logging.getLogger("acurite")
 
@@ -76,7 +76,7 @@ def enabled(cfg: configparser.ConfigParser) -> bool:
     return cfg.getboolean("console", "enabled", fallback=False)
 
 
-def _number(v: str):
+def _number(v: str) -> float | None:
     try:
         f = float(v)
     except ValueError:
@@ -103,7 +103,7 @@ def readings(params: dict, method: str, received_utc: str, raw: str) -> list[Rea
     sensor_utc = stamp.replace(" ", "T") + "Z" if len(stamp) == 19 else None
     receiver = station(params)
 
-    def one(sensor_id: str, kind: str, names: dict, batteries) -> Reading | None:
+    def one(sensor_id: str, kind: str, names: dict, batteries: Any) -> Reading | None:
         fields: dict[str, Any] = {}
         for key, field_name in names.items():
             v = _number(params.get(key, ""))
@@ -164,17 +164,17 @@ def _log_raw(raw_dir: Path, line: str) -> None:
         f.write(f"{stamp:%Y-%m-%dT%H:%M:%SZ}\t{line}\n")
 
 
-def _make_handler(cfg: configparser.ConfigParser, emit):
+def _make_handler(cfg: configparser.ConfigParser, emit: Emit) -> type[BaseHTTPRequestHandler]:
     # If set, only uploads from this console (its MAC, passkey or station ID) are recorded.
     only = cfg.get("console", "station", fallback="").strip().upper()
     raw_dir = _raw_dir(cfg)
     unread: set = set()
 
     class ConsoleHandler(BaseHTTPRequestHandler):
-        def log_message(self, fmt, *args):
+        def log_message(self, fmt: str, *args: Any) -> None:
             pass
 
-        def _handle(self, method: str, body: bytes):
+        def _handle(self, method: str, body: bytes) -> None:
             parsed = urllib.parse.urlparse(self.path)
             # Ambient's app makes you end the path with "?", so the query may start "?&".
             params = dict(urllib.parse.parse_qsl(parsed.query.lstrip("?&"), keep_blank_values=True))
@@ -206,10 +206,10 @@ def _make_handler(cfg: configparser.ConfigParser, emit):
             self.end_headers()
             self.wfile.write(b"success\n")
 
-        def do_GET(self):
+        def do_GET(self) -> None:
             self._handle("GET", b"")
 
-        def do_POST(self):
+        def do_POST(self) -> None:
             length = int(self.headers.get("Content-Length", 0))
             self._handle("POST", self.rfile.read(length) if length else b"")
 
@@ -219,15 +219,15 @@ def _make_handler(cfg: configparser.ConfigParser, emit):
 class _Server(ThreadingHTTPServer):
     request_queue_size = 64
 
-    def finish_request(self, request, client_address):
+    def finish_request(self, request: Any, client_address: Any) -> None:
         request.settimeout(CONNECTION_TIMEOUT)
         super().finish_request(request, client_address)
 
-    def handle_error(self, request, client_address):
+    def handle_error(self, request: Any, client_address: Any) -> None:
         log.debug("Console connection from %s dropped", client_address[0])
 
 
-def run(cfg: configparser.ConfigParser, emit) -> None:
+def run(cfg: configparser.ConfigParser, emit: Emit) -> None:
     port = cfg.getint("console", "port", fallback=DEFAULT_PORT)
     server = _Server(("", port), _make_handler(cfg, emit))
     log.info("Console listener on port %d", port)

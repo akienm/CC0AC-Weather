@@ -12,9 +12,10 @@ from __future__ import annotations
 import configparser
 import json
 import logging
+from typing import Any
 
-from cc0ac.outputs._station import Station, get, needs, wu_format
 from cc0ac.iolog import report
+from cc0ac.outputs._station import Station, get, needs, wu_format
 from cc0ac.sources import Reading
 
 log = logging.getLogger("acurite")
@@ -28,7 +29,7 @@ def enabled(cfg: configparser.ConfigParser) -> bool:
     return needs(cfg, "pwsweather", "station_id", "api_key")
 
 
-def params(cfg: configparser.ConfigParser, fields: dict, when) -> dict:
+def params(cfg: configparser.ConfigParser, fields: dict, when: Any) -> dict:
     return {"ID": cfg.get("pwsweather", "station_id").strip(),
             "PASSWORD": cfg.get("pwsweather", "api_key").strip(),
             **wu_format(fields, when), "action": "updateraw"}

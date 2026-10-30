@@ -10,6 +10,7 @@ import time
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 from cc0ac import noaa, sanity
 from cc0ac.config import display_order
@@ -152,7 +153,7 @@ def _rain_totals(con: sqlite3.Connection, now: datetime) -> dict:
     days = _local_days(con)
     today = now.date()
     week_start = today.toordinal() - (today.isoweekday() % 7)   # weeks start on Sunday
-    def total(keep) -> float:
+    def total(keep: Any) -> float:
         return round(sum(r for d, r in days if keep(datetime.strptime(d, "%Y-%m-%d").date())), 2)
     return {"today": total(lambda d: d == today),
             "week": total(lambda d: d.toordinal() >= week_start),
@@ -210,7 +211,7 @@ def history(db_path: Path, sensors: dict, q: dict) -> dict:
         t = list(range(int((lo + off) // step * step - off), int(hi) + 1, step))
         index = {b: i for i, b in enumerate(t)}
 
-        def column(rows, n) -> list[list]:
+        def column(rows: Any, n: Any) -> list[list]:
             cols = [[None] * len(t) for _ in range(n)]
             for b, *vals in rows:
                 if b in index:
@@ -286,7 +287,7 @@ DAILY = {   # column → SQL over that day's readings
 _COMBINE: dict[str, Callable[[list], float]] = {"_min": min, "_max": max, "_avg": lambda v: sum(v) / len(v), "rain_in": sum, "readings": sum}
 
 
-def _combine(name: str, values: list):
+def _combine(name: str, values: list) -> float | None:
     values = [v for v in values if v is not None]
     if not values:
         return None

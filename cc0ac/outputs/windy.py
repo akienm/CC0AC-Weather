@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import configparser
 import logging
+from typing import Any
 
-from cc0ac.outputs._station import Station, get, needs, wu_format
 from cc0ac.iolog import report
+from cc0ac.outputs._station import Station, get, needs, wu_format
 from cc0ac.sources import Reading
 
 log = logging.getLogger("acurite")
@@ -27,7 +28,7 @@ def enabled(cfg: configparser.ConfigParser) -> bool:
     return needs(cfg, "windy", "station_id", "password")
 
 
-def params(cfg: configparser.ConfigParser, fields: dict, when) -> dict:
+def params(cfg: configparser.ConfigParser, fields: dict, when: Any) -> dict:
     return {"ID": cfg.get("windy", "station_id").strip(),
             "PASSWORD": cfg.get("windy", "password").strip(), **wu_format(fields, when)}
 

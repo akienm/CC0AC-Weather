@@ -174,15 +174,15 @@ class Report:
         return "\n".join(line.rstrip() for line in out) + "\n"
 
     def _month_totals(self, have: list[tuple[int, dict]], r: int) -> list[str]:
-        def best(key, pick):
+        def best(key: Any, pick: Any) -> Any:
             found = [(d[key], n) for n, d in have if d.get(key) is not None]
             return pick(found, key=lambda p: p[0]) if found else (None, None)
 
-        def total(values):
+        def total(values: Any) -> Any:
             values = [v for v in values if v is not None]
             return sum(values) if values else None
 
-        def mean(values):
+        def mean(values: Any) -> Any:
             values = [v for v in values if v is not None]
             return sum(values) / len(values) if values else None
 

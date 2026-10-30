@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 # Sensor types that measure outdoors; every other type is a room. "outdoor" is
 # what a source gives an outdoor sensor of a brand without names of its own here.
@@ -55,6 +55,9 @@ FIELDS = {
     "signal": "signal strength",
     "hub_battery": "hub battery",
 }
+
+
+Emit = Callable[["Reading"], Any]   # what a source calls with each Reading it hears
 
 
 @dataclass

@@ -37,6 +37,7 @@ import tarfile
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 KEEP = 8
 WATCHED = {5: "sectors moved to spares", 197: "sectors waiting to be moved", 198: "unreadable sectors"}
@@ -204,7 +205,7 @@ class Share:
         self._do(f'{self._cd()}; del "{name}"'.lstrip("; "))
 
 
-def destination(cfg: configparser.ConfigParser):
+def destination(cfg: configparser.ConfigParser) -> Share | Folder:
     path = cfg.get("backup", "path", fallback="").strip()
     if is_share(path) and os.name != "nt":
         return Share(path, cfg.get("backup", "user", fallback="").strip(), cfg.get("backup", "password", raw=True, fallback=""))
@@ -244,7 +245,7 @@ def write_record(result: dict) -> None:
 
 # ── What the station shows ───────────────────────────────────────────────────
 
-def low_batteries(sensors) -> list[str]:
+def low_batteries(sensors: Any) -> list[str]:
     """A line for each sensor whose battery reads low, and one for the hub's own.
     A sensor sends only normal or low; the Access hub sends hubbattery with every
     reading, though AcuRite's own app never said when it was low."""

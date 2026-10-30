@@ -34,9 +34,12 @@ from __future__ import annotations
 import configparser
 import logging
 import statistics
-from typing import Callable, TypeGuard
+from typing import TYPE_CHECKING, Callable
 
 from cc0ac import units
+
+if TYPE_CHECKING:
+    from typing_extensions import TypeGuard
 
 log = logging.getLogger("acurite")
 

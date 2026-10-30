@@ -36,12 +36,13 @@ import logging
 import os
 import subprocess
 import time
-from collections.abc import Collection
+from collections.abc import Collection, Iterable, Iterator
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from cc0ac import sensor_config
-from cc0ac.sources import FIELDS, Reading, derive
+from cc0ac.sources import FIELDS, Emit, Reading, derive
 
 log = logging.getLogger("acurite")
 
@@ -96,14 +97,14 @@ def command(cfg: configparser.ConfigParser) -> list[str]:
     return cmd
 
 
-def _first(raw: dict, *keys):
+def _first(raw: dict, *keys: Any) -> Any:
     for k in keys:
         if raw.get(k) is not None:
             return raw[k]
     return None
 
 
-def _scaled(raw: dict, units: dict, places: int = 1):
+def _scaled(raw: dict, units: dict, places: int = 1) -> float | None:
     """The first of several rtl_433 fields present, converted: units = {name: factor}."""
     for k, factor in units.items():
         if raw.get(k) is not None:
@@ -188,7 +189,7 @@ class RainCounter:
         os.replace(tmp, self.path)
 
 
-def _utc(stamp) -> str | None:
+def _utc(stamp: Any) -> str | None:
     """rtl_433's time with -M time:utc, '2026-10-09 16:20:00', as ISO; None for a
     recording's offset ('@0.28s')."""
     s = str(stamp or "")
@@ -217,7 +218,7 @@ class RawLog:
             log.warning("rtl_433 raw log %s: %s", self.folder, exc)
 
 
-def readings(lines, receiver: str, rain: RainCounter, sensors: Collection[str] | None = None, raw_log: RawLog | None = None):
+def readings(lines: Iterable[str], receiver: str, rain: RainCounter, sensors: Collection[str] | None = None, raw_log: RawLog | None = None) -> Iterator[Reading]:
     """Readings from rtl_433's JSON lines. sensors: if not empty, only these IDs
     are kept (neighbours' sensors are heard too). A sensor repeats each message
     two or three times in a row; the repeats are dropped."""
@@ -255,7 +256,7 @@ def _sensors(cfg: configparser.ConfigParser) -> set:
     return set(sensor_config.titles(cfg))
 
 
-def run(cfg: configparser.ConfigParser, emit) -> None:
+def run(cfg: configparser.ConfigParser, emit: Emit) -> None:
     cmd = command(cfg)
     reading_files = "-r" in cmd
     receiver = "rtl_433 file" if reading_files else f"rtl_433 dongle {cfg.get('capture', 'device_index', fallback='0')}"
@@ -268,6 +269,7 @@ def run(cfg: configparser.ConfigParser, emit) -> None:
         try:
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
             log.info("rtl_433 started (pid %d): %s", proc.pid, " ".join(cmd))
+            assert proc.stdout is not None   # PIPE
             for r in readings(proc.stdout, receiver, rain, sensors, raw_log):
                 try:
                     e = emit(r)
@@ -299,7 +301,7 @@ def discover(cfg: configparser.ConfigParser, duration_s: int = 300) -> None:
     stdout = proc.stdout
     assert stdout is not None   # PIPE
 
-    def lines():
+    def lines() -> Iterator[str]:
         while time.monotonic() < deadline:
             line = stdout.readline()
             if not line:

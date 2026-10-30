@@ -27,6 +27,7 @@ import urllib.parse
 import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 
 log = logging.getLogger("acurite")
 
@@ -87,7 +88,7 @@ class WebServer(ThreadingHTTPServer):
     request_queue_size = 64
     certificate: Certificate | None = None
 
-    def finish_request(self, request, client_address):
+    def finish_request(self, request: Any, client_address: Any) -> None:
         if self.certificate is not None:
             request.settimeout(HANDSHAKE_TIMEOUT)
             context = self.certificate.context()
@@ -96,7 +97,7 @@ class WebServer(ThreadingHTTPServer):
             request.settimeout(None)
         super().finish_request(request, client_address)
 
-    def handle_error(self, request, client_address):
+    def handle_error(self, request: Any, client_address: Any) -> None:
         # A browser giving up on a connection, or a scanner's bad handshake, is not a fault here.
         if isinstance(sys.exc_info()[1], (ConnectionError, TimeoutError, ssl.SSLError)):
             log.debug("Web connection from %s dropped: %s", client_address[0], sys.exc_info()[1])
@@ -104,7 +105,7 @@ class WebServer(ThreadingHTTPServer):
             super().handle_error(request, client_address)
 
 
-def duckdns_update(domain: str, token: str, opener=urllib.request.urlopen) -> str:
+def duckdns_update(domain: str, token: str, opener: Any = urllib.request.urlopen) -> str:
     """One update; DuckDNS's answer in a word: OK, KO (name or token wrong), or why it failed."""
     url = f"{DUCKDNS}?{urllib.parse.urlencode({'domains': domain, 'token': token})}"
     try:
@@ -114,7 +115,7 @@ def duckdns_update(domain: str, token: str, opener=urllib.request.urlopen) -> st
         return f"unreachable ({type(e).__name__})"     # never the address: it carries the token
 
 
-def run_duckdns(cfg: configparser.ConfigParser, opener=urllib.request.urlopen, sleep=time.sleep) -> None:
+def run_duckdns(cfg: configparser.ConfigParser, opener: Any = urllib.request.urlopen, sleep: Any = time.sleep) -> None:
     domain = cfg.get("duckdns", "domain", fallback="").strip().lower().removesuffix(".duckdns.org")
     token = cfg.get("duckdns", "token", fallback="").strip()
     if not domain or not token:

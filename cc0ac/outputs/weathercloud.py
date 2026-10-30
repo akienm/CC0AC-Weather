@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import configparser
 import logging
+from typing import Any
 
-from cc0ac.outputs._station import VERSION, Station, get, needs, number
 from cc0ac.iolog import report
+from cc0ac.outputs._station import VERSION, Station, get, needs, number
 from cc0ac.sources import Reading
 
 log = logging.getLogger("acurite")
@@ -27,10 +28,10 @@ ANSWERS = {"200": "OK", "400": "bad request", "401": "wrong ID or key",
            "429": "too often for this account", "500": "Weathercloud's error"}
 
 
-def _c(f): return (f - 32) * 5 / 9                 # °F → °C
-def _ms(mph): return mph * 0.44704                # mph → m/s
-def _hpa(inhg): return inhg * 33.8639             # inHg → hPa
-def _mm(inches): return inches * 25.4             # in → mm
+def _c(f: float) -> float: return (f - 32) * 5 / 9                 # °F → °C
+def _ms(mph: float) -> float: return mph * 0.44704                # mph → m/s
+def _hpa(inhg: float) -> float: return inhg * 33.8639             # inHg → hPa
+def _mm(inches: float) -> float: return inches * 25.4             # in → mm
 
 
 # Reading field → Weathercloud name, conversion to its units (before × 10).
@@ -44,7 +45,7 @@ def enabled(cfg: configparser.ConfigParser) -> bool:
     return needs(cfg, "weathercloud", "weathercloud_id", "key")
 
 
-def params(cfg: configparser.ConfigParser, fields: dict, when) -> dict:
+def params(cfg: configparser.ConfigParser, fields: dict, when: Any) -> dict:
     out = {"wid": cfg.get("weathercloud", "weathercloud_id").strip(),
            "key": cfg.get("weathercloud", "key").strip(), "ver": VERSION}
     # No time sent: sources disagree on its format, and Weathercloud stamps

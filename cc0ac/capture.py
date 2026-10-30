@@ -43,24 +43,54 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
-from cc0ac.sources import OUTDOOR_TYPES, Reading, derive
-from cc0ac.sources import acurite_access
-from cc0ac import alerts
-from cc0ac import calibration
-from cc0ac import climate
-from cc0ac import diagnostics
-from cc0ac import importer
-from cc0ac import iolog
-from cc0ac import sanity
-from cc0ac import secure_web
-from cc0ac import sensor_config
-from cc0ac import units
-from cc0ac import upkeep
-from cc0ac.config import DEFAULT_CONFIG, add_heard_sensor, apply_timezone, button_list, card_rows, database_path, load_config, page_title, sensor_map, station_settings, station_version
+from cc0ac import (
+    alerts,
+    calibration,
+    climate,
+    diagnostics,
+    importer,
+    iolog,
+    sanity,
+    secure_web,
+    sensor_config,
+    units,
+    upkeep,
+)
+from cc0ac.config import (
+    DEFAULT_CONFIG,
+    add_heard_sensor,
+    apply_timezone,
+    button_list,
+    card_rows,
+    database_path,
+    load_config,
+    page_title,
+    sensor_map,
+    station_settings,
+    station_version,
+)
 from cc0ac.forecast import run_forecast
-from cc0ac.recorder import current_lock, record_reading, reference_temp, refresh_snapshot, seed_heard
-from cc0ac.store import OUTDOOR, believed_before, epoch_to_iso, iso_to_epoch, noaa_summary, open_db, roll_up, store_reading, summaries
+from cc0ac.recorder import (
+    current_lock,
+    record_reading,
+    reference_temp,
+    refresh_snapshot,
+    seed_heard,
+)
+from cc0ac.sources import OUTDOOR_TYPES, Reading, acurite_access, derive
+from cc0ac.store import (
+    OUTDOOR,
+    believed_before,
+    epoch_to_iso,
+    iso_to_epoch,
+    noaa_summary,
+    open_db,
+    roll_up,
+    store_reading,
+    summaries,
+)
 from cc0ac.web import run_web_server
 
 log = logging.getLogger("acurite")
@@ -178,7 +208,7 @@ def load_outputs() -> list:
     return _plugins("outputs")
 
 
-def _run_output(cfg: configparser.ConfigParser, output, todo: queue.Queue) -> None:
+def _run_output(cfg: configparser.ConfigParser, output: Any, todo: queue.Queue) -> None:
     """Hand each reading to one output, in order; a failure loses that reading only."""
     while True:
         reading = todo.get()

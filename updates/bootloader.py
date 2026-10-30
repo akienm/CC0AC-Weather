@@ -38,6 +38,7 @@ import urllib.request
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 PLATFORMS = ("pi", "debian", "docker", "windows", "macos")
 REPO = "akienm/CC0AC-Weather"
@@ -136,7 +137,7 @@ def _copy_tree(src: Path, dest: Path) -> None:
     shutil.copytree(src, dest, ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc", "CLAUDE.md"))
 
 
-def release_source(spec: str):
+def release_source(spec: str) -> GitHub | Folder:
     return GitHub(spec[len("github:"):]) if spec.startswith("github:") else Folder(Path(spec))
 
 
@@ -230,7 +231,7 @@ class Boot:
             run=_run, write_ours=write_ours, ours_or_absent=ours_or_absent)
 
 
-def _run(cmd: list[str], check: bool = True, **kw) -> subprocess.CompletedProcess:
+def _run(cmd: list[str], check: bool = True, **kw: Any) -> subprocess.CompletedProcess:
     log.info("  $ %s", " ".join(cmd))
     return subprocess.run(cmd, check=check, **kw)
 
@@ -244,7 +245,7 @@ def routed_ports() -> set[str]:
     return routed
 
 
-def reaches_outside(port: str, run=subprocess.run) -> bool:
+def reaches_outside(port: str, run: Any = subprocess.run) -> bool:
     """Does this port actually get out? A route only says it is set up. Google's DNS
     answering a ping says it works; where pings are blocked, GitHub answering (the
     installer has just downloaded from it) says the same."""
@@ -308,7 +309,7 @@ def write_ours(path: Path, text: str, mode: int = 0o644, comment: tuple[str, str
 
 # ── Migrations and security fixes ─────────────────────────────────────────────
 
-def _load(path: Path):
+def _load(path: Path) -> Any:
     spec = importlib.util.spec_from_file_location(f"cc0ac_step_{path.stem}", path)
     assert spec and spec.loader   # a path to a .py file
     module = importlib.util.module_from_spec(spec)
@@ -369,7 +370,7 @@ class Station:
         self.started = 0.0
         self.wanted = True
 
-    def _output(self):
+    def _output(self) -> Any:
         """systemd and Docker keep the station's output; on Windows and macOS it goes to station.log."""
         if self.boot.platform not in ("windows", "macos"):
             return None
@@ -674,7 +675,7 @@ def setup_logging(root: Path | None) -> None:
                         handlers=handlers, force=True)
 
 
-def install(args) -> Boot:
+def install(args: Any) -> Boot:
     root = Path(args.root).resolve()
     root.mkdir(parents=True, exist_ok=True)
     (root / "versions").mkdir(exist_ok=True)
@@ -723,7 +724,7 @@ def run(boot: Boot) -> None:
     station = Station(boot)
     stopping = threading.Event()
 
-    def on_signal(*_):
+    def on_signal(*_: Any) -> None:
         stopping.set()
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, on_signal)

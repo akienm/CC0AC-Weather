@@ -126,7 +126,7 @@ def et0(high: float | None, low: float | None, lat: float | None, day: str) -> f
     return max(0.0, mm) / 25.4
 
 
-def _total(values) -> float | None:
+def _total(values: Any) -> float | None:
     have = [v for v in values if v is not None]
     return round(sum(have), 2) if have else None
 
@@ -148,7 +148,7 @@ def degree_days_and_et0(days: list[dict], today: str, lat: float | None, bases: 
 
 # ── Normals ───────────────────────────────────────────────────────────────────
 
-def _get_json(url: str, params: dict, timeout: int = 60):
+def _get_json(url: str, params: dict, timeout: int = 60) -> Any:
     req = urllib.request.Request(url + "?" + urllib.parse.urlencode(params), headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read())
@@ -179,7 +179,7 @@ def nearest_noaa(lat: float, lon: float, search: dict) -> tuple[str, str, float]
     return best
 
 
-def _number(v) -> float | None:
+def _number(v: Any) -> float | None:
     try:
         v = float(v)
     except (TypeError, ValueError):
@@ -291,7 +291,7 @@ def write(write_path: Path, doc: dict) -> None:
         tmp.replace(write_path / name)
 
 
-def run(lat: float | None, lon: float | None, write_path: Path, outdoor_days,
+def run(lat: float | None, lon: float | None, write_path: Path, outdoor_days: Any,
         fetch_normals: bool = True, bases: tuple[float, float] = (65.0, 65.0)) -> None:
     """Forever: climate.json every hour. outdoor_days() → the sensors for build().
     fetch_normals=False keeps to records; lat is still used for the evapotranspiration."""

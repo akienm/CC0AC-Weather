@@ -19,7 +19,7 @@ your browser to read it. [web] mcp = false turns it off.
 from __future__ import annotations
 
 import json
-from typing import Callable
+from typing import Any, Callable
 
 PROTOCOLS = ("2025-06-18", "2025-03-26", "2024-11-05")   # newest first
 OUTDOOR_FIELDS = ("temp_f", "humidity_pct", "dew_point_f", "feels_like_f", "wind_mph", "wind_gust_mph",
@@ -211,7 +211,7 @@ class Server:
         except Exception as e:   # noqa: BLE001 — one bad call must not take the server down
             return 200, _error(mid, -32603, f"Internal error: {e}")
 
-    def call(self, name, args: dict) -> dict:
+    def call(self, name: Any, args: dict) -> dict:
         if name not in TOOLS:
             return _tool_error(f"Unknown tool: {name}")
         if not isinstance(args, dict):
@@ -230,11 +230,11 @@ class Server:
                 "structuredContent": out, "isError": False}
 
 
-def _result(mid, result: dict) -> dict:
+def _result(mid: Any, result: dict) -> dict:
     return {"jsonrpc": "2.0", "id": mid, "result": result}
 
 
-def _error(mid, code: int, message: str) -> dict:
+def _error(mid: Any, code: int, message: str) -> dict:
     return {"jsonrpc": "2.0", "id": mid, "error": {"code": code, "message": message}}
 
 

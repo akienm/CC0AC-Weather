@@ -13,9 +13,7 @@ import time
 from datetime import date
 from pathlib import Path
 
-from cc0ac import sensor_config
-from cc0ac import wizard
-
+from cc0ac import sensor_config, wizard
 
 log = logging.getLogger("acurite")
 
@@ -220,7 +218,7 @@ def restart_soon(delay: float = 1.0) -> None:
     """Restart the whole program once the browser has its answer. Under the boot
     loader or systemd it exits and they start it again, which also ends a running
     rtl_433; run by hand, it starts itself over in place."""
-    def restart():
+    def restart() -> None:
         time.sleep(delay)
         for handler in logging.getLogger().handlers:
             handler.flush()

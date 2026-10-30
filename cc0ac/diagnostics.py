@@ -24,8 +24,10 @@ import subprocess
 import sys
 import tarfile
 import time
+from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 from cc0ac import sensor_config
 
@@ -53,7 +55,7 @@ def _public(ip: str) -> bool:
     return not (a.is_private or a.is_loopback or a.is_link_local or a.is_unspecified)
 
 
-def scrub(text: str, names=()) -> str:
+def scrub(text: str, names: Any = ()) -> str:
     """The text with station keys, passwords, MACs, public IP addresses and the
     given sensor names as ****."""
     for name in sorted((n for n in names if n.strip()), key=len, reverse=True):
@@ -101,7 +103,7 @@ def info(cfg: configparser.ConfigParser) -> str:
     ]) + "\n"
 
 
-def recent_raw(days: int = DAYS):
+def recent_raw(days: int = DAYS) -> Iterator[tuple[str, Path]]:
     """(name in the bundle, path) for each raw log, and each log of what was
     sent (iolog.py), of the last `days` days."""
     since = f"{datetime.now(timezone.utc) - timedelta(days=days):%Y-%m-%d}"

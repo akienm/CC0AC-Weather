@@ -31,8 +31,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
-from cc0ac.sources import Reading, derive
+from cc0ac.sources import Emit, Reading, derive
 
 log = logging.getLogger("acurite")
 
@@ -110,7 +111,7 @@ def _now_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _q(props: dict, key: str):
+def _q(props: dict, key: str) -> Any:
     """A Weather Service quantity → (value, unit), or (None, None)."""
     q = props.get(key) or {}
     return q.get("value"), str(q.get("unitCode") or "").split(":")[-1]
@@ -179,7 +180,7 @@ OPEN_METEO_CURRENT = ("temperature_2m", "relative_humidity_2m", "dew_point_2m", 
                       "wind_direction_10m", "wind_gusts_10m", "uv_index")
 
 
-def _open_meteo(lat: float, lon: float, contact: str, **params) -> str:
+def _open_meteo(lat: float, lon: float, contact: str, **params: Any) -> str:
     query = urllib.parse.urlencode({"latitude": f"{lat:.4f}", "longitude": f"{lon:.4f}",
                                     **OPEN_METEO_UNITS, **params}, safe=",")   # it won't split on %2C
     return _get(f"{OPEN_METEO_API}?{query}", contact, accept="application/json")
@@ -204,7 +205,7 @@ def open_meteo_reading(body: str) -> Reading:
                    name="Outside (Open-Meteo estimate)")
 
 
-def run(cfg: configparser.ConfigParser, emit) -> None:
+def run(cfg: configparser.ConfigParser, emit: Emit) -> None:
     where = _where(cfg)
     if not where:
         log.warning("[online] is on but [station] latitude/longitude are not set; nothing to fetch")
@@ -252,17 +253,17 @@ WEATHER_CODES = {0: ("Sunny", "Clear"), 1: ("Mostly Sunny", "Mostly Clear"), 2: 
                  95: ("Thunderstorms",) * 2, 96: ("Thunderstorms With Hail",) * 2, 99: ("Thunderstorms With Hail",) * 2}
 
 
-def sky(code, day: bool) -> str:
+def sky(code: Any, day: bool) -> str:
     words = WEATHER_CODES.get(code)
     return (words[0] if day else words[1]) if words else ""
 
 
-def _r(v):
+def _r(v: Any) -> Any:
     """round(), but None stays None: Open-Meteo pads past its forecast's end with nulls."""
     return None if v is None else round(v)
 
 
-def cardinal(deg) -> str | None:
+def cardinal(deg: Any) -> str | None:
     return None if deg is None else CARDINALS[round(deg / 22.5) % 16]
 
 

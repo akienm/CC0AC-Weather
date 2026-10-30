@@ -12,17 +12,25 @@ import tempfile
 import threading
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
+from typing import Any
 
-from cc0ac import alerts
-from cc0ac import diagnostics
-from cc0ac import mcp_server
-from cc0ac import secure_web
-from cc0ac import units
-from cc0ac import upkeep
-from cc0ac import wizard
-from cc0ac.config import CONFIG_MAX_BYTES, DEFAULT_TITLE, ROOT, check_config, database_path, load_config, page_title, restart_soon, save_config, sensor_map, station_version
+from cc0ac import alerts, diagnostics, mcp_server, secure_web, units, upkeep, wizard
+from cc0ac.config import (
+    CONFIG_MAX_BYTES,
+    DEFAULT_TITLE,
+    ROOT,
+    check_config,
+    database_path,
+    load_config,
+    page_title,
+    restart_soon,
+    save_config,
+    sensor_map,
+    station_version,
+)
 from cc0ac.status import LOG_PATH, log_folder, system_status
 from cc0ac.store import history, noaa_summary, summaries
 
@@ -87,7 +95,7 @@ def _find_page(name: str, own_dir: Path | None, page_dir: Path) -> Path | None:
 def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: dict | None = None,
                       own_dir: Path | None = None, title: str = DEFAULT_TITLE,
                       config_path: Path | None = None, mcp: bool = True,
-                      cfg: configparser.ConfigParser | None = None):
+                      cfg: configparser.ConfigParser | None = None) -> type[BaseHTTPRequestHandler]:
     page_dir = ROOT
     # The charts read the [units] choice from /history.json.
     shown_in = units.chosen(cfg) if cfg is not None else units.SYSTEMS["us"]
@@ -98,7 +106,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
         except (OSError, ValueError):
             return None
 
-    def query(answer):
+    def query(answer: Callable[[Path, dict, dict], dict]) -> Callable[[dict], dict]:
         def run(q: dict) -> dict:
             if db_path is None or not db_path.exists():
                 raise ValueError("no readings stored yet")
@@ -111,10 +119,10 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
     class WebHandler(BaseHTTPRequestHandler):
         # A visitor that connects and then says nothing would hold its thread forever.
         timeout = 30
-        def log_message(self, fmt, *args):
+        def log_message(self, fmt: str, *args: Any) -> None:
             pass
 
-        def do_GET(self):
+        def do_GET(self) -> None:
             url = urllib.parse.urlparse(self.path)
             path = url.path
             if path not in OUTSIDE_PATHS and not _local_client(self.client_address[0]):
@@ -174,7 +182,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
             self.send_error(404)
             return False
 
-        def _config_page(self, q: dict):
+        def _config_page(self, q: dict) -> None:
             if not self._config_allowed():
                 return
             assert config_path is not None   # _config_allowed
@@ -183,7 +191,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
             else:
                 self._send((page_dir / "config.html").read_bytes(), PAGE_TYPES[".html"])
 
-        def _status(self, path: str, q: dict):
+        def _status(self, path: str, q: dict) -> None:
             if not self._config_allowed():
                 return
             assert cfg is not None   # do_GET routes /status here only with a config
@@ -223,7 +231,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
             except SystemExit:
                 return False
 
-        def _setup_page(self, path: str):
+        def _setup_page(self, path: str) -> None:
             if not self._config_allowed():
                 return
             if path == "/setup":
@@ -233,7 +241,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
             state = wizard.setup_state(load_config(config_path))
             self._send(json.dumps(state).encode(), "application/json")
 
-        def do_POST(self):
+        def do_POST(self) -> None:
             target = urllib.parse.urlparse(self.path).path
             if target == "/mcp" and mcp_server_ is not None:
                 self._mcp()
@@ -309,7 +317,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
                 return None
             return text
 
-        def _mcp(self):
+        def _mcp(self) -> None:
             """/mcp (mcp_server.py): your own network only; a page from another
             site, which a browser marks with its Origin, is refused."""
             origin = self.headers.get("Origin")
@@ -336,7 +344,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
             self.end_headers()
             self.wfile.write(body)
 
-        def _answer(self, code: int, message: str):
+        def _answer(self, code: int, message: str) -> None:
             body = message.encode()
             self.send_response(code)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
@@ -344,7 +352,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
             self.end_headers()
             self.wfile.write(body)
 
-        def _query(self, answer, q: dict):
+        def _query(self, answer: Any, q: dict) -> None:
             if db_path is None or not db_path.exists():
                 self.send_error(404, "No database yet")
                 return
@@ -359,7 +367,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
                 return
             self._send(json.dumps(data, separators=(",", ":")).encode(), "application/json")
 
-        def _noaa(self, path: str, q: dict):
+        def _noaa(self, path: str, q: dict) -> None:
             if path == "/noaa":
                 self._send((page_dir / "noaa.html").read_bytes(), PAGE_TYPES[".html"])
                 return
@@ -387,7 +395,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
             self.end_headers()
             self.wfile.write(body)
 
-        def _send(self, body: bytes, ctype: str):
+        def _send(self, body: bytes, ctype: str) -> None:
             self.send_response(200)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))

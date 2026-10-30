@@ -23,6 +23,7 @@ import re
 import urllib.request
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 from cc0ac import sensor_config
 
@@ -320,7 +321,7 @@ ALERT_KEYS = ("quiet_minutes", "ntfy_topic", "ntfy_server", "email_to", "email_f
               "smtp_host", "smtp_port", "smtp_user", "smtp_password", "healthcheck_url")
 
 
-def _one_line(v) -> str:
+def _one_line(v: Any) -> str:
     return re.sub(r"[\r\n]+", " ", str(v or "")).strip()
 
 

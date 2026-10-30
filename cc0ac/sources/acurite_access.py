@@ -20,12 +20,14 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Iterator
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 
 from cc0ac.iolog import report
-from cc0ac.sources import Reading
+from cc0ac.sources import Emit, Reading
 
 log = logging.getLogger("acurite")
 
@@ -58,7 +60,7 @@ def enabled(cfg: configparser.ConfigParser) -> bool:
     return cfg.has_section("hub") and cfg.getboolean("hub", "enabled", fallback=True)
 
 
-def _hub_value(v: str):
+def _hub_value(v: str) -> Any:
     """Numbers as numbers; anything else (battery 'normal'/'low', timestamps) as text."""
     try:
         f = float(v)
@@ -82,7 +84,7 @@ def _raw_dir(cfg: configparser.ConfigParser) -> Path:
     return Path(cfg.get("hub", "raw_dir", fallback=str(CONFIG_DIR / "hub-raw"))).expanduser()
 
 
-def raw_readings(cfg: configparser.ConfigParser):
+def raw_readings(cfg: configparser.ConfigParser) -> Iterator[Any]:
     """Every request in the raw hub logs: a Reading for each one from our hub,
     None for anything else (other paths, other hubs)."""
     hub_id = cfg.get("hub", "hub_id", fallback="").strip().upper()
@@ -106,7 +108,7 @@ def _log_raw(raw_dir: Path, path_and_query: str) -> None:
         f.write(f"{stamp:%Y-%m-%dT%H:%M:%SZ}\t{path_and_query}\n")
 
 
-def without(query: str, fields) -> str:
+def without(query: str, fields: Any) -> str:
     """The hub's query string with the keys of these reading fields taken out."""
     keep = [(k, v) for k, v in urllib.parse.parse_qsl(query, keep_blank_values=True)
             if HUB_FIELDS.get(k) not in fields]
@@ -132,7 +134,7 @@ def _relay(relay_url: str, path_and_query: str, method: str = "GET", body: bytes
         return None
 
 
-def _make_hub_handler(cfg: configparser.ConfigParser, emit):
+def _make_hub_handler(cfg: configparser.ConfigParser, emit: Emit) -> type[BaseHTTPRequestHandler]:
     relay_on = cfg.getboolean("hub", "relay", fallback=True)
     relay_url = cfg.get("hub", "relay_url", fallback=ACCESS_RELAY_URL).rstrip("/")
     # If set, only readings from this hub (its Device ID / MAC) are recorded;
@@ -147,17 +149,17 @@ def _make_hub_handler(cfg: configparser.ConfigParser, emit):
     class HubHandler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
-        def log_message(self, fmt, *args):  # silence default access log
+        def log_message(self, fmt: str, *args: Any) -> None:  # silence default access log
             pass
 
-        def _answer(self, status: int, ctype: str, body: bytes):
+        def _answer(self, status: int, ctype: str, body: bytes) -> None:
             self.send_response(status)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
 
-        def _handle(self, method: str, body: bytes | None):
+        def _handle(self, method: str, body: bytes | None) -> None:
             # The Access sends its readings in the query string; firmware 051 uses POST.
             _log_raw(raw_dir, f"{method} {self.path}" + (f" {body[:500]!r}" if body else ""))
             parsed = urllib.parse.urlparse(self.path)
@@ -210,10 +212,10 @@ def _make_hub_handler(cfg: configparser.ConfigParser, emit):
                           json.dumps({"timezone": f"{offset[:3]}:{offset[3:]}"}).encode())
             self._answer(*answer)
 
-        def do_GET(self):
+        def do_GET(self) -> None:
             self._handle("GET", None)
 
-        def do_POST(self):
+        def do_POST(self) -> None:
             length = int(self.headers.get("Content-Length", 0))
             self._handle("POST", self.rfile.read(length) if length else b"")
 
@@ -249,17 +251,17 @@ class _HubServer(ThreadingHTTPServer):
     request_queue_size = 64
     tls_context: ssl.SSLContext | None = None
 
-    def finish_request(self, request, client_address):
+    def finish_request(self, request: Any, client_address: Any) -> None:
         request.settimeout(CONNECTION_TIMEOUT)
         if self.tls_context is not None:
             request = self.tls_context.wrap_socket(request, server_side=True)
         super().finish_request(request, client_address)
 
-    def handle_error(self, request, client_address):
+    def handle_error(self, request: Any, client_address: Any) -> None:
         log.debug("Hub connection from %s dropped: %s", client_address[0], sys.exc_info()[1])
 
 
-def run(cfg: configparser.ConfigParser, emit) -> None:
+def run(cfg: configparser.ConfigParser, emit: Emit) -> None:
     port = cfg.getint("hub", "port", fallback=443)
     handler = _make_hub_handler(cfg, emit)
     try:

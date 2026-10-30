@@ -8,6 +8,7 @@ import logging
 import time
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -55,13 +56,13 @@ def _mph(wind: str | None) -> int | None:
     return max(nums) if nums else None
 
 
-def _value(q: dict | None, scale: float = 1.0, places: int = 0):
+def _value(q: dict | None, scale: float = 1.0, places: int = 0) -> float | None:
     """A Weather Service quantity ({"value": ..., "unitCode": ...}) → a plain number."""
     v = (q or {}).get("value")
     return None if v is None else round(v * scale, places) if places else round(v * scale)
 
 
-def _miles_between(lat1, lon1, lat2, lon2) -> float:
+def _miles_between(lat1: Any, lon1: Any, lat2: Any, lon2: Any) -> float:
     from math import asin, cos, radians, sin, sqrt
     a = sin(radians(lat2 - lat1) / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(radians(lon2 - lon1) / 2) ** 2
     return 3958.8 * 2 * asin(sqrt(a))
@@ -121,7 +122,7 @@ def run_forecast(cfg: configparser.ConfigParser, write_path: Path) -> None:
     point: dict | None = None
     stations: list | None = None
 
-    def fetch(part, every, work):
+    def fetch(part: str, every: float, work: Callable[[], None]) -> bool:
         if time.time() < due[part]:
             return False
         try:
@@ -138,22 +139,22 @@ def run_forecast(cfg: configparser.ConfigParser, write_path: Path) -> None:
         return True
 
     while True:
-        def get_point():
+        def get_point() -> None:
             nonlocal point, stations
             point = _nws_get(f"{NWS_API}/points/{lat:.4f},{lon:.4f}", contact)["properties"]
             stations = _nws_get(point["observationStations"], contact)["features"]
         changed = fetch("point", POINT_EVERY_S, get_point)
         if point:
-            def get_forecast():
+            def get_forecast() -> None:
                 assert point is not None   # fetched first
                 out["hourly"] = _hourly(_nws_get(point["forecastHourly"], contact))
                 out["daily"] = _daily(_nws_get(point["forecast"], contact))
-            def get_observation():
+            def get_observation() -> None:
                 assert stations is not None   # fetched first
                 nearest = stations[0]
                 doc = _nws_get(f"{NWS_API}/stations/{nearest['properties']['stationIdentifier']}/observations/latest", contact)
                 out["observation"] = _observation(nearest, doc, lat, lon)
-            def get_alerts():
+            def get_alerts() -> None:
                 out["alerts"] = _alerts(_nws_get(f"{NWS_API}/alerts/active?point={lat:.4f},{lon:.4f}", contact))
             changed |= fetch("forecast", FORECAST_EVERY_S, get_forecast)
             changed |= fetch("observation", OBSERVATION_EVERY_S, get_observation)

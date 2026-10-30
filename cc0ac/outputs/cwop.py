@@ -20,8 +20,8 @@ import logging
 import socket
 from datetime import datetime
 
-from cc0ac.outputs._station import SOFTWARE, VERSION, Station, needs, number
 from cc0ac.iolog import report
+from cc0ac.outputs._station import SOFTWARE, VERSION, Station, needs, number
 from cc0ac.sources import Reading
 
 log = logging.getLogger("acurite")
