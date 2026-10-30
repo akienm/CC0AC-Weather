@@ -51,6 +51,10 @@ dashboard, your own data files, Weather Underground uploads unchanged, and no
 dependence on AcuRite's cloud. Built by Claude Code ("cc0") with Akien
 MacIain; contributions welcome.
 
+To be clear there are two other excellent choices for this right now. We each do things a little differently:
+- https://github.com/acuparse/acuparse
+- https://github.com/volneydouglas/zasder-weather-backend
+
 ## Pictures
 
 Real readings, with a made-up station name, room names and location.
@@ -83,54 +87,63 @@ says how sure we are of each. Only AcuRite is tested on real hardware so far.
 Not affiliated with or endorsed by AcuRite or Chaney Instrument Co. AcuRite is
 their trademark; it is used here only to say which hardware this works with.
 
-## What it does, alpha order
-- AcuRite Radios: Fully Supported
-- Acurite reporting (to their servers) supported (and optional)
+## What it does
+
+### UI & Weather Display
 - Alerts in the UI
 - Alerts: Disk errors (disk health checked daily)
 - Alerts: Low Batt & Signal
 - Alerts: Weather Alerts (NWS)
-- Android 'side load' weather kiosk app
-- Automatic backups (defaults to weekly)
-- Automatic Updates (optional)
-- Barometric forcasting in the output (works even offline)
-- Calibration adjustments for sensors that are slightly off
-- Charts page
-- Climate summary for month or year
-- Computer support: Linux, MacOs, Raspian, Windows
-- Config page (only available on your local network)
-- Configurable UI (settings names and icons for sensors, reporting order, etc)
+- Alerts/Notifications: Email and nfty weather alarts incl frost, heat, falling barometer, etc.
+- Data: Barometric forcasting in the output (works even offline)
+- Data: Climate summary for month or year
+- Data: Evapotranspiration
+- Data: Lightning (Still calibrating)
+- Pages: Charts
+- Pages: Config (only available on your local network)
+- Pages: Dashboard (main page)
+- Pages: Raw Logs (only available on your local network)
+- Pages: Setup Page (only available on your local network)
+- Pages: Status page - most recent readings, links to logs, etc. (only available on your local network)
+- User: Configurable UI (settings names and icons for sensors, reporting order, etc)
+- User: User specificed unit types & time zone
+- System: Http/s outout (defaults to port# 12345)
+- Web interface designed for phones and and desktops
+
+### Hardware: Computers, Radios, and Sensors
+- Computers: Linux, MacOs, Raspian, Windows
+- Computer: Automatic backups (defaults to weekly)
+- Computer: Automatic Updates (optional)
+- Docker (Windows and Linux)
+- Radios: AcuRite Access, Atlas, and temp/humidity sensors: Fully Supported
+- Radios: RTL-SDR V4
+- Radios: All other brands of weather stations broadcast on the same band. We built support for them, and tested them in simulation (data is available on the web) but can't run final checks on their hardware ourselves.
+- Sensors: Calibration adjustments for sensors that are slightly off
+- Sensors: Tested with AcuRite, All other brands of weather stations broadcast on the same band. We built support for them, and tested them in simulation (data is available on the web) but can't run final checks on their hardware ourselves.
+- System service support for all the platforms I could test (Linux, Windows, MacOS)
+
+### Services
+- Acurite reporting (to their servers) supported (and optional)
 - Cumulus support (weather db)
 - CWOP support
-- Dashboard page
-- Diagnostics file to help resolve issues
-- Docker (Windows and Linux)
-- Email and nfty weather alarts incl frost, heat, falling barometer, etc.
-- Evapotranspiration in the output
-- Home Assistant support (untested)
-- Http/s outout (defaults to port# 12345)
 - Influx DB
-- Install made easy! https://github.com/akienm/CC0AC-Weather#install
-- Lightning (Still calibrating)
 - MCP support for agenic inquiries
 - MQTT support
-- ntfy and email weather alarts
 - NWS or Open-Meteo Only operation for those with no sensors
 - PS Weather support
-- Raw Logs (only available on your local network)
-- Radios tested with: AcuRite Access & RTL-SDR V4
-- Sensor device support: AcuRite, and should work with all the commerical brands (tested in simulation)
-- Setup Page (only available on your local network)
-- Status page (only available on your local network)
-- System service support
-- User specificed unit types & time zone
-- Web interface designed for phones and and desktops
 - Webhook
 - WeatherCloud support
-- Weather Records kept for as long as you want. Including NWS.
 - Weahter Underground support
 - WeeWX support
 - Windy support
+
+### Misc
+- Install made easy! https://github.com/akienm/CC0AC-Weather#install
+- Home Assistant support (untested)
+- Android 'side load' weather kiosk app
+- Diagnostics file to help resolve issues
+- Weather Records kept for as long as you want. Including NWS.
+
 
 ## Install
 
@@ -205,6 +218,8 @@ and Weather Underground carry on as before.
    location, set up a phone alert if you like, and press **Save**.
 
 That's it: the dashboard is at the same address, and the charts are linked from it.
+
+## Troubleshooting
 
 **If <http://cc0ac-weather.local/> doesn't open:** some Android phones and
 older Windows PCs don't understand `.local` names. Look in your router's list
