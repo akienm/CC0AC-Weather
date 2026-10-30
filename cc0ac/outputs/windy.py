@@ -12,9 +12,9 @@ from __future__ import annotations
 import configparser
 import logging
 
-from outputs._station import Station, get, needs, wu_format
-from iolog import report
-from sources import Reading
+from cc0ac.outputs._station import Station, get, needs, wu_format
+from cc0ac.iolog import report
+from cc0ac.sources import Reading
 
 log = logging.getLogger("acurite")
 

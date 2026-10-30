@@ -13,8 +13,8 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from outputs import _station, cwop, mqtt, pwsweather, weathercloud, windy   # noqa: E402
-from sources import Reading   # noqa: E402
+from cc0ac.outputs import _station, cwop, mqtt, pwsweather, weathercloud, windy   # noqa: E402
+from cc0ac.sources import Reading   # noqa: E402
 
 WHEN = datetime(2026, 10, 22, 0, 0, tzinfo=timezone.utc)
 FIELDS = {"temp_f": 70.0, "humidity_pct": 59, "wind_mph": 8.0, "wind_gust_mph": 11.0,

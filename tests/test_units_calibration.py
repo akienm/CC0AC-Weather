@@ -20,13 +20,11 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
-import alerts        # noqa: E402
-import calibration   # noqa: E402
-import units         # noqa: E402
+from cc0ac import alerts        # noqa: E402
+from cc0ac import calibration   # noqa: E402
+from cc0ac import units         # noqa: E402
 
-spec = importlib.util.spec_from_file_location("acurite_capture", HERE / "acurite-capture.py")
-capture = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(capture)
+from cc0ac import capture
 
 US = units.SYSTEMS["us"]
 METRIC = units.SYSTEMS["metric"]

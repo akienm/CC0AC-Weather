@@ -11,11 +11,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
-from sources import rtl_433   # noqa: E402
+from cc0ac.sources import rtl_433   # noqa: E402
 
-spec = importlib.util.spec_from_file_location("acurite_capture", HERE / "acurite-capture.py")
-capture = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(capture)
+from cc0ac import capture
 
 NOW = 1_800_000_000.0
 

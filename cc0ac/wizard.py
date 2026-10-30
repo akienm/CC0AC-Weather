@@ -23,7 +23,7 @@ import re
 import urllib.request
 from pathlib import Path
 
-import sensor_config
+from cc0ac import sensor_config
 
 LEASES = Path("/var/lib/misc/dnsmasq.leases")
 HUB_FIELDS = {"Mac": "hub_id", "Ver": "firmware", "Ser": "server", "ID": "wu_station",

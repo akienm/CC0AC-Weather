@@ -27,10 +27,10 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-import sensor_config
+from cc0ac import sensor_config
 
 CONFIG_DIR = Path.home() / ".cc0ac-weather"
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parent.parent
 RAW_DIRS = ("hub-raw", "console-raw", "radio-raw")
 # Set by the boot loader (updates/bootloader.py) for the station it starts.
 BOOT_ROOT = Path(os.environ["CC0AC_BOOTLOADER_ROOT"]) if os.environ.get("CC0AC_BOOTLOADER_ROOT") else None

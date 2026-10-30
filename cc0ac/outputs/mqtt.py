@@ -24,9 +24,9 @@ import socket
 import struct
 import time
 
-import sensor_config
-from iolog import report
-from sources import FIELDS, Reading
+from cc0ac import sensor_config
+from cc0ac.iolog import report
+from cc0ac.sources import FIELDS, Reading
 
 log = logging.getLogger("acurite")
 

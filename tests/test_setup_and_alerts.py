@@ -8,9 +8,9 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import alerts   # noqa: E402
-import wizard   # noqa: E402
-import sensor_config   # noqa: E402
+from cc0ac import alerts   # noqa: E402
+from cc0ac import wizard   # noqa: E402
+from cc0ac import sensor_config   # noqa: E402
 
 HERE = Path(__file__).resolve().parent.parent
 HUB_PAGE = """<script>$('txtVer').value = '051';

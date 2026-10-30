@@ -14,9 +14,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
-import calibration     # noqa: E402
-import sensor_config   # noqa: E402
-import wizard          # noqa: E402
+from cc0ac import calibration     # noqa: E402
+from cc0ac import sensor_config   # noqa: E402
+from cc0ac import wizard          # noqa: E402
 
 NEW = """[device]
 write_path = ~/AcuRite
@@ -56,9 +56,7 @@ def read(text):
 
 
 def capture():
-    spec = importlib.util.spec_from_file_location("capture", HERE / "acurite-capture.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    from cc0ac import capture as module
     return module
 
 

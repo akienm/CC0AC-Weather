@@ -27,8 +27,8 @@ import configparser
 import logging
 import re
 
-import sensor_config
-from sources import derive
+from cc0ac import sensor_config
+from cc0ac.sources import derive
 
 log = logging.getLogger("acurite")
 

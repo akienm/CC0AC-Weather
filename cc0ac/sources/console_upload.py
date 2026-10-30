@@ -34,7 +34,7 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from sources import Reading, derive
+from cc0ac.sources import Reading, derive
 
 log = logging.getLogger("acurite")
 

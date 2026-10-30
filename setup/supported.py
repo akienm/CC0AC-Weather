@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from sources import rtl_433   # noqa: E402
+from cc0ac.sources import rtl_433   # noqa: E402
 
 # Recordings that went all the way through rtl_433 25.02 and this program on a
 # Pi (2026-10-16), not only the decoder: rtl_433_tests file → model.

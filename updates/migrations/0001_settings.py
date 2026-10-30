@@ -23,7 +23,7 @@ def apply(ctx):
     if not ctx.config.exists():
         sys.path.insert(0, str(ctx.version_dir))
         try:
-            import wizard
+            from cc0ac import wizard
         finally:
             sys.path.pop(0)
         text = (ctx.version_dir / "config.ini.example").read_text()

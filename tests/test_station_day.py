@@ -21,12 +21,10 @@ HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE / "updates"))
 import bootloader as bl   # noqa: E402
-import alerts             # noqa: E402
-import wizard             # noqa: E402
+from cc0ac import alerts             # noqa: E402
+from cc0ac import wizard             # noqa: E402
 
-spec = importlib.util.spec_from_file_location("acurite_capture", HERE / "acurite-capture.py")
-capture = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(capture)
+from cc0ac import capture
 
 ZONE = "America/Denver"
 

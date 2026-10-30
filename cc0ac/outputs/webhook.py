@@ -25,10 +25,10 @@ import logging
 import threading
 import time
 
-import sensor_config
-from iolog import report
-from outputs._station import SOFTWARE, needs, post
-from sources import FIELDS, OUTDOOR_TYPES, Reading
+from cc0ac import sensor_config
+from cc0ac.iolog import report
+from cc0ac.outputs._station import SOFTWARE, needs, post
+from cc0ac.sources import FIELDS, OUTDOOR_TYPES, Reading
 
 log = logging.getLogger("acurite")
 

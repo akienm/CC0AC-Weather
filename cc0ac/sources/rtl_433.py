@@ -39,8 +39,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-import sensor_config
-from sources import FIELDS, Reading, derive
+from cc0ac import sensor_config
+from cc0ac.sources import FIELDS, Reading, derive
 
 log = logging.getLogger("acurite")
 

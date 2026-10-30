@@ -12,7 +12,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
-import climate      # noqa: E402
+from cc0ac import climate      # noqa: E402
 
 DAYS = [{"day": "2026-06-30", "temp_max": 50, "temp_min": 40},    # last heating season: left out
         {"day": "2026-07-01", "temp_max": 60, "temp_min": 50},    # 10 heating
@@ -57,7 +57,7 @@ class DegreeDays(unittest.TestCase):
         self.assertEqual(got["cooling"]["month"], 5.0)
 
     def test_noaa_summaries_count_the_same_way(self):
-        import noaa
+        from cc0ac import noaa
         self.assertIs(noaa.degree_days, climate.degree_days)
 
 

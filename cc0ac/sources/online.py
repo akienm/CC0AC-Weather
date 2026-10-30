@@ -32,7 +32,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
-from sources import Reading, derive
+from cc0ac.sources import Reading, derive
 
 log = logging.getLogger("acurite")
 

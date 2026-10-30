@@ -18,9 +18,9 @@ from types import SimpleNamespace
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "updates"))
-import alerts       # noqa: E402
+from cc0ac import alerts       # noqa: E402
 import bootloader as bl   # noqa: E402
-import upkeep       # noqa: E402
+from cc0ac import upkeep       # noqa: E402
 
 HEALTHY_SSD = {"smart_status": {"passed": True}, "ata_smart_attributes": {"table": [
     {"id": 5, "raw": {"value": 0}}, {"id": 9, "raw": {"value": 4012}}, {"id": 197, "raw": {"value": 0}}]}}

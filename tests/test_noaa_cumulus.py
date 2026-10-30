@@ -21,12 +21,10 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
-import importer     # noqa: E402
-import noaa         # noqa: E402
+from cc0ac import importer     # noqa: E402
+from cc0ac import noaa         # noqa: E402
 
-spec = importlib.util.spec_from_file_location("acurite_capture", HERE / "acurite-capture.py")
-capture = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(capture)
+from cc0ac import capture
 
 SENSOR = "00001234"
 

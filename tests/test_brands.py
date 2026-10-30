@@ -18,8 +18,8 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import diagnostics                       # noqa: E402
-from sources import FIELDS, OUTDOOR_TYPES, console_upload, rtl_433   # noqa: E402
+from cc0ac import diagnostics                       # noqa: E402
+from cc0ac.sources import FIELDS, OUTDOOR_TYPES, console_upload, rtl_433   # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 SAMPLES = [json.loads(line) for line in (HERE / "rtl_433_samples.jsonl").read_text().splitlines()]

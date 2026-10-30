@@ -14,9 +14,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
-import iolog   # noqa: E402
-from outputs import influxdb, webhook   # noqa: E402
-from sources import Reading   # noqa: E402
+from cc0ac import iolog   # noqa: E402
+from cc0ac.outputs import influxdb, webhook   # noqa: E402
+from cc0ac.sources import Reading   # noqa: E402
 
 
 def cfg(**sections) -> configparser.ConfigParser:
@@ -185,9 +185,7 @@ class Influx(Sends):
 class Loaded(unittest.TestCase):
     def test_the_program_finds_both(self):
         import importlib.util
-        spec = importlib.util.spec_from_file_location("acurite_capture", HERE / "acurite-capture.py")
-        capture = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(capture)
+        from cc0ac import capture
         names = {o.NAME for o in capture.load_outputs()}
         self.assertTrue({"webhook", "influxdb"} <= names)
 

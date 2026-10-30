@@ -16,7 +16,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
-import wizard   # noqa: E402
+from cc0ac import wizard   # noqa: E402
 
 OLD = """[device]
 ; where the files go
@@ -50,9 +50,7 @@ enabled = false
 
 
 def capture():
-    spec = importlib.util.spec_from_file_location("capture", HERE / "acurite-capture.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    from cc0ac import capture as module
     return module
 
 

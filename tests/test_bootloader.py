@@ -107,7 +107,7 @@ class Install(unittest.TestCase):
         self.assertEqual(json.loads((self.root / "bootloader.json").read_text())["hub_interface"], "enp2s0")
         text = (self.home / "config.ini").read_text()
         sys.path.insert(0, str(REPO))
-        import wizard
+        from cc0ac import wizard
         (self.home / "config.ini").write_text(wizard.set_values(text, "web", {"port": str(free_port())}))
         return boot
 

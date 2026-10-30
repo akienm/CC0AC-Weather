@@ -21,15 +21,13 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
-import alerts       # noqa: E402
-import climate      # noqa: E402
-import importer     # noqa: E402
-import mcp_server   # noqa: E402
-import zambretti    # noqa: E402
+from cc0ac import alerts       # noqa: E402
+from cc0ac import climate      # noqa: E402
+from cc0ac import importer     # noqa: E402
+from cc0ac import mcp_server   # noqa: E402
+from cc0ac import zambretti    # noqa: E402
 
-spec = importlib.util.spec_from_file_location("acurite_capture", HERE / "acurite-capture.py")
-capture = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(capture)
+from cc0ac import capture
 
 NOW = datetime(2026, 10, 21, 18, 0, tzinfo=timezone.utc).timestamp()
 

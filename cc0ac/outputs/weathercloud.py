@@ -13,9 +13,9 @@ from __future__ import annotations
 import configparser
 import logging
 
-from outputs._station import VERSION, Station, get, needs, number
-from iolog import report
-from sources import Reading
+from cc0ac.outputs._station import VERSION, Station, get, needs, number
+from cc0ac.iolog import report
+from cc0ac.sources import Reading
 
 log = logging.getLogger("acurite")
 

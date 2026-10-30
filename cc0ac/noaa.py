@@ -32,8 +32,8 @@ import math
 import sqlite3
 from datetime import date, datetime, timezone
 
-import units
-from climate import degree_days   # the dashboard's degree days are the same
+from cc0ac import units
+from cc0ac.climate import degree_days   # the dashboard's degree days are the same
 
 CARDINALS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
 # The counts under each table, in the stored units: (label, field, test, threshold).

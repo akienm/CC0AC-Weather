@@ -1348,8 +1348,8 @@ addresses, sensor names and location taken out.
 The shape: **sources** turn whatever a station sends (the hub's uploads, a radio,
 a console) into one kind of *Reading*; the program records each Reading, keeps
 `current.json` and the database up to date, and serves the pages; **outputs** send
-Readings on (networks, MQTT). Adding a brand is a new file in `sources/`, adding a
-destination is a new file in `outputs/`; each folder's `__init__.py` says how.
+Readings on (networks, MQTT). Adding a brand is a new file in `cc0ac/sources/`, adding a
+destination is a new file in `cc0ac/outputs/`; each folder's `__init__.py` says how.
 Plain Python 3 standard library, no framework, so it runs on whatever Python the
 computer already has.
 
@@ -1359,44 +1359,46 @@ Run the tests before a pull request: `python3 -m unittest discover -s tests`.
 
 | File | Purpose |
 |---|---|
-| `acurite-capture.py` | The program: recording, database, web server, forecast; runs the sources and outputs |
-| `sources/__init__.py` | The Reading every source produces, its fields and units, and how to add a source |
-| `sources/acurite_access.py` | The Access hub source: listener, relay to AcuRite, raw log |
-| `sources/rtl_433.py` | The radio source: runs rtl_433 and turns its messages into Readings |
-| `sources/console_upload.py` | Console uploads: Ambient Weather, Ecowitt and Wunderground formats |
-| `diagnostics.py` | `--diagnostics` and the status page's download: one file to attach to a problem report |
-| `iolog.py` | The send logs: what was sent to each service and what came back |
-| `units.py` | `[units]`: the units the pages and alert messages show readings in |
+| `acurite-capture.py` | Starts the station (a two-line launcher; the service file and boot loader run it) |
+| `cc0ac/capture.py` | The program: recording, database, web server, forecast; runs the sources and outputs |
+| `upkeep.py` | Launcher for `cc0ac/upkeep.py`, which the boot loader runs: disk checks and backups |
+| `cc0ac/sources/__init__.py` | The Reading every source produces, its fields and units, and how to add a source |
+| `cc0ac/sources/acurite_access.py` | The Access hub source: listener, relay to AcuRite, raw log |
+| `cc0ac/sources/rtl_433.py` | The radio source: runs rtl_433 and turns its messages into Readings |
+| `cc0ac/sources/console_upload.py` | Console uploads: Ambient Weather, Ecowitt and Wunderground formats |
+| `cc0ac/diagnostics.py` | `--diagnostics` and the status page's download: one file to attach to a problem report |
+| `cc0ac/iolog.py` | The send logs: what was sent to each service and what came back |
+| `cc0ac/units.py` | `[units]`: the units the pages and alert messages show readings in |
 | `units.js` | The same for the pages: converts each stored reading for display |
-| `sensor_config.py` | each sensor's own section: its title, icon, chart link and calibration |
-| `calibration.py` | `[calibration]`: corrects a sensor that reads a little off |
-| `secure_web.py` | `[web] certificate` and `[duckdns]`: https beside http on the same port, and keeping a DuckDNS name pointed home |
-| `sanity.py` | `[sanity]`: holds back readings no weather could produce |
+| `cc0ac/sensor_config.py` | each sensor's own section: its title, icon, chart link and calibration |
+| `cc0ac/calibration.py` | `[calibration]`: corrects a sensor that reads a little off |
+| `cc0ac/secure_web.py` | `[web] certificate` and `[duckdns]`: https beside http on the same port, and keeping a DuckDNS name pointed home |
+| `cc0ac/sanity.py` | `[sanity]`: holds back readings no weather could produce |
 | `SUPPORTED.md` | Which brands work how, and how sure we are (made by `setup/supported.py`) |
 | `tests/` | `python3 -m unittest discover tests`; `rtl_433_samples.jsonl` is one recorded line per radio model |
-| `outputs/__init__.py` | How to add an output: somewhere readings are sent |
-| `outputs/weather_underground.py` | Uploads readings heard by radio to Weather Underground |
-| `outputs/mqtt.py` | Publishes readings to an MQTT broker, with Home Assistant discovery |
-| `outputs/_station.py` | What the weather-network outputs share: the station, its latest values, how often |
-| `outputs/windy.py` | Uploads the station to Windy |
-| `outputs/pwsweather.py` | Uploads the station to PWSweather |
-| `outputs/weathercloud.py` | Uploads the station to Weathercloud |
-| `outputs/cwop.py` | Sends the station to CWOP as an APRS weather packet |
-| `outputs/webhook.py` | POSTs each reading as JSON to a web address of your own |
-| `outputs/influxdb.py` | Writes each reading to InfluxDB 1.x, 2 or 3 |
+| `cc0ac/outputs/__init__.py` | How to add an output: somewhere readings are sent |
+| `cc0ac/outputs/weather_underground.py` | Uploads readings heard by radio to Weather Underground |
+| `cc0ac/outputs/mqtt.py` | Publishes readings to an MQTT broker, with Home Assistant discovery |
+| `cc0ac/outputs/_station.py` | What the weather-network outputs share: the station, its latest values, how often |
+| `cc0ac/outputs/windy.py` | Uploads the station to Windy |
+| `cc0ac/outputs/pwsweather.py` | Uploads the station to PWSweather |
+| `cc0ac/outputs/weathercloud.py` | Uploads the station to Weathercloud |
+| `cc0ac/outputs/cwop.py` | Sends the station to CWOP as an APRS weather packet |
+| `cc0ac/outputs/webhook.py` | POSTs each reading as JSON to a web address of your own |
+| `cc0ac/outputs/influxdb.py` | Writes each reading to InfluxDB 1.x, 2 or 3 |
 | `config.ini.example` | Configuration template, every option documented |
 | `weather.html` | Dashboard; reads `current.js`, `forecast.js` and `climate.js` |
 | `charts.html` | Charts over any period; reads `/history.json` |
 | `config.html` | The settings page served at `/config.cgi` (your network only) |
 | `setup.html` | The first-run setup page at `/setup` (your network only) |
 | `status.html` | The status page at `/status` (your network only); reads `/status.json` |
-| `wizard.py` | Finds the hub, reads its page, writes the setup page's answers into the settings |
-| `alerts.py` | Sends a message when readings stop and when they're back, and weather alerts (`--check`, `--test-alert`) |
-| `climate.py` | Records, the 1991-2020 normals, degree days and ET0: `climate.json` and the dashboard's Records card |
-| `zambretti.py` | The barometer outlook on the outdoor card |
-| `mcp_server.py` | The read-only MCP server at `/mcp`, for AI assistants |
-| `importer.py` | `--import`: older readings from WeeWX, Cumulus, CSV files or Weather Underground |
-| `noaa.py` | `--noaa` and `/noaa.json`: NOAA-style month and year climate summaries |
+| `cc0ac/wizard.py` | Finds the hub, reads its page, writes the setup page's answers into the settings |
+| `cc0ac/alerts.py` | Sends a message when readings stop and when they're back, and weather alerts (`--check`, `--test-alert`) |
+| `cc0ac/climate.py` | Records, the 1991-2020 normals, degree days and ET0: `climate.json` and the dashboard's Records card |
+| `cc0ac/zambretti.py` | The barometer outlook on the outdoor card |
+| `cc0ac/mcp_server.py` | The read-only MCP server at `/mcp`, for AI assistants |
+| `cc0ac/importer.py` | `--import`: older readings from WeeWX, Cumulus, CSV files or Weather Underground |
+| `cc0ac/noaa.py` | `--noaa` and `/noaa.json`: NOAA-style month and year climate summaries |
 | `noaa.html` | The NOAA summary page at `/noaa` (your network only) |
 | `setup/install.sh` | Installs on a Pi, Debian, Ubuntu or a Mac (`install-pi.sh` is the old name and runs it) |
 | `setup/install.ps1` | Installs on Windows |

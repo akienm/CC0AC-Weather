@@ -36,7 +36,7 @@ import logging
 import statistics
 from typing import Callable
 
-import units
+from cc0ac import units
 
 log = logging.getLogger("acurite")
 

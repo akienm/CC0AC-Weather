@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from sources import online   # noqa: E402
+from cc0ac.sources import online   # noqa: E402
 
 
 def cfg(**online_keys) -> configparser.ConfigParser:

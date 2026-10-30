@@ -36,8 +36,8 @@ from datetime import datetime, timezone
 from email.message import EmailMessage
 from pathlib import Path
 
-import units
-from iolog import report
+from cc0ac import units
+from cc0ac.iolog import report
 
 log = logging.getLogger("acurite")
 

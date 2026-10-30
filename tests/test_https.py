@@ -25,8 +25,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
-import diagnostics   # noqa: E402
-import secure_web    # noqa: E402
+from cc0ac import diagnostics   # noqa: E402
+from cc0ac import secure_web    # noqa: E402
 
 TOKEN = "0000aaaa-1111-2222-3333-444455556666"
 
@@ -163,9 +163,7 @@ class NoCertificate(unittest.TestCase):
 
 class TheDaemon(unittest.TestCase):
     def test_run_web_server_serves_the_dashboard_over_https(self):
-        spec = importlib.util.spec_from_file_location("capture", HERE / "acurite-capture.py")
-        capture = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(capture)
+        from cc0ac import capture
         with tempfile.TemporaryDirectory() as tmp:
             cert, key = make_cert(Path(tmp), "station")
             with socket.socket() as s:

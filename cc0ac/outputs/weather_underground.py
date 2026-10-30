@@ -14,8 +14,8 @@ import logging
 import urllib.parse
 import urllib.request
 
-from iolog import report
-from sources import OUTDOOR_TYPES, Reading
+from cc0ac.iolog import report
+from cc0ac.sources import OUTDOOR_TYPES, Reading
 
 log = logging.getLogger("acurite")
 

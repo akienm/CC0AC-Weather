@@ -20,12 +20,10 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
-import sanity                    # noqa: E402
-from sources import acurite_access   # noqa: E402
+from cc0ac import sanity                    # noqa: E402
+from cc0ac.sources import acurite_access   # noqa: E402
 
-spec = importlib.util.spec_from_file_location("acurite_capture", HERE / "acurite-capture.py")
-capture = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(capture)
+from cc0ac import capture
 
 T0 = 1_790_000_000.0
 

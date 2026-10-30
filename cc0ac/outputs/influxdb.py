@@ -20,10 +20,10 @@ import configparser
 import logging
 import urllib.parse
 
-import sensor_config
-from iolog import report
-from outputs._station import _utc, needs, post
-from sources import Reading
+from cc0ac import sensor_config
+from cc0ac.iolog import report
+from cc0ac.outputs._station import _utc, needs, post
+from cc0ac.sources import Reading
 
 log = logging.getLogger("acurite")
 

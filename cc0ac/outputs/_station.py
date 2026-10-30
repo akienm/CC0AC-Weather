@@ -23,11 +23,11 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sources import OUTDOOR_TYPES, Reading
+from cc0ac.sources import OUTDOOR_TYPES, Reading
 
 log = logging.getLogger("acurite")
 
-VERSION = (Path(__file__).resolve().parent.parent / "VERSION").read_text().split("/")[0].strip()
+VERSION = (Path(__file__).resolve().parent.parent.parent / "VERSION").read_text().split("/")[0].strip()
 SOFTWARE = f"CC0AC-Weather-{VERSION}"
 
 
@@ -77,7 +77,7 @@ def number(fields: dict, name: str) -> float | None:
 def wu_format(fields: dict, when: datetime) -> dict:
     """The fields in Weather Underground's upload format, which Windy and
     PWSweather take too: their names, US units, and dateutc."""
-    from outputs.weather_underground import WU_FIELDS
+    from cc0ac.outputs.weather_underground import WU_FIELDS
     out = {"dateutc": when.strftime("%Y-%m-%d %H:%M:%S"), "softwaretype": SOFTWARE}
     for field, (name, places) in WU_FIELDS.items():
         v = number(fields, field)
