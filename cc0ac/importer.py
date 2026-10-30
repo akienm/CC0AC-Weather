@@ -100,10 +100,11 @@ def rows_weewx(path: Path) -> Iterator[dict]:
         want = [c for c in ("dateTime", "usUnits", "outTemp", "outHumidity", "dewpoint", "heatindex",
                             "windchill", "windSpeed", "windGust", "windDir", "barometer", "rain", "UV")
                 if c in cols]
-        day, day_rain, last_hour = None, 0.0, []
-        for r in con.execute(f"SELECT {', '.join(want)} FROM archive ORDER BY dateTime"):
-            r = dict(zip(want, r))
-            t_conv, speed, press, rain_k = WEEWX_UNITS.get(r.get("usUnits"), WEEWX_UNITS[1])
+        day, day_rain = None, 0.0
+        last_hour: list = []
+        for row in con.execute(f"SELECT {', '.join(want)} FROM archive ORDER BY dateTime"):
+            r = dict(zip(want, row))
+            t_conv, speed, press, rain_k = WEEWX_UNITS.get(r.get("usUnits") or 1, WEEWX_UNITS[1])
             temp = (lambda v: v) if t_conv is None else t_conv
             epoch = r["dateTime"]
             # WeeWX stores the rain that fell in each archive interval; the hub
@@ -169,6 +170,7 @@ def parse_time(text: str, utc: bool) -> float | None:
     if NUMBER.fullmatch(text) and float(text) > 1e8:          # epoch seconds
         return float(text)
     iso = text.replace("Z", "+00:00").replace("/", "-")
+    t: datetime | None
     try:
         t = datetime.fromisoformat(iso)
     except ValueError:
@@ -182,6 +184,7 @@ def parse_time(text: str, utc: bool) -> float | None:
                 pass
         if t is None:
             return None
+    assert t is not None
     if t.tzinfo is None:
         t = t.replace(tzinfo=timezone.utc) if utc else t.astimezone()
     return t.timestamp()
@@ -201,6 +204,8 @@ def rows_csv(path: Path, metric: bool = False) -> Iterator[dict]:
         heads = reader.fieldnames or []
         keys = {h: _key(h) for h in heads}
         own = {"timestamp", "sensor_id", "type"} <= set(heads)        # this program's history.csv
+        columns: dict[str, str]
+        time_col: str | None
         if own:
             columns = {h: h for h in heads if h in PLAUSIBLE}
             time_col = "timestamp"
@@ -220,7 +225,7 @@ def rows_csv(path: Path, metric: bool = False) -> Iterator[dict]:
             epoch = parse_time(r.get(time_col) or "", utc)
             if epoch is None:
                 continue
-            fields = {field: _value(r.get(h), field) for h, field in columns.items()}
+            fields = {field: _value(r.get(h) or "", field) for h, field in columns.items()}
             if metric and not own:
                 fields = {k: (c_to_f(v) if k.endswith("_f") else scaled(v, KMH) if k.endswith("_mph")
                               else scaled(v, HPA) if k == "pressure_inhg"
@@ -249,6 +254,7 @@ def cumulus_logs(path: Path) -> list[Path]:
 
     def when(f: Path):
         m = CUMULUS_LOG.fullmatch(f.name)
+        assert m   # only matching names are sorted
         return int(m.group(2)), months.get(m.group(1), 0)
 
     logs = sorted((f for f in folder.iterdir() if CUMULUS_LOG.fullmatch(f.name)), key=when)
@@ -298,7 +304,8 @@ def rows_cumulus(path: Path, metric: bool = False, say=print) -> Iterator[dict]:
     k, told = cumulus_units(path, metric)
     say(f"  Cumulus units: {told}")
     temp = (lambda v: v) if k["f"] else c_to_f
-    last_rain, last_hour = None, []
+    last_rain = None
+    last_hour: list = []
     for log in cumulus_logs(path):
         for line in log.read_text(encoding="utf-8-sig", errors="replace").splitlines():
             # Fields are split by the computer's list separator: a comma, or a

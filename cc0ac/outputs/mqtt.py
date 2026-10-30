@@ -23,6 +23,7 @@ import select
 import socket
 import struct
 import time
+from typing import Any
 
 from cc0ac import sensor_config
 from cc0ac.iolog import report
@@ -191,7 +192,7 @@ def messages(cfg: configparser.ConfigParser, reading: Reading) -> list[tuple[str
         for field in reading.fields:
             if (sid, field) in _announced or field not in FIELDS:
                 continue
-            config = {"unique_id": f"cc0ac-weather-{sid}-{field}",
+            config: dict[str, Any] = {"unique_id": f"cc0ac-weather-{sid}-{field}",
                       "state_topic": f"{prefix}/{sid}/{field}", "device": device}
             if stale_s:
                 config["expire_after"] = stale_s

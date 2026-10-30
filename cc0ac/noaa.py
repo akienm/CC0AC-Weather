@@ -31,14 +31,15 @@ import configparser
 import math
 import sqlite3
 from datetime import date, datetime, timezone
+from typing import Any
 
 from cc0ac import units
-from cc0ac.climate import degree_days   # the dashboard's degree days are the same
+from cc0ac.climate import degree_days  # the dashboard's degree days are the same
 
 CARDINALS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
 # The counts under each table, in the stored units: (label, field, test, threshold).
-US_LIMITS = {"hot": 90, "cold_max": 32, "cold_min": 32, "very_cold": 0, "rain": (0.01, 0.1, 1.0)}
-METRIC_LIMITS = {"hot": 86, "cold_max": 32, "cold_min": 32, "very_cold": -0.4, "rain": (0.25 / 25.4, 2.5 / 25.4, 25 / 25.4)}
+US_LIMITS: dict[str, Any] = {"hot": 90, "cold_max": 32, "cold_min": 32, "very_cold": 0, "rain": (0.01, 0.1, 1.0)}
+METRIC_LIMITS: dict[str, Any] = {"hot": 86, "cold_max": 32, "cold_min": 32, "very_cold": -0.4, "rain": (0.25 / 25.4, 2.5 / 25.4, 25 / 25.4)}
 
 
 def _local(utc: str) -> datetime:

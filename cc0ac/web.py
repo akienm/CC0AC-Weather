@@ -154,10 +154,11 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
             if path in DATA_FILES:
                 target, ctype = write_path / path.lstrip("/"), DATA_FILES[path]
             else:
-                target = _find_page(path.lstrip("/") or "weather.html", own_dir, page_dir)
-                if target is None:
+                found = _find_page(path.lstrip("/") or "weather.html", own_dir, page_dir)
+                if found is None:
                     self.send_error(404)
                     return
+                target = found
                 ctype = PAGE_TYPES[target.suffix.lower()]
             try:
                 body = target.read_bytes()
@@ -176,6 +177,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
         def _config_page(self, q: dict):
             if not self._config_allowed():
                 return
+            assert config_path is not None   # _config_allowed
             if q.get("raw"):
                 self._send(config_path.read_bytes(), "text/plain; charset=utf-8")
             else:
@@ -184,6 +186,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
         def _status(self, path: str, q: dict):
             if not self._config_allowed():
                 return
+            assert cfg is not None   # do_GET routes /status here only with a config
             if path == "/status":
                 self._send((page_dir / "status.html").read_bytes(), PAGE_TYPES[".html"])
             elif path == "/status.json":
@@ -203,7 +206,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
             else:
                 m = LOG_PATH.fullmatch(q.get("f", ""))
                 folder = log_folder(cfg, m.group(1)) if m else None
-                target = folder / m.group(2) if folder else None
+                target = folder / m.group(2) if m and folder else None
                 if target is None or not target.is_file():
                     self.send_error(404)
                     return
@@ -214,6 +217,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
                 self._send(text.encode(), "text/plain; charset=utf-8")
 
         def _unconfigured(self) -> bool:
+            assert config_path is not None   # do_GET checks before asking
             try:
                 return wizard.needs_setup(load_config(config_path))
             except SystemExit:
@@ -225,6 +229,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
             if path == "/setup":
                 self._send((page_dir / "setup.html").read_bytes(), PAGE_TYPES[".html"])
                 return
+            assert config_path is not None   # _config_allowed
             state = wizard.setup_state(load_config(config_path))
             self._send(json.dumps(state).encode(), "application/json")
 
@@ -247,15 +252,17 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
             if not 0 < length <= CONFIG_MAX_BYTES:
                 self._answer(400, "Not saved: empty, or too big for a config file.")
                 return
+            assert config_path is not None   # _config_allowed
             try:
                 text = self.rfile.read(length).decode("utf-8")
             except UnicodeDecodeError:
                 self._answer(400, "Not saved: the text isn't UTF-8.")
                 return
             if target == "/setup.cgi":
-                text = self._setup_answers(text)
-                if text is None:
+                answered = self._setup_answers(text)
+                if answered is None:
                     return
+                text = answered
             problem = check_config(text)
             if problem:
                 self._answer(400, problem)
@@ -273,6 +280,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
         def _setup_answers(self, body: str) -> str | None:
             """The setup page's answers as the new config.ini text; or None,
             the reply already sent (a test message, or a refusal)."""
+            assert config_path is not None   # do_POST checked _config_allowed
             try:
                 answers = json.loads(body)
                 if not isinstance(answers, dict):
@@ -313,6 +321,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
             if not 0 < length <= CONFIG_MAX_BYTES:
                 self.send_error(400, "Empty or too big")
                 return
+            assert mcp_server_ is not None   # do_POST routes /mcp here only when it is on
             code, reply = mcp_server_.handle(self.rfile.read(length))
             if reply is None:
                 self.send_response(code)
@@ -357,6 +366,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
             if db_path is None or not db_path.exists():
                 self.send_error(404, "No database yet")
                 return
+            assert cfg is not None   # do_GET routes /noaa here only with a config
             try:
                 got = noaa_summary(cfg, db_path, sensors or {}, q)
             except ValueError as e:

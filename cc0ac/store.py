@@ -7,13 +7,13 @@ import json
 import logging
 import sqlite3
 import time
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from cc0ac.sources import FIELDS, OUTDOOR_TYPES, Reading
-from cc0ac import noaa
-from cc0ac import sanity
+from cc0ac import noaa, sanity
 from cc0ac.config import display_order
+from cc0ac.sources import FIELDS, OUTDOOR_TYPES, Reading
 
 log = logging.getLogger("acurite")
 
@@ -79,7 +79,7 @@ def store_reading(con: sqlite3.Connection, reading: Reading) -> bool:
 def believed_before(db_path: Path, sensor_id: str) -> dict:
     """{field: (value, epoch)}: a sensor's last stored value of each field sanity.py
     watches for jumps, from the last three hours, so a restart picks up where it was."""
-    out = {}
+    out: dict = {}
     try:
         con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
     except sqlite3.Error:
@@ -137,7 +137,7 @@ OUTDOOR = "(" + ", ".join(f"'{t}'" for t in OUTDOOR_TYPES) + ")"
 def _local_days(con: sqlite3.Connection, lo: float | None = None, hi: float | None = None) -> list:
     """[(local date 'YYYY-MM-DD', that day's rain)] from the outdoor sensor's dailyrainin."""
     where, args = "", []
-    if lo is not None:
+    if lo is not None and hi is not None:
         where, args = "AND received_utc >= ? AND received_utc < ?", [epoch_to_iso(lo), epoch_to_iso(hi)]
     return con.execute(f"""SELECT date(received_utc, 'localtime') AS d, max(rain_day_in)
         FROM readings WHERE type IN {OUTDOOR} AND rain_day_in IS NOT NULL {where}
@@ -187,8 +187,8 @@ def _rain_buckets(con: sqlite3.Connection, lo: float, hi: float, step: int, off:
                 if grew > 0 and t >= lo:
                     buckets[key(t)] = buckets.get(key(t), 0) + grew
             prev = total
-    t = list(range(key(lo), int(hi) + 1, step))
-    return {"step": step, "t": t, "in": [round(buckets.get(b, 0), 2) for b in t]}
+    ticks = list(range(key(lo), int(hi) + 1, step))
+    return {"step": step, "t": ticks, "in": [round(buckets.get(b, 0), 2) for b in ticks]}
 
 
 # The fields the charts draw that a held-back value can be shown on.
@@ -199,7 +199,7 @@ def history(db_path: Path, sensors: dict, q: dict) -> dict:
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
     try:
         now = datetime.now().astimezone()
-        off = int(now.utcoffset().total_seconds())
+        off = int((now.utcoffset() or timedelta(0)).total_seconds())
         first = con.execute("SELECT min(received_utc) FROM readings").fetchone()[0]
         first = iso_to_epoch(first) if first else now.timestamp()
         lo, hi, period = _history_bounds(q, first, now)
@@ -235,7 +235,8 @@ def history(db_path: Path, sensors: dict, q: dict) -> dict:
             rooms.append({"id": sid, "name": sensors.get(sid, f"{kind} {sid}"), "temp_f": temp, "humidity_pct": hum})
         rooms.sort(key=lambda r: display_order(sensors, r["id"], r["name"]))
         # What sanity.py held back, bucket by bucket, for the charts to show faded.
-        held_out, held_rooms = {}, {}
+        held_out: dict = {}
+        held_rooms: dict = {}
         for sid, kind, at, suspect in con.execute("""SELECT sensor_id, type, received_utc, suspect FROM readings
                 WHERE suspect IS NOT NULL AND received_utc >= ? AND received_utc < ? ORDER BY received_utc""",
                                                   [epoch_to_iso(lo), epoch_to_iso(hi)]):
@@ -282,7 +283,7 @@ DAILY = {   # column → SQL over that day's readings
 }
 
 # How a longer period combines its days' values, by column-name ending.
-_COMBINE = {"_min": min, "_max": max, "_avg": lambda v: sum(v) / len(v), "rain_in": sum, "readings": sum}
+_COMBINE: dict[str, Callable[[list], float]] = {"_min": min, "_max": max, "_avg": lambda v: sum(v) / len(v), "rain_in": sum, "readings": sum}
 
 
 def _combine(name: str, values: list):

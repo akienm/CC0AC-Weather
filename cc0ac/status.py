@@ -8,15 +8,12 @@ import re
 import sqlite3
 import time
 from pathlib import Path
+from typing import Any
 
-from cc0ac.sources import acurite_access
-from cc0ac import diagnostics
-from cc0ac import iolog
-from cc0ac import sensor_config
-from cc0ac import upkeep
+from cc0ac import diagnostics, iolog, sensor_config, upkeep
 from cc0ac.config import database_path, page_title, station_version
+from cc0ac.sources import acurite_access
 from cc0ac.store import epoch_to_iso
-
 
 #
 # /status (status.html, from /status.json): how long it has run, how deep the
@@ -105,7 +102,8 @@ def system_status(cfg: configparser.ConfigParser, write_path: Path, now: float |
         held = _held_back(database_path(cfg), now)
     except sqlite3.Error:
         held = {}
-    sensors, receivers = [], {}
+    sensors: list[dict] = []
+    receivers: dict[str, Any] = {}
     for e in current.get("sensors", []):
         heard = e.get("reception") or {}
         for who, r in heard.items():
@@ -129,7 +127,7 @@ def system_status(cfg: configparser.ConfigParser, write_path: Path, now: float |
     sends = []
     for name in iolog.names():
         s = iolog.latest(name) or {"name": name}
-        s["logs"] = [f"sent/{name}/{d}" for d in _log_days(iolog.SENT_DIR / name)]
+        s["logs"] = [f"sent/{name}/{d}" for d in _log_days(iolog.SENT_DIR / name if iolog.SENT_DIR else None)]
         sends.append(s)
     try:
         depth = _history_depth(database_path(cfg))

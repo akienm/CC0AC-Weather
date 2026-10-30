@@ -96,7 +96,7 @@ def _email(cfg: configparser.ConfigParser, to: str, title: str, message: str) ->
     msg.set_content(message)
     context = ssl.create_default_context()
     if port == 465:
-        server = smtplib.SMTP_SSL(host, port, timeout=30, context=context)
+        server: smtplib.SMTP = smtplib.SMTP_SSL(host, port, timeout=30, context=context)
     else:
         server = smtplib.SMTP(host, port, timeout=30)
         server.starttls(context=context)
@@ -225,10 +225,12 @@ def weather_conditions(cfg: configparser.ConfigParser, snapshot: dict, now: floa
                 continue
             if isinstance(f.get("last_strike_mi"), (int, float)) and f["last_strike_mi"] <= near and now - heard <= window:
                 close.append((f["last_strike_mi"], s.get("name", ""), f.get("strikes_today")))
-        mi, name, today = min(close, key=lambda c: c[0]) if close else (None, "", None)
-        out["lightning"] = (f"Lightning: a strike {units.show('distance', mi, shown_in)} away, heard at {name}"
-                            + (f" ({today} today)." if isinstance(today, int) else ".")
-                            if close else None)
+        if close:
+            mi, name, today = min(close, key=lambda c: c[0])
+            out["lightning"] = (f"Lightning: a strike {units.show('distance', mi, shown_in)} away, heard at {name}"
+                                + (f" ({today} today)." if isinstance(today, int) else "."))
+        else:
+            out["lightning"] = None
     if "storm" in wanted:
         change = snapshot.get("pressure_change_3h")
         out["storm"] = (f"The barometer has fallen {units.show('pressure', -change, shown_in)} in 3 hours: a storm may be coming."

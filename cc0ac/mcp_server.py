@@ -125,10 +125,10 @@ class Station:
         if by not in ("days", "weeks", "months", "years"):
             raise ToolError("by must be days, weeks, months or years")
         out = []
-        for e in s.get("sensors", []):
-            if sensor and sensor.lower() not in (e["id"].lower(), str(e["name"]).lower()):
+        for row in s.get("sensors", []):
+            if sensor and sensor.lower() not in (row["id"].lower(), str(row["name"]).lower()):
                 continue
-            out.append({"id": e["id"], "name": e["name"], "outdoor": e["outdoor"], by: e[by]})
+            out.append({"id": row["id"], "name": row["name"], "outdoor": row["outdoor"], by: row[by]})
         if sensor and not out:
             raise ToolError(f"no sensor named {sensor!r}; list_sensors has their names")
         return {"today": s.get("today"), "sensors": out}

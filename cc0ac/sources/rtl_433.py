@@ -36,6 +36,7 @@ import logging
 import os
 import subprocess
 import time
+from collections.abc import Collection
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -199,7 +200,7 @@ class RawLog:
 
     def __init__(self, folder: Path):
         self.folder = folder
-        self.day = None
+        self.day: str | None = None
 
     def write(self, line: str) -> None:
         now = datetime.now(timezone.utc)
@@ -216,7 +217,7 @@ class RawLog:
             log.warning("rtl_433 raw log %s: %s", self.folder, exc)
 
 
-def readings(lines, receiver: str, rain: RainCounter, sensors: dict | None = None, raw_log: RawLog | None = None):
+def readings(lines, receiver: str, rain: RainCounter, sensors: Collection[str] | None = None, raw_log: RawLog | None = None):
     """Readings from rtl_433's JSON lines. sensors: if not empty, only these IDs
     are kept (neighbours' sensors are heard too). A sensor repeats each message
     two or three times in a row; the repeats are dropped."""
@@ -295,10 +296,12 @@ def discover(cfg: configparser.ConfigParser, duration_s: int = 300) -> None:
     seen: dict[str, Reading] = {}
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
     deadline = time.monotonic() + duration_s
+    stdout = proc.stdout
+    assert stdout is not None   # PIPE
 
     def lines():
         while time.monotonic() < deadline:
-            line = proc.stdout.readline()
+            line = stdout.readline()
             if not line:
                 return
             yield line

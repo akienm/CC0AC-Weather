@@ -13,15 +13,21 @@ import time
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
-from cc0ac.sources import OUTDOOR_TYPES, Reading
-from cc0ac import diagnostics
-from cc0ac import sanity
-from cc0ac import upkeep
-from cc0ac import zambretti
+from cc0ac import diagnostics, sanity, upkeep, zambretti
 from cc0ac.config import display_order
 from cc0ac.fsutil import write_atomic
-from cc0ac.store import HISTORY_FIELDS, day_bounds, epoch_to_day, iso_to_epoch, open_db, roll_up, store_reading
+from cc0ac.sources import OUTDOOR_TYPES, Reading
+from cc0ac.store import (
+    HISTORY_FIELDS,
+    day_bounds,
+    epoch_to_day,
+    iso_to_epoch,
+    open_db,
+    roll_up,
+    store_reading,
+)
 
 log = logging.getLogger("acurite")
 
@@ -109,7 +115,7 @@ def reception(sensor_id: str, now: float) -> dict:
             continue
         times = list(h["at"])
         every = _interval(times)
-        r = {"heard": len(times), "last": datetime.fromtimestamp(times[-1], timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+        r: dict[str, Any] = {"heard": len(times), "last": datetime.fromtimestamp(times[-1], timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
         if every:
             # A sensor first heard less than an hour ago is expected only since then,
             # and that first reading is one more than the gaps after it.
@@ -137,7 +143,7 @@ def _seed_pressure(history: Path, now: float) -> None:
             tail = f.read().decode("utf-8", errors="replace").splitlines()[1:]
         first = next((r["timestamp"] for r in csv.DictReader(tail[:5], fieldnames=HISTORY_FIELDS)), None)
         try:
-            covered = now - iso_to_epoch(first) > PRESSURE_TREND_S * 1.2
+            covered = first is not None and now - iso_to_epoch(first) > PRESSURE_TREND_S * 1.2
         except (TypeError, ValueError):
             covered = False
         if covered or chunk >= size or chunk >= 64 * 1024 * 1024:

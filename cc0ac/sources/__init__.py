@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from typing import Any
 
 # Sensor types that measure outdoors; every other type is a room. "outdoor" is
 # what a source gives an outdoor sensor of a brand without names of its own here.
@@ -63,7 +64,7 @@ class Reading:
     type: str | None           # the sensor kind: Atlas, tower, ...
     received_utc: str          # when it reached us, e.g. 2026-10-08T18:17:23Z
     raw: str                   # what the source heard, exactly, so it can be decoded again
-    fields: dict = field(default_factory=dict)   # FIELDS names → values
+    fields: dict[str, Any] = field(default_factory=dict)   # FIELDS names → values
     receiver: str | None = None    # the hub or radio that heard it
     sensor_utc: str | None = None  # the time the sensor or hub gave the reading, if any
     name: str | None = None        # a name for a sensor not under [sensors], e.g. an online source's
@@ -72,7 +73,7 @@ class Reading:
     suspect: dict = field(default_factory=dict)  # fields held back by sanity.py: name → {value, why}
 
 
-def derive(fields: dict) -> dict:
+def derive(fields: dict[str, Any]) -> dict[str, Any]:
     """Fill in dew point, heat index, wind chill and feels-like from temperature,
     humidity and wind, where the source didn't send them (the hub works these out
     itself; a sensor heard by radio sends only what it measures). NWS formulas."""

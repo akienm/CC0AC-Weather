@@ -65,7 +65,7 @@ def latest(name: str) -> dict | None:
     files = sorted(f for f in (SENT_DIR / name).glob("*.log") if LOG_FILE.fullmatch(f.name))
     if not files:
         return None
-    out = {"name": name, "day": files[-1].stem, "ok_count": 0, "failed_count": 0, "last": None, "last_ok": None}
+    out: dict = {"name": name, "day": files[-1].stem, "ok_count": 0, "failed_count": 0, "last": None, "last_ok": None}
     for line in files[-1].read_text(errors="replace").splitlines():
         at, _, rest = line.partition("\t")
         result, _, detail = rest.partition("\t")

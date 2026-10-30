@@ -40,14 +40,14 @@ class Certificate:
 
     def __init__(self, cert: Path, key: Path):
         self.cert, self.key = cert, key
-        self._stamp = None
+        self._stamp: tuple[int, int] | str | None = None
         self._context: ssl.SSLContext | None = None
         self._lock = threading.Lock()
 
     def context(self) -> ssl.SSLContext | None:
         """The TLS context to answer with, or None while there is no usable certificate."""
         try:
-            stamp = (os.stat(self.cert).st_mtime_ns, os.stat(self.key).st_mtime_ns)
+            stamp: tuple[int, int] | str = (os.stat(self.cert).st_mtime_ns, os.stat(self.key).st_mtime_ns)
         except OSError as e:
             stamp = str(e)
         with self._lock:

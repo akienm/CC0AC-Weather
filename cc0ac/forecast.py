@@ -10,11 +10,12 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
-from cc0ac.sources import online
 from cc0ac import iolog
 from cc0ac.config import station_settings
 from cc0ac.fsutil import write_atomic
+from cc0ac.sources import online
 
 log = logging.getLogger("acurite")
 
@@ -115,9 +116,10 @@ def run_forecast(cfg: configparser.ConfigParser, write_path: Path) -> None:
     if online.choose(cfg, "forecast", lat, lon) == "open-meteo":
         run_open_meteo_forecast(lat, lon, contact, write_path)
         return
-    out = {"source": "National Weather Service", "errors": {}}
+    out: dict[str, Any] = {"source": "National Weather Service", "errors": {}}
     due = {"point": 0.0, "forecast": 0.0, "observation": 0.0, "alerts": 0.0}
-    point = stations = None
+    point: dict | None = None
+    stations: list | None = None
 
     def fetch(part, every, work):
         if time.time() < due[part]:
@@ -143,9 +145,11 @@ def run_forecast(cfg: configparser.ConfigParser, write_path: Path) -> None:
         changed = fetch("point", POINT_EVERY_S, get_point)
         if point:
             def get_forecast():
+                assert point is not None   # fetched first
                 out["hourly"] = _hourly(_nws_get(point["forecastHourly"], contact))
                 out["daily"] = _daily(_nws_get(point["forecast"], contact))
             def get_observation():
+                assert stations is not None   # fetched first
                 nearest = stations[0]
                 doc = _nws_get(f"{NWS_API}/stations/{nearest['properties']['stationIdentifier']}/observations/latest", contact)
                 out["observation"] = _observation(nearest, doc, lat, lon)
@@ -165,7 +169,7 @@ def run_forecast(cfg: configparser.ConfigParser, write_path: Path) -> None:
 def run_open_meteo_forecast(lat: float, lon: float, contact: str, write_path: Path) -> None:
     """Outside the US ([forecast] source = auto there, or open-meteo): the hourly and
     7-day cards from Open-Meteo. It has no alerts and no airport sky."""
-    out = {"source": "Open-Meteo", "errors": {}}
+    out: dict[str, Any] = {"source": "Open-Meteo", "errors": {}}
     while True:
         try:
             out.update(online.open_meteo_forecast(lat, lon, contact))

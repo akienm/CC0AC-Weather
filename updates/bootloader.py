@@ -310,6 +310,7 @@ def write_ours(path: Path, text: str, mode: int = 0o644, comment: tuple[str, str
 
 def _load(path: Path):
     spec = importlib.util.spec_from_file_location(f"cc0ac_step_{path.stem}", path)
+    assert spec and spec.loader   # a path to a .py file
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -528,7 +529,7 @@ def upkeep(boot: Boot, what: str) -> list[tuple[str, bool]]:
     script = boot.version_dir() / "upkeep.py"
     if not script.exists():
         return []
-    jobs = []
+    jobs: list[tuple[str, list[str], dict | None]] = []
     if "disks" in what:
         jobs.append(("disks", [boot.settings["python"], str(script), "disks", "--out", str(boot.root / "disks.json")], None))
     if "backup" in what and boot.cfg().get("backup", "path", fallback="").strip():
@@ -771,11 +772,11 @@ def run(boot: Boot) -> None:
             boot.state["upkeep_day"] = date.today().isoformat()
             boot.save()
             threading.Thread(target=upkeep, args=(boot, chore), daemon=True).start()
-        what = due(boot, datetime.now())
-        if what and not boot.lock.locked():
+        check = due(boot, datetime.now())
+        if check and not boot.lock.locked():
             boot.state["last_check"] = date.today().isoformat()
             boot.save()
-            threading.Thread(target=_scheduled, args=(boot, station, what), daemon=True).start()
+            threading.Thread(target=_scheduled, args=(boot, station, check), daemon=True).start()
     log.info("Stopping")
     station.wanted = False
     station.stop()

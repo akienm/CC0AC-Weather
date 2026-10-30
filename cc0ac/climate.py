@@ -46,6 +46,7 @@ import urllib.parse
 import urllib.request
 from datetime import date, datetime
 from pathlib import Path
+from typing import Any
 
 log = logging.getLogger("acurite")
 
@@ -198,7 +199,7 @@ def computed_days(daily: dict) -> dict:
     each the average over the years. rain_mtd is the month's rain up to that
     day, averaged, as NOAA gives it."""
     sums: dict[str, list] = {}
-    month_so_far = {}
+    month_so_far: dict = {}
     for day, hi, lo, rain in zip(daily["time"], daily["temperature_2m_max"],
                                  daily["temperature_2m_min"], daily["precipitation_sum"]):
         ym, md = day[:7], day[5:]
@@ -270,9 +271,9 @@ def build(sensors: list[dict], today: str, kept_normals: dict | None,
           lat: float | None = None, bases: tuple[float, float] = (65.0, 65.0)) -> dict:
     """sensors: [{id, name, days}] for the outdoor sensors (days oldest first, today last).
     lat: [station] latitude, for the evapotranspiration; bases: the heating and cooling degree-day bases, °F."""
-    out = {"today": today, "normal": normal_for(kept_normals, today), "sensors": []}
+    out: dict[str, Any] = {"today": today, "normal": normal_for(kept_normals, today), "sensors": []}
     for s in sensors:
-        now = next((d for d in s["days"] if d["day"] == today), {})
+        now: dict = next((d for d in s["days"] if d["day"] == today), {})
         out["sensors"].append({"id": s["id"], "name": s["name"],
                                "high": now.get("temp_max"), "low": now.get("temp_min"),
                                "month_rain": month_rain(s["days"], today),

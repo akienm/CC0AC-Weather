@@ -33,6 +33,7 @@ import urllib.parse
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 
 from cc0ac.sources import Reading, derive
 
@@ -103,7 +104,7 @@ def readings(params: dict, method: str, received_utc: str, raw: str) -> list[Rea
     receiver = station(params)
 
     def one(sensor_id: str, kind: str, names: dict, batteries) -> Reading | None:
-        fields = {}
+        fields: dict[str, Any] = {}
         for key, field_name in names.items():
             v = _number(params.get(key, ""))
             if v is not None:
@@ -118,12 +119,12 @@ def readings(params: dict, method: str, received_utc: str, raw: str) -> list[Rea
         return Reading(source=NAME, sensor_id=sensor_id, type=kind, received_utc=received_utc,
                        raw=raw, fields=derive(fields), receiver=receiver, sensor_utc=sensor_utc)
 
-    found = [one("console-outdoor", "outdoor", OUTDOOR, OUTDOOR_BATTERY),
+    heard = [one("console-outdoor", "outdoor", OUTDOOR, OUTDOOR_BATTERY),
              one("console-indoor", "console", INDOOR, INDOOR_BATTERY)]
     for n in CHANNELS:
-        found.append(one(f"console-ch{n}", "room", {k.format(n=n): v for k, v in CHANNEL.items()},
+        heard.append(one(f"console-ch{n}", "room", {k.format(n=n): v for k, v in CHANNEL.items()},
                          [CHANNEL_BATTERY.format(n=n)]))
-    found = [r for r in found if r is not None]
+    found = [r for r in heard if r is not None]
 
     # Ecowitt's lightning distance is in km; Ambient's (lightning_distance) in miles.
     if found and found[0].sensor_id == "console-outdoor":

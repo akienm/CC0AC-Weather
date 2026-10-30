@@ -34,7 +34,7 @@ from __future__ import annotations
 import configparser
 import logging
 import statistics
-from typing import Callable
+from typing import Callable, TypeGuard
 
 from cc0ac import units
 
@@ -68,7 +68,7 @@ NAMES = {"temp_f": "temperature", "humidity_pct": "humidity", "pressure_inhg": "
          "uv_index": "UV", "light_lux": "light", "last_strike_mi": "strike distance"}
 
 
-def _number(v) -> bool:
+def _number(v: object) -> TypeGuard[float]:
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
@@ -103,8 +103,8 @@ class Watch:
 
     def _why(self, sensor_id: str, name: str, v: float, at: float, outdoor: bool,
              reference: float | None) -> str | None:
-        lo, hi = LIMITS.get(name, (None, None))
-        if lo is not None and not lo <= v <= hi:
+        limits = LIMITS.get(name)
+        if limits and not limits[0] <= v <= limits[1]:
             return f"{self._show(name, v)} is past anything a station reads"
         last = self.believed.get(sensor_id, {}).get(name)
         if name in STEADY and last is not None:

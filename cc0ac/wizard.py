@@ -21,6 +21,7 @@ import configparser
 import json
 import re
 import urllib.request
+from collections.abc import Mapping
 from pathlib import Path
 
 from cc0ac import sensor_config
@@ -118,7 +119,7 @@ def _insert_at(lines: list[str], start: int, end: int) -> int:
     return at
 
 
-def set_values(text: str, section: str, values: dict[str, str]) -> str:
+def set_values(text: str, section: str, values: Mapping[str, str | None]) -> str:
     """Set keys in one section: replaced where they stand, else added at the end
     of the section (the section is added if missing). A value of None removes the key."""
     lines = text.splitlines()
@@ -149,7 +150,7 @@ def set_values(text: str, section: str, values: dict[str, str]) -> str:
 def replace_entries(text: str, section: str, values: dict[str, str]) -> str:
     """Make a section's keys exactly these (comments kept), e.g. [sensors]."""
     cfg = configparser.ConfigParser()
-    cfg.optionxform = str
+    cfg.optionxform = str  # type: ignore[assignment,method-assign]   # keep the keys' case
     try:
         cfg.read_string(text)
         old = list(cfg[section]) if cfg.has_section(section) else []
@@ -173,12 +174,16 @@ def missing_sections(text: str, example: str) -> tuple[str, list[str]]:
         return "", []       # a file it can't read is the user's to fix, not to add to
     lines = example.splitlines()
     starts = [i for i, line in enumerate(lines) if _SECTION.match(line)] + [len(lines)]
-    blocks, names, lead = [], [], []
+    blocks: list[str] = []
+    names: list[str] = []
+    lead: list[str] = []
     for start, end in zip(starts, starts[1:]):
         block = lines[start:end]
         heading = next((i for i, line in enumerate(block) if _GROUP.match(line)), len(block))
         block, below = block[:heading], block[heading:]
-        name = _SECTION.match(lines[start]).group(1).strip()
+        named = _SECTION.match(lines[start])
+        assert named   # starts are the lines it matched
+        name = named.group(1).strip()
         if name.lower() not in have and not sensor_config.is_sensor(name):   # a sensor is the house's own
             while block and not block[-1].strip():
                 block.pop()
@@ -299,10 +304,10 @@ def apply_setup(text: str, answers: dict) -> str:
         text = set_values(text, "backup", {k: v or "" for k, v in keep.items()})
     alerts = answers.get("alerts")
     if alerts is not None:
-        keep = {k: _one_line(alerts.get(k)) or None for k in ALERT_KEYS if k in alerts}
-        if not keep.get("smtp_password"):   # the page never shows it; blank means keep it
-            keep.pop("smtp_password", None)
-        text = set_values(text, "alerts", keep)
+        kept: dict[str, str | None] = {k: _one_line(alerts.get(k)) or None for k in ALERT_KEYS if k in alerts}
+        if not kept.get("smtp_password"):   # the page never shows it; blank means keep it
+            kept.pop("smtp_password", None)
+        text = set_values(text, "alerts", kept)
         cfg = configparser.ConfigParser()
         cfg.read_string(text)
         on = any(cfg.get("alerts", k, fallback="").strip() for k in ("ntfy_topic", "email_to", "healthcheck_url"))

@@ -37,7 +37,7 @@ class Station:
         self.sensor_id: str | None = None
         self.fields: dict = {}
         self.when: datetime | None = None   # the latest reading's time, UTC
-        self.last_upload = None
+        self.last_upload: float | None = None
         self.lock = threading.Lock()
 
     def take(self, cfg: configparser.ConfigParser, reading: Reading) -> tuple[dict, datetime] | None:

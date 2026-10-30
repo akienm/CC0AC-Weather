@@ -117,7 +117,7 @@ def import_history(cfg: configparser.ConfigParser, args: argparse.Namespace) -> 
         else:
             kind, rows = "csv", importer.rows_csv(path, args.metric)
     # The sensor it all belongs to: named, or the first outdoor one heard here.
-    target = args.sensor
+    target: str = args.sensor
     if target is None:
         found = con.execute(f"SELECT sensor_id FROM readings WHERE type IN {OUTDOOR} AND query NOT LIKE 'import:%' "
                             "AND sensor_id NOT LIKE 'open-meteo%' AND sensor_id NOT LIKE 'nws-%' "
@@ -137,7 +137,7 @@ def import_history(cfg: configparser.ConfigParser, args: argparse.Namespace) -> 
     into: set[str] = set()
     try:
         for row in rows:
-            sid = row.get("sensor") if args.sensor is None and row.get("sensor") else target
+            sid: str = (row.get("sensor") if args.sensor is None else None) or target
             kind_of = (row.get("type") if sid == row.get("sensor") else None) or target_type
             limit = cutoff(sid)
             if limit is not None and row["epoch"] >= limit:

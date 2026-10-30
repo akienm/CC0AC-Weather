@@ -21,7 +21,7 @@ log = logging.getLogger("acurite")
 
 # Each kind: its choices, and for each the factor from the stored unit (temperature
 # has an offset too), the label, and how many decimal places to show.
-KINDS = {
+KINDS: dict[str, dict[str, tuple[float, float, str, int]]] = {
     "temperature": {"f": (1, 0, "°F", 1), "c": (5 / 9, -32 * 5 / 9, "°C", 1)},
     "wind": {"mph": (1, 0, " mph", 0), "kmh": (1.609344, 0, " km/h", 0), "ms": (0.44704, 0, " m/s", 1),
              "knots": (0.868976, 0, " kn", 0)},
@@ -29,7 +29,7 @@ KINDS = {
     "rain": {"in": (1, 0, " in", 2), "mm": (25.4, 0, " mm", 1)},
     "distance": {"mi": (1, 0, " mi", 0), "km": (1.609344, 0, " km", 0)},
 }
-SYSTEMS = {
+SYSTEMS: dict[str, dict[str, str]] = {
     "us": {"temperature": "f", "wind": "mph", "pressure": "inhg", "rain": "in", "distance": "mi"},
     "metric": {"temperature": "c", "wind": "kmh", "pressure": "hpa", "rain": "mm", "distance": "km"},
     "uk": {"temperature": "c", "wind": "mph", "pressure": "hpa", "rain": "mm", "distance": "mi"},

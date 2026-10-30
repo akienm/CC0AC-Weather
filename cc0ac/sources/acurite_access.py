@@ -247,7 +247,7 @@ class _HubServer(ThreadingHTTPServer):
     the hub went unheard for an hour (2026-10-04).
     """
     request_queue_size = 64
-    tls_context = None
+    tls_context: ssl.SSLContext | None = None
 
     def finish_request(self, request, client_address):
         request.settimeout(CONNECTION_TIMEOUT)
