@@ -1354,6 +1354,7 @@ Plain Python 3 standard library, no framework, so it runs on whatever Python the
 computer already has.
 
 Run the tests before a pull request: `python3 -m unittest discover -s tests`.
+Check the types too: `python3 -m pip install mypy`, then `python3 -m mypy` from the top folder (settings are in `pyproject.toml`; every function is annotated and mypy is clean, so keep it that way).
 
 ### Files
 

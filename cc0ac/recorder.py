@@ -13,10 +13,10 @@ import time
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from cc0ac import diagnostics, sanity, upkeep, zambretti
-from cc0ac.config import display_order
+from cc0ac.config import SensorNames, display_order
 from cc0ac.fsutil import write_atomic
 from cc0ac.sources import OUTDOOR_TYPES, Reading
 from cc0ac.store import (
@@ -103,9 +103,20 @@ def _interval(times: list[float]) -> float | None:
     return sum(g for g, _ in steps) / sum(n for _, n in steps)
 
 
-def reception(sensor_id: str, now: float) -> dict:
-    """{receiver: {"heard", "expected", "percent", "last", "snr_db"}} for the last hour."""
-    out = {}
+class Reception(TypedDict, total=False):
+    """How one receiver heard one sensor over the last hour. every_s, expected and
+    percent need two or more messages; snr_db needs a radio that reports it."""
+    heard: int
+    last: str
+    every_s: float
+    expected: int
+    percent: int
+    snr_db: float
+
+
+def reception(sensor_id: str, now: float) -> dict[str, Reception]:
+    """{receiver: Reception} for the last hour."""
+    out: dict[str, Reception] = {}
     for who, h in _heard.get(sensor_id, {}).items():
         while h["at"] and h["at"][0] < now - HEARD_WINDOW_S:
             h["at"].popleft()
@@ -115,7 +126,7 @@ def reception(sensor_id: str, now: float) -> dict:
             continue
         times = list(h["at"])
         every = _interval(times)
-        r: dict[str, Any] = {"heard": len(times), "last": datetime.fromtimestamp(times[-1], timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+        r: Reception = {"heard": len(times), "last": datetime.fromtimestamp(times[-1], timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
         if every:
             # A sensor first heard less than an hour ago is expected only since then,
             # and that first reading is one more than the gaps after it.
@@ -167,7 +178,7 @@ def _pressure_change(now: float, value: float) -> float | None:
     return round(value - then[-1], 2) if then else None
 
 
-def _write_snapshot(write_path: Path, sensors: dict, page: dict | None, written: str, hub: str) -> None:
+def _write_snapshot(write_path: Path, sensors: SensorNames, page: dict | None, written: str, hub: str) -> None:
     """current.json / current.js from _current; the caller holds current_lock."""
     now = time.time()
     for e in _current.values():
@@ -185,7 +196,7 @@ def _write_snapshot(write_path: Path, sensors: dict, page: dict | None, written:
     write_atomic(write_path / "current.js", f"window.ACURITE_CURRENT = {body};\n")
 
 
-def refresh_snapshot(write_path: Path, sensors: dict, page: dict | None) -> None:
+def refresh_snapshot(write_path: Path, sensors: SensorNames, page: dict | None) -> None:
     """At start, carry the last snapshot's sensors over and write it again with
     the settings just read. A change in config.ini (buttons, names, sensor
     order, title) then shows at once rather than at the next reading, and the
@@ -266,7 +277,7 @@ def _seed_strikes(db_path: Path | None, sensor_id: str, now: float) -> None:
         _count_strikes(sensor_id, count, day, at)
 
 
-def record_reading(reading: Reading, write_path: Path, sensors: dict, page: dict | None = None,
+def record_reading(reading: Reading, write_path: Path, sensors: SensorNames, page: dict | None = None,
                    db_path: Path | None = None) -> dict:
     """Fold one reading into current.json / current.js, append history.csv,
     and store it in the database at db_path. Returns the sensor's current entry.

@@ -12,10 +12,14 @@ import threading
 import time
 from datetime import date
 from pathlib import Path
+from typing import Dict
 
 from cc0ac import sensor_config, wizard
 
 log = logging.getLogger("acurite")
+
+SensorNames = Dict[str, str]   # sensor id → the name [sensors] gives it
+Query = Dict[str, str]         # a request's ?name=value pairs
 
 
 ROOT = Path(__file__).resolve().parent.parent   # the install folder: pages, VERSION, config.ini.example
@@ -73,7 +77,7 @@ def apply_timezone(cfg: configparser.ConfigParser) -> None:
     log.info("Time zone: %s", tz)
 
 
-def sensor_map(cfg: configparser.ConfigParser) -> dict[str, str]:
+def sensor_map(cfg: configparser.ConfigParser) -> SensorNames:
     """{sensor_id: display name}, in display order: each sensor's own section in
     the order they come in the file, then the older [sensors] (sensor_config.py)."""
     return sensor_config.titles(cfg)
@@ -92,7 +96,7 @@ def add_heard_sensor(path: Path | None, sensor_id: str, kind: str) -> None:
         log.warning("Config: could not add new sensor %s to %s: %s", sensor_id, path, e)
 
 
-def display_order(sensors: dict, sensor_id: str, name: str) -> tuple:
+def display_order(sensors: SensorNames, sensor_id: str, name: str) -> tuple:
     """Sort key: sensors in sensor_map's order, then any others by name."""
     position = list(sensors).index(sensor_id) if sensor_id in sensors else len(sensors)
     return position, name.lower()

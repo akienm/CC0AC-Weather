@@ -22,6 +22,8 @@ from cc0ac.config import (
     CONFIG_MAX_BYTES,
     DEFAULT_TITLE,
     ROOT,
+    Query,
+    SensorNames,
     check_config,
     database_path,
     load_config,
@@ -92,7 +94,7 @@ def _find_page(name: str, own_dir: Path | None, page_dir: Path) -> Path | None:
     return page_dir / name if name in SHIPPED_PAGES else None
 
 
-def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: dict | None = None,
+def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: SensorNames | None = None,
                       own_dir: Path | None = None, title: str = DEFAULT_TITLE,
                       config_path: Path | None = None, mcp: bool = True,
                       cfg: configparser.ConfigParser | None = None) -> type[BaseHTTPRequestHandler]:
@@ -107,7 +109,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
             return None
 
     def query(answer: Callable[[Path, dict, dict], dict]) -> Callable[[dict], dict]:
-        def run(q: dict) -> dict:
+        def run(q: Query) -> dict:
             if db_path is None or not db_path.exists():
                 raise ValueError("no readings stored yet")
             return answer(db_path, sensors or {}, q)
@@ -182,7 +184,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
             self.send_error(404)
             return False
 
-        def _config_page(self, q: dict) -> None:
+        def _config_page(self, q: Query) -> None:
             if not self._config_allowed():
                 return
             assert config_path is not None   # _config_allowed
@@ -191,7 +193,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
             else:
                 self._send((page_dir / "config.html").read_bytes(), PAGE_TYPES[".html"])
 
-        def _status(self, path: str, q: dict) -> None:
+        def _status(self, path: str, q: Query) -> None:
             if not self._config_allowed():
                 return
             assert cfg is not None   # do_GET routes /status here only with a config
@@ -352,7 +354,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
             self.end_headers()
             self.wfile.write(body)
 
-        def _query(self, answer: Any, q: dict) -> None:
+        def _query(self, answer: Any, q: Query) -> None:
             if db_path is None or not db_path.exists():
                 self.send_error(404, "No database yet")
                 return
@@ -367,7 +369,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: di
                 return
             self._send(json.dumps(data, separators=(",", ":")).encode(), "application/json")
 
-        def _noaa(self, path: str, q: dict) -> None:
+        def _noaa(self, path: str, q: Query) -> None:
             if path == "/noaa":
                 self._send((page_dir / "noaa.html").read_bytes(), PAGE_TYPES[".html"])
                 return

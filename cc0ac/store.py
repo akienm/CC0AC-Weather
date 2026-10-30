@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from cc0ac import noaa, sanity
-from cc0ac.config import display_order
+from cc0ac.config import Query, SensorNames, display_order
 from cc0ac.sources import FIELDS, OUTDOOR_TYPES, Reading
 
 log = logging.getLogger("acurite")
@@ -115,7 +115,7 @@ HISTORY_STEPS = [300, 900, 1800, 3600, 2 * 3600, 3 * 3600, 6 * 3600, 12 * 3600, 
 HISTORY_POINTS = 600   # about how many buckets a chart gets at most
 
 
-def _history_bounds(q: dict, first: float, now: datetime) -> tuple[float, float, str]:
+def _history_bounds(q: Query, first: float, now: datetime) -> tuple[float, float, str]:
     """(from, to) in epoch seconds for the request, and the period it names."""
     midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
     period = q.get("period", "today")
@@ -196,7 +196,7 @@ def _rain_buckets(con: sqlite3.Connection, lo: float, hi: float, step: int, off:
 HELD_SHOWN = ("temp_f", "humidity_pct", "wind_mph", "wind_gust_mph", "pressure_inhg", "uv_index")
 
 
-def history(db_path: Path, sensors: dict, q: dict) -> dict:
+def history(db_path: Path, sensors: SensorNames, q: Query) -> dict:
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
     try:
         now = datetime.now().astimezone()
@@ -355,7 +355,7 @@ def _period_start(day: str, period: str) -> str:
     return day[:7] if period == "months" else day[:4]
 
 
-def summaries(db_path: Path, sensors: dict, q: dict) -> dict:
+def summaries(db_path: Path, sensors: SensorNames, q: Query) -> dict:
     """Days, weeks, months and years for every sensor. q: days=N, how many of the
     latest days to list (default 400); weeks, months and years are listed in full."""
     try:
@@ -390,7 +390,7 @@ def summaries(db_path: Path, sensors: dict, q: dict) -> dict:
     return {"today": today, "sensors": out}
 
 
-def noaa_summary(cfg: configparser.ConfigParser, db_path: Path, sensors: dict, q: dict) -> dict:
+def noaa_summary(cfg: configparser.ConfigParser, db_path: Path, sensors: SensorNames, q: Query) -> dict:
     """/noaa.json and --noaa: a month's or year's NOAA-style summary (noaa.py) for
     q["sensor"], or else the outdoor sensor with the most readings in it."""
     year, month = noaa.period(q.get("period") or datetime.now().strftime("%Y-%m"))
