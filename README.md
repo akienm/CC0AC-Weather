@@ -108,7 +108,7 @@ their trademark; it is used here only to say which hardware this works with.
 - User: Configurable UI (settings names and icons for sensors, reporting order, etc)
 - User: User specificed unit types & time zone
 - System: Http/s outout (defaults to port# 12345)
-- Web interface designed for phones and and desktops
+- Web interface designed for phones and desktops
 
 ### Hardware: Computers, Radios, and Sensors
 - Computers: Linux, MacOs, Raspian, Windows
