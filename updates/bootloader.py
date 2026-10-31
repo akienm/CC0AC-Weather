@@ -142,10 +142,10 @@ def release_source(spec: str) -> GitHub | Folder:
 
 
 def newest_version(tags: list[str], current: tuple[int, int, int]) -> str | None:
-    """The newest vX.Y.Z past `current` in the same major version. A new minor version is
-    taken as readily as a revision (UPDATES.md: Yes houses cross minor versions)."""
+    """The newest vX.Y.Z past `current`. A new minor or major version is taken as readily
+    as a revision (UPDATES.md: Yes houses cross them); 1.4.0 is the first to take a major."""
     found = [(tuple(map(int, m.groups())), t) for t in tags if (m := VERSION_TAG.match(t))]
-    later = [(v, t) for v, t in found if v[0] == current[0] and v > current]
+    later = [(v, t) for v, t in found if v > current]
     return max(later)[1] if later else None
 
 

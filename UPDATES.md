@@ -20,6 +20,8 @@ A version number looks like **`1.2.0/1`**: `<major>.<minor>.<revision>/<security
 - The **revision** (`1.2.0` → `1.2.1`) is a small repair.
 - The **minor** version (`1.2` → `1.3`) is a bigger change. The new version is
   installed beside the old one, and your `config.ini` and readings are kept.
+- The **major** version (`1.4` → `2.0`) is taken the same way. 1.4.0 is the first
+  to take one; a house on an older 1.x moves to 1.4.0 first.
 - The **security revision** (`/1` → `/2`) is numbered on its own. A security fix
   is the smallest change that closes the hole: it adds or overlays files and
   never removes anything, so the same `/N` fix applies to every version still in
@@ -169,7 +171,8 @@ package, split into smaller files, and every function says what it takes and ret
 pages and the service are as they were, and `acurite-capture.py` and `upkeep.py` still
 start it. The repairs: after a restart the dashboard's Outlook row stayed blank until
 the hub next sent a pressure reading, and the rain chart counted a one-reading wobble
-in the hub's daily total as new rain, drawing a bar twice what fell.
+in the hub's daily total as new rain, drawing a bar twice what fell. It also lets a
+station take a new major version (2.0 and on); before, it stopped at 1.x.
 
 ## When it checks
 

@@ -206,10 +206,11 @@ class Install(unittest.TestCase):
 
 
 class Choosing(unittest.TestCase):
-    def test_newest_version_crosses_minor_versions_but_not_major_ones(self):
+    def test_newest_version_crosses_minor_and_major_versions(self):
         tags = ["v1.2.0", "v1.2.1", "v1.3.0", "v2.0.0", "s4", "latest"]
-        self.assertEqual(bl.newest_version(tags, (1, 2, 0)), "v1.3.0")
-        self.assertIsNone(bl.newest_version(tags, (1, 3, 0)))
+        self.assertEqual(bl.newest_version(tags, (1, 2, 0)), "v2.0.0")
+        self.assertEqual(bl.newest_version(tags[:3], (1, 2, 0)), "v1.3.0")
+        self.assertIsNone(bl.newest_version(tags, (2, 0, 0)))
         self.assertEqual(bl.newest_security(tags), 4)
 
     def test_when_it_checks(self):
