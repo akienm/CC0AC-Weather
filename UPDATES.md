@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.3.20)
+# How CC0AC-Weather installs and keeps itself up to date (1.4.0)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -162,6 +162,14 @@ the container's start script Windows line endings, which the container's shell
 can't run, so it restarted forever. The repository now keeps Unix line endings
 everywhere, and the image strips Windows ones from its scripts besides. Tested
 with Docker Desktop on Windows 11: one start, and the setup page answers.
+
+1.4.0 reorganizes the code and repairs two things. The Python now lives in a `cc0ac/`
+package, split into smaller files, and every function says what it takes and returns
+(`mypy` passes). Nothing you configure or see changes: `config.ini`, the readings, the
+pages and the service are as they were, and `acurite-capture.py` and `upkeep.py` still
+start it. The repairs: after a restart the dashboard's Outlook row stayed blank until
+the hub next sent a pressure reading, and the rain chart counted a one-reading wobble
+in the hub's daily total as new rain, drawing a bar twice what fell.
 
 ## When it checks
 

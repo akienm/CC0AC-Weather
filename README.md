@@ -1427,6 +1427,11 @@ it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
 
+**1.4.0** · Oct 31, 2026
+- The code is a `cc0ac/` package in smaller files, fully annotated and `mypy`-clean.
+- The Zambretti **outlook** stays on the dashboard after a restart.
+- The **rain chart** no longer counts a wobble in the hub's daily total as new rain.
+
 **1.3.20** · Oct 26, 2026: **Docker**\* images build from a Windows checkout too.
 
 **1.3.19** · Oct 26, 2026
