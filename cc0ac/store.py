@@ -182,11 +182,16 @@ def _rain_buckets(con: sqlite3.Connection, lo: float, hi: float, step: int, off:
         prev = None
         for stamp, total in rows:
             if prev is not None:
-                # A drop is the midnight reset: everything since is new rain.
-                grew = total - prev if total >= prev else total
+                # A fall to under half is the midnight reset: everything since is new
+                # rain. A smaller dip is the hub wobbling (0.32, 0.31, 0.32): not rain
+                # when it falls, and not rain again when it climbs back.
+                reset = total <= prev / 2
+                grew = total if reset else total - prev
                 t = iso_to_epoch(stamp)
                 if grew > 0 and t >= lo:
                     buckets[key(t)] = buckets.get(key(t), 0) + grew
+                if total < prev and not reset:
+                    continue
             prev = total
     ticks = list(range(key(lo), int(hi) + 1, step))
     return {"step": step, "t": ticks, "in": [round(buckets.get(b, 0), 2) for b in ticks]}
