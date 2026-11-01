@@ -1,5 +1,9 @@
 # CC0AC-Weather
 
+*An independent project. Not affiliated with, endorsed by, or supported by
+AcuRite, Chaney Instrument Co., or any other company named here. See
+[Trademarks, your own risk, and no warranty](#trademarks-your-own-risk-and-no-warranty).*
+
 **Contents:**
 [What it's for](#what-its-for) ·
 [Pictures](#pictures) ·
@@ -42,7 +46,8 @@
 **Building on it:**
 [Contributing and architecture](#contributing-and-architecture) ·
 [Files](#files) ·
-[Credits, the name, and the license](#credits-the-name-and-the-license)
+[Credits, the name, and the license](#credits-the-name-and-the-license) ·
+[Trademarks, your own risk, and no warranty](#trademarks-your-own-risk-and-no-warranty)
 
 ## What it's for
 
@@ -84,8 +89,10 @@ AcuRite and other brands (Ambient Weather, Ecowitt, Fine Offset and its
 relabels, Bresser, La Crosse, and more), by console upload or by radio, and
 says how sure we are of each. Only AcuRite is tested on real hardware so far.
 
-Not affiliated with or endorsed by AcuRite or Chaney Instrument Co. AcuRite is
-their trademark; it is used here only to say which hardware this works with.
+Not affiliated with or endorsed by AcuRite or Chaney Instrument Co., or by any
+other brand named here. AcuRite is their trademark, and every other brand name
+belongs to its owner; each is used only to say which hardware or service this
+works with. See [Trademarks, your own risk, and no warranty](#trademarks-your-own-risk-and-no-warranty).
 
 ## What it does
 
@@ -1555,3 +1562,40 @@ station whose radio is published, so the AC is history now, but by then the name
 was out in the world.
 
 MIT license, see `LICENSE`.
+
+## Trademarks, your own risk, and no warranty
+
+**Trademarks.** AcuRite is a trademark of Chaney Instrument Co. Ambient Weather,
+Ecowitt, Fine Offset, Bresser, La Crosse, Oregon Scientific, Weather Underground,
+Windy, PWSweather, Weathercloud, CWOP, Home Assistant, Raspberry Pi, Docker,
+Windows, macOS, and every other product or company name in this project are
+trademarks of their owners. They are named only to say which hardware and
+services this works with. No logos are used, and naming a brand does not mean
+its owner sponsors, endorses, supports, or is connected to this project in any
+way. CC0AC-Weather is an independent, unofficial, free project.
+
+**Your hardware, your choice.** Everything here runs on your own computer, on
+your own network, with a station you own. Pointing a hub at this program
+changes one hub setting (method A, which can be undone in one command) or only
+where your own network sends the hub's traffic (method B, where the hub's
+settings never change). Neither changes the hub's firmware. Passing readings
+on to AcuRite is optional (`[hub] relay`). If you use any manufacturer's or
+service's cloud, app, or account, their terms still apply to you, and keeping
+to them is up to you.
+
+**It may stop working.** A manufacturer can change its firmware, servers, or
+data formats at any time, and this program may then stop working, partly or
+completely, until it is updated, if it can be updated at all.
+
+**Support comes from here, not from them.** Please don't ask AcuRite or any
+other manufacturer's support for help with this project; they didn't make it
+and can't support it. Open an issue on this repository instead.
+
+**Not for safety.** Readings, forecasts, and alerts shown here may be late,
+missing, or wrong. Don't rely on them to protect life or property. For warnings,
+use official sources such as the National Weather Service.
+
+**No warranty.** As the MIT license in `LICENSE` says, this software is provided
+"as is", without warranty of any kind, and its authors are not liable for any
+claim, damage, or other liability arising from it or its use. You use it at
+your own risk.

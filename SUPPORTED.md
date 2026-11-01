@@ -1,5 +1,10 @@
 # Supported stations
 
+*Every brand and product name below is a trademark of its owner, named only to
+say what this works with. None of them sponsors, endorses, or supports this
+project. See the README's
+[Trademarks, your own risk, and no warranty](README.md#trademarks-your-own-risk-and-no-warranty).*
+
 This program started as a way to keep AcuRite data after AcuRite's cloud
 change. It can now listen to other brands too, in two ways. **Only AcuRite has
 been tried on real hardware.** Everything else below is untested or tested
