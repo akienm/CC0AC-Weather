@@ -305,6 +305,11 @@ the hub's ID (its MAC), every sensor ID it hears, and its current settings.
 
 You also need a router that can forward port 443.
 
+0. **Switch the hub on here.** On Docker, Windows and macOS the station starts
+   with the hub off (only a Pi or Debian box can take the hub's cable). Open the
+   setup page, tick **"I have an AcuRite Access hub"** and save. Until then the
+   log says "No source switched on" and nothing listens on 443.
+
 1. **Give the hub a hostname that reaches this box.** The hub accepts only a
    name, not an IP address. If your router can't serve local names, use your
    public hostname (your ISP's reverse-DNS name, or a free dynamic DNS name)
@@ -322,6 +327,18 @@ You also need a router that can forward port 443.
    To undo, send the same with `ser=atlasapi.myacurite.com`.
 3. Watch `journalctl -u cc0ac-weather@$USER -f`: within 5 minutes a line per
    sensor appears, and every raw request is kept in `~/.cc0ac-weather/hub-raw/`.
+
+   **To test before pointing the hub:** `curl -k -i https://YOUR.HOST.NAME/`
+   should answer `404 not found`. That 404 is the station listening (it records
+   only the hub's own path). No answer, or a 502 from a proxy, means nothing is
+   listening yet.
+
+   **Behind a reverse proxy** (Nginx Proxy Manager, Caddy, Traefik): forward
+   to the station's port 443 with scheme **https**, and accept its self-signed
+   certificate. The name has to resolve to the proxy for the hub itself, through
+   the DNS server the hub gets from your router; a name only your PC resolves
+   won't reach it. The hub speaks old TLS (1.0/1.1); if the proxy refuses it,
+   forward 443 straight to the station instead.
 
 ### B. Plug the hub into the Pi
 
@@ -1433,6 +1450,14 @@ Each line says the version (or, before version numbers, the date) that added
 it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
+
+**1.4.1** · Nov 4, 2026
+- The **setup page switches the hub on**. Docker, Windows and macOS start with it off,
+  and turning it on meant editing config.ini by hand.
+- A hub sending by its **server name** gets its sensors listed on the setup page, and the
+  log's "No source switched on" says how to switch one on.
+- README: how to test the station before pointing the hub at it, and how to put it behind
+  a reverse proxy.
 
 **1.4.0** · Oct 31, 2026
 - The code is a `cc0ac/` package in smaller files, fully annotated and `mypy`-clean.

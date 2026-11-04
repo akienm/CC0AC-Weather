@@ -257,7 +257,7 @@ def apply_setup(text: str, answers: dict) -> str:
 
     answers: {"sensors": [{"id", "name"}, ...] in display order,
               "station": {"name", "latitude", "longitude", "elevation_ft", "timezone"},
-              "forecast": bool, "online": bool, "alerts": {"ntfy_topic", "email_to", ...},
+              "forecast": bool, "online": bool, "hub": bool, "alerts": {"ntfy_topic", "email_to", ...},
               "updates": {"automatic": bool, "time": "HH:MM"},
               "backup": {"path", "user", "password", "keep"}}"""
     sensors = [s for s in answers.get("sensors", []) if str(s.get("id", "")).strip()]
@@ -287,6 +287,8 @@ def apply_setup(text: str, answers: dict) -> str:
         text = set_values(text, "forecast", {"enabled": "true" if answers["forecast"] else "false"})
     if "online" in answers:
         text = set_values(text, "online", {"enabled": "true" if answers["online"] else "false"})
+    if "hub" in answers:
+        text = set_values(text, "hub", {"enabled": "true" if answers["hub"] else "false"})
     updates = answers.get("updates")
     if updates is not None:
         when = str(updates.get("time") or "06:00").strip()
@@ -349,9 +351,32 @@ def setup_state(cfg: configparser.ConfigParser, leases: Path = LEASES) -> dict:
                    "password_set": bool(cfg.get("backup", "password", raw=True, fallback="").strip())},
     }
     hub_on = cfg.has_section("hub") and cfg.getboolean("hub", "enabled", fallback=True)
-    hub = find_hub(leases) if hub_on else {"found": False, "off": True, "sensors": [],
-                                           "why": "This computer doesn't take the hub's cable."}
-    return {"hub": hub, "current": current}
+    current["hub"] = hub_on
+    if not hub_on:
+        hub = {"found": False, "off": True, "sensors": [], "why": "The hub isn't switched on here."}
+    elif leases.exists():
+        hub = find_hub(leases)
+    else:
+        # No cable port on this computer (Docker, Windows, a Mac): the hub reaches it by its
+        # server name instead, so there is no hub page to read. What it has sent is in current.json.
+        hub = {"found": False, "by_name": True, "sensors": [],
+               "why": "The hub is switched on here. Point its server name at this computer "
+                      "(README, \"A. Change the hub's server name\"); its sensors show up below "
+                      "once it sends, every five minutes."}
+    return {"hub": hub, "current": current, "heard": heard_sensors(cfg)}
+
+
+def heard_sensors(cfg: configparser.ConfigParser) -> list[dict]:
+    """Sensors in the latest readings, [{"id", "type"}], for naming ones the hub page can't list."""
+    try:
+        path = Path(cfg.get("device", "write_path", fallback="~/AcuRite")).expanduser() / "current.json"
+        sensors = json.loads(path.read_text()).get("sensors") or []
+    except (OSError, ValueError, AttributeError):
+        return []
+    return [{"id": str(s["sensor_id"]), "type": str(s.get("type") or "")}
+            for s in sensors if isinstance(s, dict)
+            and re.fullmatch(r"[0-9A-Za-z-]{1,24}", str(s.get("sensor_id") or ""))
+            and sensor_config.is_sensor(str(s["sensor_id"]))]
 
 
 if __name__ == "__main__":       # python3 wizard.py: what the setup page would find

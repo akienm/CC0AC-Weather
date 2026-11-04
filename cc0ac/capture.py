@@ -299,7 +299,9 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
         # A new station has none until setup switches one on. Returning would end
         # the program, and the boot loader takes a clean exit for a restart after
         # saved settings: the setup page came up for a second at a time, forever.
-        log.warning("No source switched on ([hub] or [capture] enabled); nothing to record. "
+        log.warning("No source switched on, so nothing to record. For an AcuRite Access hub, open the "
+                    "setup page, tick \"I have an AcuRite Access hub\" and save (or set [hub] enabled = true "
+                    "in config.ini). For a radio dongle, set [capture] enabled = true. "
                     "The web server stays up for the setup page.")
         threading.Event().wait()
     for thread in source_threads:

@@ -57,6 +57,8 @@
 <section>
   <h2><span class="n">1</span>The hub</h2>
   <div id="hub">Looking for the hub…</div>
+  <p><label><input type="checkbox" id="hubon"> I have an AcuRite Access hub sending its readings here,
+     by its cable or by its server name. Saving with this ticked starts listening for it.</label></p>
   <div class="row" style="margin-top:8px"><button id="recheck">Look again</button></div>
 </section>
 
@@ -174,11 +176,14 @@ function randomTopic() {
 
 function showHub(hub) {
   if (hub.off) {
-    $("hub").textContent = hub.why + " Readings come from the radio, a console, or the internet.";
+    $("hub").textContent = hub.why + " Readings come from the radio, a console, or the internet."
+      + " If you have an Access hub, tick the box below and save.";
     $("recheck").hidden = true;
     $("nosensors").textContent = "No sensors yet. A sensor the radio or a console hears shows up here once it reports.";
     return;
   }
+  $("recheck").hidden = false;
+  if (hub.by_name) { $("hub").textContent = hub.why; return; }
   if (!hub.found) { $("hub").innerHTML = `<span class="bad">Not found yet.</span> ${esc(hub.why)}`; return; }
   const bits = [`<span class="good">Found</span> at ${esc(hub.ip)}`];
   if (hub.hub_id) bits.push(`hub ID ${esc(hub.hub_id)}`);
@@ -218,7 +223,7 @@ function merge(state) {
   const known = Object.keys(cur.sensors);
   const seen = new Map();
   for (const id of [...order, ...known]) if (!seen.has(id)) seen.set(id, {id, type: "", name: cur.sensors[id] || ""});
-  for (const s of (hub.sensors || [])) {
+  for (const s of [...(hub.sensors || []), ...(state.heard || [])]) {
     const id = s.id.toLowerCase();
     if (seen.has(id)) seen.get(id).type = s.type;
     else seen.set(id, {id, type: s.type, name: s.type === "Atlas" ? "Outside" : ""});
@@ -234,6 +239,7 @@ async function start(first) {
   showHub(state.hub);
   merge(state);
   if (!first) return;
+  $("hubon").checked = state.current.hub;
   const st = state.current.station, al = state.current.alerts;
   $("name").value = st.name || "";
   if (st.latitude && st.longitude) $("where").value = `${st.latitude}, ${st.longitude}`;
@@ -274,6 +280,7 @@ function answers() {
               timezone: $("tz").value.trim()},
     forecast: $("forecast").checked && latitude !== "",
     online: $("online").checked,
+    hub: $("hubon").checked,
     alerts,
     updates: {automatic: $("upd_yes").checked, time: $("upd_time").value.trim() || "06:00"},
     backup: {path: $("bk_path").value.trim(), user: $("bk_user").value.trim(),
@@ -312,8 +319,8 @@ $("save").onclick = async () => {
   try {
     const a = answers();
     if (a.online && a.station.latitude === "") throw new Error("The internet's weather needs the location (step 3).");
-    if (!a.sensors.length && !a.online)
-      throw new Error("No sensors to save yet. Find the hub first (step 1), or tick the internet's weather (step 3).");
+    if (!a.sensors.length && !a.online && !a.hub)
+      throw new Error("Nothing to record yet. Tick the hub (step 1), or the internet's weather (step 3).");
     $("save").disabled = true;
     say("status", "Saving…");
     const r = await post(a);

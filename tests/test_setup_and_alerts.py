@@ -139,6 +139,31 @@ class ConfigEditing(unittest.TestCase):
         state = wizard.setup_state(cfg, leases=Path("/nonexistent"))
         self.assertTrue(state["hub"]["off"])
         self.assertTrue(state["current"]["updates"]["automatic"])
+        self.assertFalse(state["current"]["hub"])
+
+    def test_the_setup_page_switches_the_hub_on_and_off(self):
+        off = wizard.set_values(self.text, "hub", {"enabled": "false"})
+        for want in (True, False):
+            cfg = configparser.ConfigParser()
+            cfg.read_string(wizard.apply_setup(off, self.answers(hub=want)))
+            self.assertEqual(cfg.getboolean("hub", "enabled"), want)
+        cfg = configparser.ConfigParser()
+        cfg.read_string(wizard.apply_setup(off, self.answers()))
+        self.assertFalse(cfg.getboolean("hub", "enabled"))   # no answer leaves it alone
+
+    def test_a_hub_by_server_name_lists_the_sensors_it_sent(self):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "current.json").write_text(json.dumps({"sensors": [
+                {"sensor_id": "00001111", "type": "tower"}, {"sensor_id": "bad id!", "type": "x"}, {"type": "y"}]}))
+            text = wizard.set_values(wizard.set_values(self.text, "hub", {"enabled": "true"}),
+                                     "device", {"write_path": d})
+            cfg = configparser.ConfigParser()
+            cfg.read_string(text)
+            state = wizard.setup_state(cfg, leases=Path(d) / "no-cable-port")
+        self.assertTrue(state["hub"]["by_name"])
+        self.assertNotIn("cable port", state["hub"]["why"])
+        self.assertTrue(state["current"]["hub"])
+        self.assertEqual(state["heard"], [{"id": "00001111", "type": "tower"}])
 
 
 class AlertCheck(unittest.TestCase):
