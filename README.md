@@ -305,10 +305,10 @@ the hub's ID (its MAC), every sensor ID it hears, and its current settings.
 
 You also need a router that can forward port 443.
 
-0. **Switch the hub on here.** On Docker, Windows and macOS the station starts
-   with the hub off (only a Pi or Debian box can take the hub's cable). Open the
-   setup page, tick **"I have an AcuRite Access hub"** and save. Until then the
-   log says "No source switched on" and nothing listens on 443.
+0. **The hub is on by default** (1.4.2 and later, on every platform). If it was
+   switched off, open the setup page, tick **"I have an AcuRite Access hub"** and
+   save. While it's off the log says "No source switched on" and nothing listens
+   on 443.
 
 1. **Give the hub a hostname that reaches this box.** The hub accepts only a
    name, not an IP address. If your router can't serve local names, use your
@@ -1450,6 +1450,12 @@ Each line says the version (or, before version numbers, the date) that added
 it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
+
+**1.4.2** · Nov 4, 2026
+- The **hub is on by default** everywhere, and an older station that records nothing
+  gets it switched on.
+- If **port 443** is busy or not allowed, the station says so in the log and tries again
+  every minute. Before, the hub stopped listening for good.
 
 **1.4.1** · Nov 4, 2026
 - The **setup page switches the hub on**. Docker, Windows and macOS start with it off,

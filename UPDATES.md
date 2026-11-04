@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.4.1)
+# How CC0AC-Weather installs and keeps itself up to date (1.4.2)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -180,6 +180,11 @@ the hub's cable. A hub pointed at the station by its server name works anywhere,
 but the only way to turn it on was to edit config.ini by hand. The setup page now has
 a box for it, and lists the sensors such a hub has sent. Pi and Debian houses
 see no change.
+
+1.4.2 turns the hub on by default on every platform. A station that records nothing
+(the hub off and no radio dongle) gets it switched on when it updates. One with
+the radio on is left as it is. If port 443 can't be opened, the log says why and the
+station tries again every minute.
 
 ## When it checks
 

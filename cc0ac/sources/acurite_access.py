@@ -17,6 +17,7 @@ import logging
 import ssl
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -32,6 +33,7 @@ from cc0ac.sources import Emit, Reading
 log = logging.getLogger("acurite")
 
 NAME = "acurite-access"
+BIND_RETRY_S = 60   # a busy or forbidden port 443 is tried again this often
 CONFIG_DIR = Path.home() / ".cc0ac-weather"
 ACCESS_RELAY_URL = "https://atlasapi.myacurite.com"
 HUB_UPDATE_PATH = "/weatherstation/updateweatherstation"
@@ -264,12 +266,20 @@ class _HubServer(ThreadingHTTPServer):
 def run(cfg: configparser.ConfigParser, emit: Emit) -> None:
     port = cfg.getint("hub", "port", fallback=443)
     handler = _make_hub_handler(cfg, emit)
-    try:
-        server = _HubServer(("", port), handler)
-    except PermissionError:
-        log.error("Hub listener: cannot bind port %d — run with CAP_NET_BIND_SERVICE "
-                  "(see weather_monitor.service) or use a port above 1024", port)
-        return
+    while True:
+        try:
+            server = _HubServer(("", port), handler)
+            break
+        except PermissionError:
+            log.error("Hub listener: not allowed to open port %d. Run with CAP_NET_BIND_SERVICE "
+                      "(the boot loader grants it on Linux) or set [hub] port above 1024. "
+                      "Trying again in %d s.", port, BIND_RETRY_S)
+        except OSError as e:
+            # Something else has the port (a web server, another copy of the station). The
+            # rest of the station keeps running; the hub is heard once the port is free.
+            log.error("Hub listener: port %d can't be opened (%s). Is something else using it? "
+                      "Trying again in %d s.", port, e, BIND_RETRY_S)
+        time.sleep(BIND_RETRY_S)
     if cfg.getboolean("hub", "tls", fallback=True):
         server.tls_context = _hub_tls_context(cfg)
     log.info("Hub listener on port %d (tls=%s, relay=%s)", port,

@@ -128,7 +128,7 @@ class Install(unittest.TestCase):
         self.assertTrue((self.root / "bootloader.py").exists())
         c = configparser.ConfigParser(inline_comment_prefixes=("#", ";"))
         c.read(self.home / "config.ini")
-        self.assertFalse(c.getboolean("hub", "enabled"))       # Docker can't take the hub's cable
+        self.assertTrue(c.getboolean("hub", "enabled"))        # on everywhere: a hub can send by its server name
         self.assertEqual(c.get("device", "write_path"), str(self.home / "readings"))
         self.assertTrue(c.getboolean("updates", "automatic"))
         self.assertIn(boot.state["weekday"], range(7))

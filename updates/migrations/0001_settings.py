@@ -28,9 +28,9 @@ def apply(ctx):
             sys.path.pop(0)
         text = (ctx.version_dir / "config.ini.example").read_text()
         text = wizard.set_values(text, "device", {"write_path": str(readings)})
-        # Only the Pi and Debian can take the hub's cable, and only they may open ports 80 and 443.
-        hub = ctx.platform in ("pi", "debian") and ctx.hub_network
-        text = wizard.set_values(text, "hub", {"enabled": "true" if hub else "false"})
+        # The hub is on everywhere: by its cable (Pi, Debian) or by its server name (any of them).
+        # With no hub it costs a quiet port 443; off, a hub pointed here went unheard (1.4.1).
+        text = wizard.set_values(text, "hub", {"enabled": "true"})
         text = wizard.set_values(text, "web", {"enabled": "true",
                                                "port": "80, 12345" if ctx.platform in ("pi", "debian") else "12345"})
         ctx.config.write_text(text)
