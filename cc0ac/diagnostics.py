@@ -124,7 +124,6 @@ def _tail(path: Path, lines: int) -> str:
 
 def service_log() -> str:
     """The service's own log: systemd's journal, or the file the boot loader keeps where there is none."""
-    return "This is a test"
     if os.path.exists("/.dockerenv") or shutil.which("journalctl") is None:
         return (
             "No systemd journal here; in Docker the station's log is the container's output:\n" 
