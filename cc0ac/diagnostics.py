@@ -124,13 +124,13 @@ def _tail(path: Path, lines: int) -> str:
 
 def service_log() -> str:
     """The service's own log: systemd's journal, or the file the boot loader keeps where there is none."""
+    if shutil.which("journalctl") is None:
+        return ("No systemd journal here; in Docker the station's log is the container's output: " 
+                "docker compose logs cc0ac-weather\n")
     if BOOT_ROOT is None:
         return _run(["journalctl", "-u", f"cc0ac-weather@{os.environ.get('USER', '')}", "-n", "3000", "--no-pager"])
     if (BOOT_ROOT / "station.log").exists():
         return _tail(BOOT_ROOT / "station.log", 3000)
-    if shutil.which("journalctl") is None:
-        return ("No systemd journal here; in Docker the station's log is the container's output: " 
-                "docker compose logs cc0ac-weather\n")
     return _run(["journalctl", "-u", "cc0ac-weather", "-n", "3000", "--no-pager"])
 
 
