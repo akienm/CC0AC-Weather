@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.4.2)
+# How CC0AC-Weather installs and keeps itself up to date (1.4.3)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -185,6 +185,10 @@ see no change.
 (the hub off and no radio dongle) gets it switched on when it updates. One with
 the radio on is left as it is. If port 443 can't be opened, the log says why and the
 station tries again every minute.
+
+1.4.3 counts lightning one for one. 1.3.19 read a rise of 256 in the sensor's running
+total as one strike, a guess from a single strike. A storm's worth of readings showed
+the total climbing by one at each strike, so the guess is gone.
 
 ## When it checks
 

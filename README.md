@@ -535,9 +535,7 @@ in the page with no outside service. The outdoor card shows everything the
 Atlas sends (feels-like, dew point, wind with direction arrow, gusts, rain, UV
 with its level, light, lightning) plus the 3-hour pressure trend. Lightning
 is the strikes since midnight, counted from the sensor's running total and the
-time of its last strike. One Access hub's total went from 0 to 256 for a
-single strike, so a rise of a whole number of 256s counts as that many strikes;
-that rests on one strike so far.
+time of its last strike. Each step of the total is one strike.
 
 In the US, set `[forecast] enabled = true` (with `[station]` latitude and
 longitude) and the program also fetches from the National Weather Service
@@ -1450,6 +1448,12 @@ Each line says the version (or, before version numbers, the date) that added
 it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
+
+**1.4.3** · Nov 6, 2026
+- **Lightning** counts each step of the sensor's running total as one strike. 1.3.19
+  read a rise of 256 as a single strike, a guess from one strike; a storm on Nov 6
+  took one Atlas from 256 to 377 a strike at a time, so a rise of 256 now counts
+  as 256.
 
 **1.4.2** · Nov 4, 2026
 - The **hub is on by default** everywhere, and an older station that records nothing

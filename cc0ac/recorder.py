@@ -68,13 +68,6 @@ class Reception(TypedDict, total=False):
     snr_db: float
 
 
-# A guess from one strike: an Access hub went from 0 to 256 for a single strike
-# (one new strike time, 2026-10-23), as if the count sat one byte up. So a rise
-# that is a whole number of 256s counts as that many strikes. A second strike
-# reading 512 would bear it out; 257 would say it was wrong.
-COUNT_STEP = 256
-
-
 class Recorder:
     """Everything the station remembers between readings: the latest reading of each
     sensor, how well each receiver hears each sensor, today's lightning strikes, the
@@ -244,8 +237,6 @@ class Recorder:
         grew = 0
         if s["last"] is not None:
             grew = count - s["last"] if count >= s["last"] else count
-            if grew and grew % COUNT_STEP == 0:
-                grew //= COUNT_STEP
             if struck_at and struck_at != s["at"]:
                 grew = max(grew, 1)
         s["today"] += grew

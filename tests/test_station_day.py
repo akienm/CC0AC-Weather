@@ -128,7 +128,7 @@ class Restart(unittest.TestCase):
 
 
 class Strikes(unittest.TestCase):
-    """The hub sends a sensor's running count; one strike once showed as 256."""
+    """The hub sends a sensor's running count of strikes."""
 
     def setUp(self):
         self.rec = recorder.Recorder()
@@ -155,13 +155,14 @@ class Strikes(unittest.TestCase):
         self.assertEqual(self.rec._count_strikes("s", 14, "2026-10-25"), 0)
         self.assertEqual(self.rec._count_strikes("s", 15, "2026-10-25"), 1)
 
-    def test_one_strike_that_reads_256_counts_once(self):
-        # The pattern an Access hub sent on 2026-10-23: 0, then 256 with the first
-        # strike time, then 256 with that same time.
-        self.assertEqual(self.rec._count_strikes("s", 0, "2026-10-24"), 0)
-        self.assertEqual(self.rec._count_strikes("s", 256, "2026-10-24", "2026-10-24T09:10:25"), 1)
-        self.assertEqual(self.rec._count_strikes("s", 256, "2026-10-24", "2026-10-24T09:10:25"), 1)
-        self.assertEqual(self.rec._count_strikes("s", 512, "2026-10-24", "2026-10-24T11:00:00"), 2)
+    def test_the_running_total_counts_one_for_one(self):
+        # An Atlas on 2026-11-06 went 256, 257 ... 377, a new strike time at every
+        # step: the total is a plain count, so a rise of 256 is 256 strikes.
+        self.assertEqual(self.rec._count_strikes("s", 256, "2026-11-06", "2026-11-06T05:10:00"), 0)
+        self.assertEqual(self.rec._count_strikes("s", 257, "2026-11-06", "2026-11-06T05:20:00"), 1)
+        self.assertEqual(self.rec._count_strikes("s", 263, "2026-11-06", "2026-11-06T07:25:00"), 7)
+        self.assertEqual(self.rec._count_strikes("s", 377, "2026-11-06", "2026-11-06T12:45:00"), 121)
+        self.assertEqual(self.rec._count_strikes("s", 633, "2026-11-06", "2026-11-06T13:00:00"), 377)
 
     def test_a_new_strike_time_counts_even_when_the_count_stands(self):
         self.rec._count_strikes("s", 7, "2026-10-24", "2026-10-24T09:00:00")
