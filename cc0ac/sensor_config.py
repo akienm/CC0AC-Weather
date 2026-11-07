@@ -97,6 +97,22 @@ def titles(cfg: configparser.ConfigParser) -> dict[str, str]:
     return {sid: e["title"] for sid, e in table(cfg).items()}
 
 
+def is_enabled(cfg: configparser.ConfigParser, sensor_id: str) -> bool:
+    """Whether a configured sensor is allowed to contribute readings."""
+    section = next((name for name in cfg.sections() if name.strip().lower() == sensor_id.strip().lower()), None)
+    return section is None or cfg.getboolean(section, "enabled", fallback=True)
+
+
+def active_titles(cfg: configparser.ConfigParser) -> dict[str, str]:
+    """Titles for sensors that are enabled, in display order."""
+    return {sid: name for sid, name in titles(cfg).items() if is_enabled(cfg, sid)}
+
+
+def disabled_ids(cfg: configparser.ConfigParser) -> set[str]:
+    """IDs configured not to contribute readings."""
+    return {sid for sid in titles(cfg) if not is_enabled(cfg, sid)}
+
+
 def title(cfg: configparser.ConfigParser, sensor_id: str) -> str:
     """A sensor's title, or "" when the config doesn't know it."""
     e = table(cfg).get(sensor_id.strip().lower())
@@ -107,6 +123,8 @@ def cards(cfg: configparser.ConfigParser) -> dict[str, dict]:
     """What the dashboard needs to dress each card: {ID: {"icon", "link"}}, only what is set."""
     out = {}
     for sid, e in table(cfg).items():
+        if not is_enabled(cfg, sid):
+            continue
         dress = {k: e[k] for k in ("icon", "link") if e[k]}
         if dress:
             out[sid] = dress

@@ -65,9 +65,9 @@
 <section>
   <h2><span class="n">2</span>Name your sensors</h2>
   <p>Each sensor the hub hears is listed with the ID printed on it (open the battery cover). Give each one a name,
-     like <i>Kitchen</i> or <i>Back porch</i>. The arrows set the order they're shown in.</p>
+     like <i>Kitchen</i> or <i>Back porch</i>. Uncheck <b>Use</b> to ignore a device; the arrows set the order they're shown in.</p>
   <table>
-    <thead><tr><th class="type">Type</th><th>ID</th><th>Name</th><th></th></tr></thead>
+    <thead><tr><th class="type">Type</th><th>ID</th><th>Name</th><th>Use</th><th></th></tr></thead>
     <tbody id="sensors"></tbody>
   </table>
   <p id="nosensors" hidden>No sensors yet. They show up once the hub is found; a new sensor can take a few minutes to be heard.</p>
@@ -197,11 +197,15 @@ function drawSensors() {
   $("sensors").innerHTML = rows.map((r, i) => `<tr>
     <td class="type">${esc(r.type || "")}</td><td class="id">${esc(r.id)}</td>
     <td><input type="text" data-i="${i}" value="${esc(r.name || "")}" placeholder="${esc(r.type === "Atlas" ? "Outside" : "Name")}"></td>
+    <td><input type="checkbox" data-enabled="${i}" ${r.enabled ? "checked" : ""} aria-label="Use ${esc(r.name || r.id)}"></td>
     <td class="move"><button data-up="${i}" ${i ? "" : "disabled"}>↑</button> <button data-down="${i}" ${i < rows.length - 1 ? "" : "disabled"}>↓</button></td>
   </tr>`).join("");
 }
 
 $("sensors").addEventListener("input", e => { if (e.target.dataset.i) rows[+e.target.dataset.i].name = e.target.value; });
+$("sensors").addEventListener("change", e => {
+  if (e.target.dataset.enabled !== undefined) rows[+e.target.dataset.enabled].enabled = e.target.checked;
+});
 $("sensors").addEventListener("click", e => {
   const up = e.target.dataset.up, down = e.target.dataset.down;
   const i = up !== undefined ? +up : down !== undefined ? +down + 1 : null;
@@ -222,13 +226,17 @@ function merge(state) {
   const order = Object.entries(cur.sensor_order).sort((a, b) => a[0] - b[0]).map(e => e[1].toLowerCase());
   const known = Object.keys(cur.sensors);
   const seen = new Map();
-  for (const id of [...order, ...known]) if (!seen.has(id)) seen.set(id, {id, type: "", name: cur.sensors[id] || ""});
+  for (const id of [...order, ...known]) if (!seen.has(id))
+    seen.set(id, {id, type: "", name: cur.sensors[id] || "", enabled: cur.sensor_enabled[id] !== false});
   for (const s of [...(hub.sensors || []), ...(state.heard || [])]) {
     const id = s.id.toLowerCase();
     if (seen.has(id)) seen.get(id).type = s.type;
-    else seen.set(id, {id, type: s.type, name: s.type === "Atlas" ? "Outside" : ""});
+    else seen.set(id, {id, type: s.type, name: s.type === "Atlas" ? "Outside" : "", enabled: true});
   }
-  for (const r of rows) if (seen.has(r.id) && r.name) seen.get(r.id).name = r.name;   // keep what's typed
+  for (const r of rows) if (seen.has(r.id)) {
+    if (r.name) seen.get(r.id).name = r.name;
+    seen.get(r.id).enabled = r.enabled;
+  }
   rows = [...seen.values()];
   drawSensors();
 }
@@ -275,7 +283,7 @@ function answers() {
   const alerts = {};
   for (const k of ALERT_KEYS) alerts[k] = $(k).value.trim();
   return {
-    sensors: rows.map(r => ({id: r.id, name: r.name.trim() || (r.type === "Atlas" ? "Outside" : "")})),
+    sensors: rows.map(r => ({id: r.id, name: r.name.trim() || (r.type === "Atlas" ? "Outside" : ""), enabled: r.enabled})),
     station: {name: $("name").value.trim(), latitude, longitude, elevation_ft: $("elev").value.trim(),
               timezone: $("tz").value.trim()},
     forecast: $("forecast").checked && latitude !== "",

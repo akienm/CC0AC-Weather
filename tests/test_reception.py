@@ -86,6 +86,30 @@ class Reception(unittest.TestCase):
         self.assertEqual(recorder._receiver_of("", "api.weather.gov"), "online")
         self.assertEqual(recorder._receiver_of("acurite-access"), "hub")
 
+    def test_disabled_sensor_is_removed_from_the_startup_snapshot(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d)
+            (path / "current.json").write_text(json.dumps({
+                "written": "now",
+                "sensors": [{"sensor_id": "disabled", "fields": {"temp_f": 70}},
+                            {"sensor_id": "active", "fields": {"temp_f": 71}}],
+            }))
+            rec.refresh_snapshot(path, {}, None, {"disabled"})
+            current = json.loads((path / "current.json").read_text())
+        self.assertEqual([s["sensor_id"] for s in current["sensors"]], ["active"])
+
+    def test_all_disabled_sensors_clear_the_startup_snapshot(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d)
+            (path / "current.json").write_text(json.dumps({
+                "sensors": [{"sensor_id": "disabled", "fields": {"temp_f": 70}}],
+            }))
+            rec.refresh_snapshot(path, {}, None, {"disabled"})
+            current = json.loads((path / "current.json").read_text())
+        self.assertEqual(current["sensors"], [])
+
 
 class RadioLine(unittest.TestCase):
     LINE = {"time": "2026-10-09 16:20:00", "model": "Acurite-Tower", "id": 1234, "channel": "C",
