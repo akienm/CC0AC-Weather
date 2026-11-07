@@ -14,6 +14,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
 from cc0ac import calibration     # noqa: E402
+from cc0ac import config          # noqa: E402
 from cc0ac import sensor_config   # noqa: E402
 from cc0ac import wizard          # noqa: E402
 
@@ -78,6 +79,13 @@ class Table(unittest.TestCase):
         self.assertEqual(sensor_config.cards(read(NEW)),
                          {"00005678": {"icon": "🛋️"}, "00001234": {"icon": "sky", "link": "outdoor"}})
 
+    def test_disabled_sensors_are_excluded_from_active_views_but_remain_configured(self):
+        cfg = read("[00001234]\ntitle = Yard\nenabled = false\nicon = sky\n\n[00005678]\ntitle = Kitchen\n")
+        self.assertEqual(sensor_config.titles(cfg), {"00001234": "Yard", "00005678": "Kitchen"})
+        self.assertEqual(sensor_config.active_titles(cfg), {"00005678": "Kitchen"})
+        self.assertEqual(config.sensor_map(cfg), {"00005678": "Kitchen"})
+        self.assertEqual(sensor_config.cards(cfg), {})
+
     def test_a_link_that_is_not_a_chart_is_left_out(self):
         with self.assertLogs("acurite", "WARNING") as logs:
             cards = sensor_config.cards(read("[00001234]\ntitle = Yard\nlink = moon\n"))
@@ -125,6 +133,18 @@ class SetupWrites(unittest.TestCase):
         self.assertNotIn("[0000ABCD]", once)
         self.assertEqual(sensor_config.titles(read(once)), {"00005678": "Kitchen"})
         self.assertEqual(wizard.write_sensors(once, {"00005678": "Kitchen"}), once)
+
+    def test_disabled_sensor_keeps_its_section_and_can_be_reenabled(self):
+        once = wizard.write_sensors(self.TEXT, {"00001234": "Yard", "00005678": "Kitchen"}, {"00001234"})
+        cfg = read(once)
+        self.assertEqual(cfg.get("00001234", "enabled"), "false")
+        self.assertFalse(sensor_config.is_enabled(cfg, "00001234"))
+        self.assertEqual(config.sensor_map(cfg), {"00005678": "Kitchen"})
+
+        enabled = wizard.write_sensors(once, {"00001234": "Yard", "00005678": "Kitchen"})
+        cfg = read(enabled)
+        self.assertFalse(cfg.has_option("00001234", "enabled"))
+        self.assertTrue(sensor_config.is_enabled(cfg, "00001234"))
 
     def test_a_setting_is_not_a_sensor_id(self):
         example = (HERE / "config.ini.example").read_text()
