@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.4.4)
+# How CC0AC-Weather installs and keeps itself up to date (1.4.5)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -195,6 +195,9 @@ takes a time as well as a date. A lightning chart shows each strike's time and
 distance. `[lightning] ignore_beyond_mi` leaves far strikes out. `[reports]` emails a
 daily, weekly or monthly summary, also at `/report`. All are off or blank until set, so
 an updated station looks and sends exactly as before, apart from the new chart.
+
+1.4.5 widens the rain bars: each fills its hour on a wide screen, where before it was
+capped at 40 pixels.
 
 ## When it checks
 

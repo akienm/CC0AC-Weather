@@ -1503,6 +1503,10 @@ it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
 
+**1.4.5** · Nov 7, 2026
+- **Rain bars** fill their hour on a wide screen. They were capped at 40 pixels, so on
+  a 24-hour chart a bar covered only the first 20 minutes or so of its hour.
+
 **1.4.4** · Nov 7, 2026
 - **Charts:** Range takes a date and a time at each end, not just dates.
 - **Lightning chart:** each strike at its time and distance, older ones fainter.
