@@ -243,13 +243,17 @@ free ntfy app) or an email when readings stop, and another when they're back.
 To hear about the Pi itself losing power, add a free healthchecks.io check on
 the same page.
 It can also warn about the weather itself: frost, heat, a falling barometer
-and lightning close by (see [Weather alerts](#weather-alerts)).
+and lightning close by (see [Weather alerts](#weather-alerts)), and about the
+station: that it started or was stopped, that one sensor has gone quiet, or that
+a reading was held back as impossible (see [About the station](#about-the-station)).
 
 ## Looked after for you
 
 - **Updates.** Setup asks one question: install security fixes and small
   repairs by itself, or leave it alone. Each new version is tried and rolled
-  back if it doesn't work. [UPDATES.md](UPDATES.md) has the details.
+  back if it doesn't work. When a new version is out, the setup page says
+  🟢 **Update available** with an **Update now** button, so you needn't wait
+  for the weekly check. [UPDATES.md](UPDATES.md) has the details.
 - **Disks.** Once a day it asks each disk about its own health (SMART) and
   says so on the dashboard, and by phone alert, when one is failing.
 - **Backup.** Once a week, if you name a folder or a Windows share
@@ -747,8 +751,14 @@ Each report is sent once, through the mail server set up for
 The same report is a web page on your own network, for any period:
 `http://THIS_BOX:12345/report?period=day&date=2026-11-06` (or `period=week`, or
 `period=month&date=2026-10`; with no date, the last whole one).
-`/report.json` gives the title and text as JSON. A period not yet over is
-reported "so far".
+`/report.json` gives the title and text as JSON, and `/report.html` the report
+as the email shows it. A period not yet over is reported "so far".
+
+The email is formatted (HTML), with a table for each sensor, and carries the
+plain text inside too, for mail programs that don't show HTML. Leave
+`email_to` blank to use the alerts address. Write nothing else after the `=`:
+the whole rest of the line is taken as the address, so anything without an @ is
+ignored, and the log says so.
 
 ### Sensors: names, icons and links
 
@@ -1119,6 +1129,26 @@ before it says "over" (2° for frost, 3° for heat, half the drop for a storm),
 so a reading hovering at the line doesn't send a message every few minutes.
 Checked on the same 5-minute timer as the readings-stopped alert.
 
+### About the station
+
+The same messages can tell you about the station itself. All three are on
+whenever alerts are; in `[alerts]`, list only the ones you want, or leave it
+blank for none:
+
+```ini
+notices = service, sensors, held_back
+```
+
+- **service**: the station started (and with which version, when it changed),
+  it was stopped, or it started again after stopping without saying so (a
+  crash, or the computer lost power). Saving on the setup page restarts it and
+  sends nothing.
+- **sensors**: one sensor not heard for `quiet_minutes` while the others still
+  are (often its batteries), and again when it's back. When every sensor stops,
+  that's the "no readings" message instead.
+- **held_back**: a reading held back as impossible ([Readings that can't be
+  right](#readings-that-cant-be-right)), and again when its readings are believed.
+
 ## Bringing in older readings
 
 Readings from before this station can be brought into `weather.db`, so the
@@ -1482,6 +1512,7 @@ Check the types too: `python3 -m pip install mypy`, then `python3 -m mypy` from 
 | `cc0ac/mcp_server.py` | The read-only MCP server at `/mcp`, for AI assistants |
 | `cc0ac/importer.py` | `--import`: older readings from WeeWX, Cumulus, CSV files or Weather Underground |
 | `cc0ac/noaa.py` | `--noaa` and `/noaa.json`: NOAA-style month and year climate summaries |
+| `cc0ac/release.py` | Is there a newer version? The setup page's Update available and Update now |
 | `cc0ac/reports.py` | `[reports]` and `/report`: day, week and month summaries, by email and on the web |
 | `noaa.html` | The NOAA summary page at `/noaa` (your network only) |
 | `setup/install.sh` | Installs on a Pi, Debian, Ubuntu or a Mac (`install-pi.sh` is the old name and runs it) |
@@ -1502,6 +1533,22 @@ Each line says the version (or, before version numbers, the date) that added
 it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
+
+**1.4.6** · Nov 8, 2026
+- **Update now \***: the setup page checks for a newer version when it opens and,
+  if there is one, says 🟢 **Update available** with an **Update now** button. The
+  boot loader installs it as it would on its weekly check, and goes back by itself
+  if it doesn't work.
+- **Notices about the station \***: it started (and on which version), it was
+  stopped, or it started again after stopping without saying so; one sensor gone
+  quiet while the rest report; a reading held back as impossible. `[alerts] notices`.
+- **Reports by email are formatted** (HTML, with a table per sensor) \*, with the
+  plain text inside too. `/report.html` shows the same.
+- **`email_to` that isn't an address** (a note pasted after the `=`) is ignored
+  with a warning in the log, so the reports fall back to the alerts address.
+- **Setup page:** the hub says **Working: last heard N minutes ago** once it is
+  sending, instead of "Not found yet" or the to-do for its server name; a saved
+  mail or backup password shows as dots.
 
 **1.4.5** · Nov 7, 2026
 - **Rain bars** fill their hour on a wide screen. They were capped at 40 pixels, so on

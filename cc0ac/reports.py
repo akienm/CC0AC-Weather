@@ -22,6 +22,7 @@ through [alerts]' mail server. alert-state.json remembers which went out.
 from __future__ import annotations
 
 import configparser
+import html
 import json
 import logging
 import smtplib
@@ -143,19 +144,22 @@ def _earlier_years(mine: list[dict], days: list[str]) -> dict | None:
 
 
 def _sensor_block(entry: dict, days: list[str], first: date, last: date, kept_normals: dict | None,
-                  con: sqlite3.Connection, beyond: float | None, shown_in: dict) -> list[str] | None:
+                  con: sqlite3.Connection, beyond: float | None, shown_in: dict) -> dict | None:
+    """One sensor's part of a report: {"head", "table": [(label, low, average, high)],
+    "more": [(label, text)], "compare": [line, ...] (outdoor sensors only)}."""
     mine = [r for r in entry["days"] if r["day"] in set(days)]
     if not mine:
         return None
     combined = {c: _combine(c, [r.get(c) for r in mine]) for c in mine[0] if c != "day"}
-    lines = [f"{entry['name']} ({entry['type']}): {len(mine)} of {len(days)} days, {combined.get('readings') or 0} readings",
-             f"  {'':<12} {'low':>10} {'average':>10} {'high':>10}"]
+    block: dict = {"head": f"{entry['name']} ({entry['type']})",
+                   "sub": f"{len(mine)} of {len(days)} days, {combined.get('readings') or 0} readings",
+                   "table": [], "more": [], "compare": []}
     for label, kind, cols in ROWS:
         values = [combined.get(c) if c else None for c in cols]
         if any(v is not None for v in values):
-            lines.append(f"  {label:<12} " + " ".join(f"{_show(kind, v, shown_in):>10}" for v in values))
+            block["table"].append((label, *(_show(kind, v, shown_in) for v in values)))
     if entry["outdoor"] and combined.get("rain_in") is not None:
-        lines.append(f"  {'Rain':<12} {_show('rain', combined['rain_in'], shown_in)}")
+        block["more"].append(("Rain", _show("rain", combined["rain_in"], shown_in)))
     lo = iso_to_epoch(day_bounds(first.isoformat())[0])
     hi = iso_to_epoch(day_bounds(last.isoformat())[1])
     seen = strikes(con, lo, hi, beyond, entry["id"])
@@ -168,42 +172,73 @@ def _sensor_block(entry: dict, days: list[str], first: date, last: date, kept_no
             text += f", the closest {_show('distance', mi, shown_in)} at {datetime.fromtimestamp(t).strftime('%a %H:%M')}"
         if beyond is not None:
             text += f" (farther than {_show('distance', beyond, shown_in)} not counted)"
-        lines.append(f"  {'Lightning':<12} {text}")
+        block["more"].append(("Lightning", text))
     if not entry["outdoor"]:
-        return lines
+        return block
     highs = [r["temp_max"] for r in mine if r.get("temp_max") is not None]
     lows = [r["temp_min"] for r in mine if r.get("temp_min") is not None]
     mine_high = sum(highs) / len(highs) if highs else None
     mine_low = sum(lows) / len(lows) if lows else None
-    lines.append("  Compared with what is usual here:")
+    compare = block["compare"]
     normal = _normal(kept_normals, [r["day"] for r in mine])
     if normal:
         def vs(own: float | None, usual: float | None, kind: str) -> str:
             if own is None or usual is None:
                 return _show(kind, usual, shown_in) or "?"
             return f"{_show(kind, usual, shown_in)} (this time {_show(kind, own - usual, shown_in, change=True)})"
-        lines.append(f"    Normal ({normal['source']}), for the {len(mine)} days with readings:")
-        lines.append(f"      average high {vs(mine_high, normal['high'], 'temperature')}, "
-                     f"average low {vs(mine_low, normal['low'], 'temperature')}, "
-                     f"rain {vs(combined.get('rain_in'), normal['rain'], 'rain')}")
+        compare.append(f"Normal ({normal['source']}), for the {len(mine)} days with readings: "
+                       f"average high {vs(mine_high, normal['high'], 'temperature')}, "
+                       f"average low {vs(mine_low, normal['low'], 'temperature')}, "
+                       f"rain {vs(combined.get('rain_in'), normal['rain'], 'rain')}")
     else:
-        lines.append("    No normals yet: set [station] latitude and longitude to have them.")
+        compare.append("No normals yet: set [station] latitude and longitude to have them.")
     earlier = _earlier_years(entry["days"], days)
     if earlier:
         years = ", ".join(str(y) for y in earlier["years"])
-        lines.append(f"    Earlier years here ({years}; {earlier['days']} days): "
-                     f"average {_show('temperature', earlier['temp_avg'], shown_in)}, "
-                     f"high {_show('temperature', earlier['high'], shown_in)}, "
-                     f"low {_show('temperature', earlier['low'], shown_in)}, "
-                     f"rain {_show('rain', earlier['rain'], shown_in)}")
+        compare.append(f"Earlier years here ({years}; {earlier['days']} days): "
+                       f"average {_show('temperature', earlier['temp_avg'], shown_in)}, "
+                       f"high {_show('temperature', earlier['high'], shown_in)}, "
+                       f"low {_show('temperature', earlier['low'], shown_in)}, "
+                       f"rain {_show('rain', earlier['rain'], shown_in)}")
     else:
-        lines.append("    No earlier years recorded here yet to compare with.")
-    return lines
+        compare.append("No earlier years recorded here yet to compare with.")
+    return block
+
+
+def _as_text(block: dict) -> str:
+    lines = [f"{block['head']}: {block['sub']}", f"  {'':<12} {'low':>10} {'average':>10} {'high':>10}"]
+    lines += [f"  {label:<12} " + " ".join(f"{v:>10}" for v in values) for label, *values in block["table"]]
+    lines += [f"  {label:<12} {text}" for label, text in block["more"]]
+    if block["compare"]:
+        lines.append("  Compared with what is usual here:")
+        lines += ["    " + line for line in block["compare"]]
+    return "\n".join(lines)
+
+
+HTML_STYLE = ("body{font-family:Helvetica,Arial,sans-serif;font-size:15px;color:#222;max-width:680px}"
+              "h1{font-size:20px}h2{font-size:16px;margin:22px 0 2px}p.sub{color:#777;margin:0 0 6px;font-size:13px}"
+              "table{border-collapse:collapse;margin:4px 0}td,th{padding:3px 10px 3px 0;text-align:right}"
+              "td:first-child,th:first-child{text-align:left}th{color:#777;font-weight:normal;font-size:13px}"
+              "p.more{margin:4px 0}p.vs{margin:4px 0;color:#444}")
+
+
+def _as_html(block: dict) -> str:
+    e = html.escape
+    out = [f"<h2>{e(block['head'])}</h2>", f"<p class=\"sub\">{e(block['sub'])}</p>"]
+    if block["table"]:
+        out.append("<table><tr><th></th><th>low</th><th>average</th><th>high</th></tr>")
+        out += ["<tr>" + "".join(f"<td>{e(v)}</td>" for v in row) + "</tr>" for row in block["table"]]
+        out.append("</table>")
+    out += [f"<p class=\"more\"><b>{e(label)}</b>: {e(text)}</p>" for label, text in block["more"]]
+    if block["compare"]:
+        out.append("<p class=\"vs\"><b>Compared with what is usual here</b></p>")
+        out += [f"<p class=\"vs\">{e(line)}</p>" for line in block["compare"]]
+    return "\n".join(out)
 
 
 def report(cfg: configparser.ConfigParser, db_path: Path, sensors: SensorNames, write_path: Path, q: Query,
            now: float | None = None) -> dict:
-    """/report and the emails: {"period", "first", "last", "so_far", "title", "text"}."""
+    """/report and the emails: {"period", "first", "last", "so_far", "title", "text", "html"}."""
     now = time.time() if now is None else now
     today = datetime.fromtimestamp(now).date()
     period = (q.get("period") or "day").strip().lower()
@@ -231,16 +266,21 @@ def report(cfg: configparser.ConfigParser, db_path: Path, sensors: SensorNames, 
             for entry in found["sensors"]:
                 block = _sensor_block(entry, days, first, last, kept_normals, con, beyond, shown_in)
                 if block:
-                    blocks.append("\n".join(block))
+                    blocks.append(block)
         finally:
             con.close()
     text = title + "\n" + "=" * len(title) + "\n\n"
+    page = [f"<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>{html.escape(title)}</title>"
+            f"<style>{HTML_STYLE}</style></head><body><h1>{html.escape(title)}</h1>"]
     if so_far:
         at = datetime.fromtimestamp(now)
         text += f"So far, through {at:%a %b} {at.day} {at:%H:%M}.\n\n"
-    text += "\n\n".join(blocks) if blocks else "No readings were stored in that time."
+        page.append(f"<p>So far, through {at:%a %b} {at.day} {at:%H:%M}.</p>")
+    text += "\n\n".join(_as_text(b) for b in blocks) if blocks else "No readings were stored in that time."
+    page += [_as_html(b) for b in blocks] if blocks else ["<p>No readings were stored in that time.</p>"]
+    page.append("</body></html>")
     return {"period": period, "first": first.isoformat(), "last": last.isoformat(), "so_far": so_far,
-            "title": title, "text": text + "\n"}
+            "title": title, "text": text + "\n", "html": "\n".join(page) + "\n"}
 
 
 def wanted(cfg: configparser.ConfigParser) -> list[str]:
@@ -255,7 +295,7 @@ def check(cfg: configparser.ConfigParser, db_path: Path, sensors: SensorNames, w
     periods = wanted(cfg)
     if not periods:
         return "reports off"
-    to = cfg.get("reports", "email_to", fallback="").strip() or cfg.get("alerts", "email_to", fallback="").strip()
+    to = alerts.addresses(cfg, "reports") or alerts.addresses(cfg, "alerts")
     if not to:
         return "reports: no email_to in [reports] or [alerts]"
     now = time.time() if now is None else now
@@ -277,7 +317,7 @@ def check(cfg: configparser.ConfigParser, db_path: Path, sensors: SensorNames, w
             continue
         got = report(cfg, db_path, sensors, write_path, {"period": period}, now)
         try:
-            alerts._email(cfg, to, got["title"], got["text"])
+            alerts._email(cfg, to, got["title"], got["text"], got["html"])
         except (OSError, smtplib.SMTPException, ValueError) as e:
             did.append(f"{PERIODS[period]} not sent: {e}")
             continue

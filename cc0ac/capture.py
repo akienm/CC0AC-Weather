@@ -35,8 +35,10 @@ import configparser
 import importlib
 import json
 import logging
+import os
 import queue
 import re
+import signal
 import sqlite3
 import sys
 import threading
@@ -290,6 +292,20 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
                                                outdoor_days, cfg.getboolean("climate", "normals", fallback=True),
                                                bases), daemon=True, name="climate").start()
 
+    # [alerts] notices = service: a message that it started, and one when it is stopped.
+    threading.Thread(target=lambda: log.info("Notice: %s", alerts.service_started(cfg, station_version())),
+                     daemon=True, name="started").start()
+
+    def on_stop(*_: Any) -> None:
+        told = threading.Thread(target=lambda: log.info("Notice: %s", alerts.service_stopping(cfg)), daemon=True)
+        told.start()
+        told.join(6)     # Docker allows 10 s before it kills
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        os._exit(0)
+    if threading.current_thread() is threading.main_thread():
+        signal.signal(signal.SIGTERM, on_stop)
+
     source_threads = []
     for source in load_sources():
         if source.enabled(cfg):
@@ -379,6 +395,7 @@ def main() -> None:
         except (OSError, ValueError, KeyError):
             sensors = []
         print(alerts.check_upkeep(cfg, upkeep.problems(diagnostics.BOOT_ROOT) + upkeep.low_batteries(sensors)))
+        print(alerts.check_sensors(cfg, Path(cfg.get("device", "write_path")).expanduser()))
         print(reports.check(cfg, database_path(cfg), sensor_map(cfg), Path(cfg.get("device", "write_path")).expanduser()))
     elif args.test_alert:
         problems = alerts.send(cfg, f"{page_title(cfg)}: test", "A test message from the weather station.")

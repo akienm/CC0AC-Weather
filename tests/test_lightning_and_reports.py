@@ -244,7 +244,7 @@ class ReportEmails(unittest.TestCase):
         self.st.add(local(2026, 11, 6), temp_f=50.0)
         self.sent = []
         self.real = reports.alerts._email
-        reports.alerts._email = lambda cfg, to, title, text: self.sent.append((to, title))
+        reports.alerts._email = lambda cfg, to, title, text, html=None: self.sent.append((to, title))
         self.state = self.st.root / "alert-state.json"
 
     def tearDown(self):

@@ -761,11 +761,9 @@ def run(boot: Boot) -> None:
                     last_alert_out = line
             except (OSError, subprocess.TimeoutExpired) as exc:
                 log.warning("Readings check didn't run: %s", exc)
-        asked = boot.root / ASKED
-        if asked.exists() and not boot.lock.locked():
-            what = asked.read_text().strip() or "all"
-            asked.unlink()
-            log.info("Asked by hand to check for updates (%s)", what)
+        asked = asked_by_hand(boot) if not boot.lock.locked() else None
+        if asked is not None:
+            what = asked
             threading.Thread(target=_scheduled, args=(boot, station, what), daemon=True).start()
             continue
         chore = upkeep_due(boot, datetime.now())
@@ -782,6 +780,23 @@ def run(boot: Boot) -> None:
     station.wanted = False
     station.stop()
     (boot.root / ALIVE).unlink(missing_ok=True)
+
+
+def asked_by_hand(boot: Boot) -> str | None:
+    """"all" or "security" if an update was asked for, the asking taken away; else None.
+    `update` by hand writes ROOT/update-now; the setup page's Update now button runs as
+    the station's user, which can't write here, so it writes ~/.cc0ac-weather/update-now
+    in the station's home."""
+    for asked in (boot.root / ASKED, Path(boot.settings["home"]) / ".cc0ac-weather" / ASKED):
+        try:
+            what = asked.read_text()[:64].strip()
+            asked.unlink()
+        except OSError:
+            continue
+        what = what if what in ("all", "security") else "all"
+        log.info("Asked by hand to check for updates (%s, %s)", what, asked)
+        return what
+    return None
 
 
 def _scheduled(boot: Boot, station: Station, what: str) -> None:

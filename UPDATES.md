@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.4.5)
+# How CC0AC-Weather installs and keeps itself up to date (1.4.6)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -199,6 +199,14 @@ an updated station looks and sends exactly as before, apart from the new chart.
 1.4.5 widens the rain bars: each fills its hour on a wide screen, where before it was
 capped at 40 pixels.
 
+1.4.6 adds an **Update now** button. The setup page asks for the newest version
+when it opens, and when there is a newer one it says so with a green dot and the
+button, so a house needn't wait for its weekly day. Its new boot loader is what
+listens for the button, so the button works from the first update after 1.4.6 is
+installed. It also adds notices about the station itself (started, stopped, a
+sensor quiet, a reading held back), formatted report emails, and two setup-page
+fixes. All of it is on only where alerts or reports already are.
+
 ## When it checks
 
 At install the station picks a time to check, 06:00 unless you choose another,
@@ -209,7 +217,17 @@ house asks GitHub at the same moment.
 - **Security fixes**: checked every day at that time.
 - **Repairs and new versions**: checked once a week, at that time on that day.
 
-With **No**, it never checks.
+With **No**, it never checks by itself.
+
+**Update now.** The setup page asks the same place for the newest version each
+time it opens (at most once an hour) and, if one is newer than this copy, shows
+🟢 **Update available** and an **Update now** button. The button asks the running
+boot loader, through `update-now` in the station's own `~/.cc0ac-weather/` (the
+station's user can't write in the boot loader's folder), and the boot loader
+handles it exactly as `bootloader.py update` by hand: download, migrations,
+health check, rollback if it fails. Being asked, it does this with **No** too. A
+copy run without the boot loader (from git, or by hand) says it can't update
+itself.
 
 ## The boot loader
 

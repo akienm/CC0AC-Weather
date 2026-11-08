@@ -131,6 +131,8 @@
 
 <section>
   <h2><span class="n">5</span>Updates</h2>
+  <div id="updnow" hidden><div class="row"><span id="updsays"></span><button id="updbtn" hidden>Update now</button></div>
+    <p class="help" id="updhelp"></p></div>
   <div class="check"><input type="radio" name="updates" id="upd_yes"><label for="upd_yes" style="margin:0"><b>Yes</b>: install security fixes and small repairs by itself</label></div>
   <div class="check"><input type="radio" name="updates" id="upd_no"><label for="upd_no" style="margin:0"><b>No</b>: leave it alone; never download anything</label></div>
   <label for="upd_time">Check at this time of day</label>
@@ -183,12 +185,20 @@ function showHub(hub) {
     return;
   }
   $("recheck").hidden = false;
+  const m = hub.heard_minutes;
+  const working = m !== undefined && m !== null && m <= 15;
+  const ago = working ? `last heard ${m < 1.5 ? "just now" : Math.round(m) + " minutes ago"}` : "";
+  if (working && !hub.found) {
+    $("hub").innerHTML = `<span class="good">Working:</span> ${ago}. Its sensors are listed below.`;
+    return;
+  }
   if (hub.by_name) { $("hub").textContent = hub.why; return; }
   if (!hub.found) { $("hub").innerHTML = `<span class="bad">Not found yet.</span> ${esc(hub.why)}`; return; }
   const bits = [`<span class="good">Found</span> at ${esc(hub.ip)}`];
   if (hub.hub_id) bits.push(`hub ID ${esc(hub.hub_id)}`);
   if (hub.wu_station) bits.push(`Weather Underground station ${esc(hub.wu_station)}`);
   bits.push(`hears ${hub.sensors.length} sensor${hub.sensors.length == 1 ? "" : "s"}`);
+  if (working) bits.push(ago);
   $("hub").innerHTML = bits.join(", ") + ".";
 }
 
@@ -254,14 +264,47 @@ async function start(first) {
   if (!al.ntfy_topic && !al.email_to) $("ntfy_topic").value = randomTopic();
   if (al.email_to) $("emailbox").open = true;
   if (al.healthcheck_url) $("hcbox").open = true;
-  if (state.current.smtp_password_set) $("pwset").textContent = "A password is saved; leave this blank to keep it.";
+  if (state.current.smtp_password_set) {
+    $("pwset").textContent = "A password is saved; leave this blank to keep it.";
+    $("smtp_password").placeholder = "••••••••••••  (saved)";
+  }
   const bk = state.current.backup;
   $("bk_path").value = bk.path || "";
   $("bk_user").value = bk.user || "";
   $("bk_keep").value = bk.keep || "8";
   if (bk.user) $("bkbox").open = true;
-  if (bk.password_set) $("bkpwset").textContent = "A password is saved; leave this blank to keep it.";
+  if (bk.password_set) {
+    $("bkpwset").textContent = "A password is saved; leave this blank to keep it.";
+    $("bk_password").placeholder = "••••••••••••  (saved)";
+  }
+  checkUpdate();
 }
+
+async function checkUpdate() {
+  let u;
+  try { const r = await fetch("update.json", {cache: "no-store"}); if (!r.ok) return; u = await r.json(); }
+  catch (e) { return; }
+  $("updnow").hidden = false;
+  if (u.available) {
+    $("updsays").innerHTML = `🟢 <b>Update available:</b> version ${esc(u.newest)} (this is ${esc(u.current)}).`;
+    $("updbtn").hidden = !u.can_update;
+    $("updhelp").textContent = u.can_update
+      ? "What's new: github.com/akienm/CC0AC-Weather, the README's changelog."
+      : "This copy wasn't installed with the boot loader, so it can't update itself (README, \"Updates\").";
+  } else if (u.newest) {
+    $("updsays").textContent = `Up to date: version ${u.current}.`;
+  } else {
+    $("updsays").textContent = `Version ${u.current}.` + (u.problem ? ` (Couldn't check for a newer one: ${u.problem}.)` : "");
+  }
+}
+
+$("updbtn").onclick = async () => {
+  $("updbtn").disabled = true;
+  const r = await fetch("update.cgi", {method: "POST", headers: {"X-CC0AC-Config": "save"}});
+  $("updhelp").textContent = await r.text();
+  $("updhelp").className = r.ok ? "help good" : "help bad";
+  if (!r.ok) $("updbtn").disabled = false;
+};
 
 function answers() {
   const where = $("where").value.trim();

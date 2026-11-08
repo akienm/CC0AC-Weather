@@ -28,6 +28,7 @@ from __future__ import annotations
 import configparser
 import json
 import logging
+import re
 import smtplib
 import ssl
 import time
@@ -58,6 +59,22 @@ def newest_reading(write_path: Path) -> float | None:
         return None
 
 
+def addresses(cfg: configparser.ConfigParser, section: str = "alerts") -> str:
+    """A section's email_to, keeping only what looks like an address (it has an @).
+    Anything else, such as a note pasted after the "=", is left out with a warning:
+    configparser keeps everything after the "=" as the value."""
+    raw = cfg.get(section, "email_to", fallback="").strip()
+    good, bad = [], []
+    for part in raw.replace(";", ",").split(","):
+        part = part.strip()
+        if part:
+            (good if re.fullmatch(r"[^@\s]+@[^@\s]+", part) else bad).append(part)
+    if bad:
+        log.warning("[%s] email_to: %s isn't an email address, so it's ignored%s", section,
+                    ", ".join(repr(b) for b in bad), " (blank uses the [alerts] address)" if section != "alerts" else "")
+    return ", ".join(good)
+
+
 def send(cfg: configparser.ConfigParser, title: str, message: str) -> list[str]:
     """Send one message every way set up. Returns what went wrong, one line each."""
     problems = []
@@ -72,7 +89,7 @@ def send(cfg: configparser.ConfigParser, title: str, message: str) -> list[str]:
         except OSError as e:
             problems.append(f"ntfy: {e}")
             report("ntfy", False, f"{title}: {e}")
-    to = _get(cfg, "email_to")
+    to = addresses(cfg)
     if to:
         try:
             _email(cfg, to, title, message)
@@ -83,7 +100,9 @@ def send(cfg: configparser.ConfigParser, title: str, message: str) -> list[str]:
     return problems
 
 
-def _email(cfg: configparser.ConfigParser, to: str, title: str, message: str) -> None:
+def _email(cfg: configparser.ConfigParser, to: str, title: str, message: str, html: str | None = None) -> None:
+    """One message, plain text; with html, an HTML version beside it, which mail
+    programs show instead (the text stays for those that don't)."""
     host = _get(cfg, "smtp_host")
     if not host:
         raise ValueError("email_to is set but smtp_host isn't")
@@ -94,6 +113,8 @@ def _email(cfg: configparser.ConfigParser, to: str, title: str, message: str) ->
     msg["From"] = _get(cfg, "email_from") or user or to
     msg["To"] = to
     msg.set_content(message)
+    if html:
+        msg.add_alternative(html, subtype="html")
     context = ssl.create_default_context()
     if port == 465:
         server: smtplib.SMTP = smtplib.SMTP_SSL(host, port, timeout=30, context=context)
@@ -307,3 +328,149 @@ def check_upkeep(cfg: configparser.ConfigParser, problems: list[str], state_path
     tmp.write_text(json.dumps(state))
     tmp.replace(state_path)
     return did
+
+
+# ── Notices about the station itself ([alerts] notices) ───────────────────────
+#
+# service: the station started (and with which version, if it changed), stopped,
+#   or started again after stopping without saying so (a crash, or the power).
+#   A restart for saved settings says nothing.
+# sensors: one sensor quiet for quiet_minutes while others still report (when
+#   they all stop, that is the "no readings" message), and back.
+# held_back: a reading held back as impossible (sanity.py), and believed again.
+
+NOTICES = ("service", "sensors", "held_back")
+
+
+def notices(cfg: configparser.ConfigParser) -> set[str]:
+    if not cfg.getboolean("alerts", "enabled", fallback=False):
+        return set()
+    raw = cfg.get("alerts", "notices", fallback=", ".join(NOTICES))
+    return {w.strip().lower() for w in raw.split(",") if w.strip().lower() in NOTICES}
+
+
+def _save_state(state_path: Path, key: str, value: object) -> None:
+    state = {**_load_state(state_path), key: value}
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = state_path.with_name(state_path.name + ".tmp")
+    tmp.write_text(json.dumps(state))
+    tmp.replace(state_path)
+
+
+RESTART_MARK = "restarting"    # beside STATE_FILE: config.restart_soon is restarting for saved settings
+
+
+def mark_restart(state_path: Path = STATE_FILE) -> None:
+    """Saved settings: the stop and start that follow are not news."""
+    try:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.with_name(RESTART_MARK).write_text(str(time.time()))
+    except OSError as e:
+        log.warning("Couldn't mark the restart (%s); it may send a started message", e)
+
+
+def service_started(cfg: configparser.ConfigParser, version: str, state_path: Path = STATE_FILE,
+                    now: float | None = None) -> str:
+    """At start: say so, unless it is a restart for saved settings."""
+    now = time.time() if now is None else now
+    was = _load_state(state_path).get("service") or {}
+    mark = state_path.with_name(RESTART_MARK)
+    settings = mark.exists() and now - mark.stat().st_mtime < 600
+    mark.unlink(missing_ok=True)
+    _save_state(state_path, "service", {"running": True, "version": version, "since": now})
+    if "service" not in notices(cfg):
+        return "service notices off"
+    if settings:
+        return "restarted for saved settings"
+    name = cfg.get("station", "name", fallback="").strip() or "Weather station"
+    if was.get("version") and was["version"] != version:
+        message = f"The station started, now version {version.split('/')[0]} (it was {was['version'].split('/')[0]})."
+    elif was.get("running"):
+        message = ("The station started again. It had stopped without saying so: it crashed, "
+                   "or the computer lost power or was switched off.")
+    else:
+        message = f"The station started (version {version.split('/')[0]})."
+    problems = send(cfg, f"{name}: started", message)
+    return "started: " + ("told" if not problems else "; ".join(problems))
+
+
+def service_stopping(cfg: configparser.ConfigParser, state_path: Path = STATE_FILE) -> str:
+    """When asked to stop (not for saved settings): say so, and remember it stopped cleanly."""
+    _save_state(state_path, "service", {**(_load_state(state_path).get("service") or {}), "running": False})
+    if "service" not in notices(cfg) or state_path.with_name(RESTART_MARK).exists():
+        return "stopping"
+    name = cfg.get("station", "name", fallback="").strip() or "Weather station"
+    problems = send(cfg, f"{name}: stopped", "The station was stopped. It records nothing until it starts again.")
+    return "stopped: " + ("told" if not problems else "; ".join(problems))
+
+
+def _stamp(iso: str) -> float | None:
+    try:
+        return datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp()
+    except (AttributeError, ValueError):
+        return None
+
+
+def _field_words(field: str) -> str:
+    """temp_f -> temperature, wind_gust_mph -> wind gust."""
+    words = {"temp": "temperature", "pct": "", "f": "", "mph": "", "inhg": "", "in": "", "mi": "", "deg": "", "lux": ""}
+    return " ".join(w for w in (words.get(p, p) for p in field.split("_")) if w)
+
+
+def check_sensors(cfg: configparser.ConfigParser, write_path: Path, now: float | None = None,
+                  state_path: Path = STATE_FILE) -> str:
+    """One message when a sensor goes quiet while the rest report, or a reading is held
+    back; one when it's back."""
+    wanted = notices(cfg) & {"sensors", "held_back"}
+    if not wanted:
+        return "sensor notices off"
+    now = time.time() if now is None else now
+    try:
+        snapshot = json.loads((write_path / "current.json").read_text())
+    except (OSError, ValueError):
+        return "sensors: no current.json yet"
+    quiet = _setting(cfg, "quiet_minutes", DEFAULT_QUIET_MINUTES) * 60
+    newest = newest_reading(write_path)
+    station_fresh = newest is not None and now - newest <= quiet
+    found: dict[str, tuple[str, str]] = {}      # what is wrong now: key -> (sensor's name, message)
+    for s in snapshot.get("sensors", []):
+        sid = str(s.get("sensor_id", ""))
+        if not sid or sid.startswith(ONLINE_IDS):
+            continue
+        label = str(s.get("name") or sid)
+        updated = _stamp(str(s.get("updated") or ""))
+        if "sensors" in wanted and station_fresh and updated is not None and now - updated > quiet:
+            since = datetime.fromtimestamp(updated).astimezone().strftime("%a %b %d %H:%M")
+            found[f"quiet:{sid}"] = (label, f"{label} hasn't been heard since {since} ({(now - updated) / 60:.0f} minutes), "
+                                            "though the other sensors still are. Its batteries, or something in the way?")
+        held = [(f, h.get("why", "")) for f, h in (s.get("suspect") or {}).items()
+                if isinstance(h, dict) and not str(h.get("why", "")).startswith("worked out from")]
+        if "held_back" in wanted and held:
+            said = "; ".join(f"{_field_words(f)} {why}" for f, why in held)
+            found[f"held:{sid}"] = (label, f"{label}: a reading was held back as impossible ({said}). "
+                                           "The last believed value is shown until it reads true again.")
+    state = _load_state(state_path)
+    sent: dict = dict(state.get("sensors") or {})      # key -> the sensor's name
+    name = cfg.get("station", "name", fallback="").strip() or "Weather station"
+    did = []
+    new = {k: v for k, v in found.items() if k not in sent}
+    gone = [k for k in sent if k not in found]
+    if new:
+        problems = send(cfg, f"{name}: a sensor needs a look", "\n".join(m for _, m in new.values()))
+        if problems:
+            did.append("sensor notice failed: " + "; ".join(problems))
+        else:
+            sent.update({k: label for k, (label, _) in new.items()})
+            did.append(f"told ({len(new)})")
+    if gone:
+        lines = [f"{sent[k]} is being heard again." if k.startswith("quiet:") else f"{sent[k]}: its readings are believed again."
+                 for k in gone]
+        problems = send(cfg, f"{name}: sensors fine again", "\n".join(lines))
+        if problems:
+            did.append("sensor all-clear failed: " + "; ".join(problems))
+        else:
+            for k in gone:
+                sent.pop(k)
+            did.append(f"back ({len(gone)})")
+    _save_state(state_path, "sensors", sent)
+    return "sensors: " + (", ".join(did) or ("fine" if not found else "same as before"))

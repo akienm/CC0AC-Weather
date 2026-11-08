@@ -20,7 +20,9 @@ from __future__ import annotations
 import configparser
 import json
 import re
+import time
 import urllib.request
+from datetime import datetime
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -363,15 +365,40 @@ def setup_state(cfg: configparser.ConfigParser, leases: Path = LEASES) -> dict:
                "why": "The hub is switched on here. Point its server name at this computer "
                       "(README, \"A. Change the hub's server name\"); its sensors show up below "
                       "once it sends, every five minutes."}
+    heard = hub_heard(cfg)
+    if heard is not None:
+        hub["heard_minutes"] = heard
     return {"hub": hub, "current": current, "heard": heard_sensors(cfg)}
+
+
+def _current_json(cfg: configparser.ConfigParser) -> dict:
+    try:
+        path = Path(cfg.get("device", "write_path", fallback="~/AcuRite")).expanduser() / "current.json"
+        got = json.loads(path.read_text())
+        return got if isinstance(got, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def hub_heard(cfg: configparser.ConfigParser, now: float | None = None) -> float | None:
+    """Minutes since the hub last sent anything (current.json's reception), or None if never."""
+    newest = None
+    for s in _current_json(cfg).get("sensors") or []:
+        last = ((s.get("reception") or {}).get("hub") or {}).get("last") if isinstance(s, dict) else None
+        try:
+            t = datetime.fromisoformat(str(last).replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            continue
+        newest = t if newest is None else max(newest, t)
+    if newest is None:
+        return None
+    return max(0.0, round(((time.time() if now is None else now) - newest) / 60, 1))
 
 
 def heard_sensors(cfg: configparser.ConfigParser) -> list[dict]:
     """Sensors in the latest readings, [{"id", "type"}], for naming ones the hub page can't list."""
-    try:
-        path = Path(cfg.get("device", "write_path", fallback="~/AcuRite")).expanduser() / "current.json"
-        sensors = json.loads(path.read_text()).get("sensors") or []
-    except (OSError, ValueError, AttributeError):
+    sensors = _current_json(cfg).get("sensors") or []
+    if not isinstance(sensors, list):
         return []
     return [{"id": str(s["sensor_id"]), "type": str(s.get("type") or "")}
             for s in sensors if isinstance(s, dict)

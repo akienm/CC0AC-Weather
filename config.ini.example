@@ -374,7 +374,8 @@ quiet_minutes = 30
 ; ntfy_server = https://ntfy.sh
 ;
 ; Email, through a mail server that takes a login. For Gmail: smtp.gmail.com,
-; port 587, and an app password (not your normal one).
+; port 587, and an app password (not your normal one). Several addresses: a, b.
+; The value is everything after the "=", so write nothing else on the line.
 ; email_to = you@example.com
 ; email_from =
 ; smtp_host = smtp.gmail.com
@@ -386,6 +387,14 @@ quiet_minutes = 30
 ; which nothing on the Pi can report: pinged while readings come in, and
 ; <url>/fail when they stop. When the pings stop, the service tells you.
 ; healthcheck_url = https://hc-ping.com/your-check-id
+;
+; About the station itself, sent the same ways (all on unless listed otherwise):
+; service (it started, now on which version; it was stopped; it started again
+; after stopping without saying so), sensors (one sensor quiet for quiet_minutes
+; while the others still report, and back), held_back (a reading held back as
+; impossible, see [sanity], and believed again). A restart for saved settings
+; sends nothing. List only the ones you want; for none, leave it blank.
+; notices = service, sensors, held_back
 ;
 ; Weather alerts, sent the same ways: one message when it starts, one when it's
 ; over. Any of: frost (outdoors at or below frost_f), heat (feels like at or
@@ -412,10 +421,13 @@ quiet_minutes = 30
 ; sensor's lows, averages and highs, its rain and lightning, beside the normals
 ; ([station] latitude and longitude) and the same days in earlier years. Sent
 ; once, after `hour` (0-23, the station's time) on the day after the period ends,
-; through the alerts mail server, to email_to here or else the alerts email_to.
+; through the alerts mail server, to email_to here or else the alerts email_to,
+; as a formatted (HTML) email with plain text inside for mail programs without.
 ; The same report, for any period, from your own network:
 ;   http://THIS_BOX:12345/report?period=day|week|month&date=2026-11-06
+; (/report.html for the formatted one, as the email shows it)
 ; send = daily, weekly, monthly
+; Blank: the alerts address. Anything here without an @ is ignored (and logged).
 ; email_to =
 ; hour = 7
 

@@ -17,7 +17,7 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any
 
-from cc0ac import alerts, diagnostics, mcp_server, reports, secure_web, units, upkeep, wizard
+from cc0ac import alerts, diagnostics, mcp_server, release, reports, secure_web, units, upkeep, wizard
 from cc0ac.config import (
     CONFIG_MAX_BYTES,
     DEFAULT_TITLE,
@@ -150,6 +150,10 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: Se
             if path in ("/setup", "/setup.json"):
                 self._setup_page(path)
                 return
+            if path == "/update.json":
+                if self._config_allowed():
+                    self._send(json.dumps(release.newest()).encode(), "application/json")
+                return
             if path in ("/status", "/status.json", "/log", "/diagnostics") and cfg is not None:
                 self._status(path, dict(urllib.parse.parse_qsl(url.query)))
                 return
@@ -164,7 +168,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: Se
             if path in ("/noaa", "/noaa.json", "/noaa.txt") and cfg is not None:
                 self._noaa(path, dict(urllib.parse.parse_qsl(url.query)))
                 return
-            if path in ("/report", "/report.json") and cfg is not None:
+            if path in ("/report", "/report.json", "/report.html") and cfg is not None:
                 self._report(path, dict(urllib.parse.parse_qsl(url.query)))
                 return
             if path in ("/history.json", "/summaries.json"):
@@ -258,7 +262,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: Se
             if target == "/mcp" and mcp_server_ is not None:
                 self._mcp()
                 return
-            if target not in ("/config.cgi", "/setup.cgi"):
+            if target not in ("/config.cgi", "/setup.cgi", "/update.cgi"):
                 self.send_error(404)
                 return
             if not self._config_allowed():
@@ -267,6 +271,19 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: Se
             # site can't, so it can't save over your config from your browser.
             if self.headers.get("X-CC0AC-Config") != "save":
                 self.send_error(403)
+                return
+            if target == "/update.cgi":
+                if not release.boot_loader_running():
+                    self._answer(409, "This copy wasn't installed with the boot loader, so it can't update itself; "
+                                      "see README, \"Updates\".")
+                    return
+                try:
+                    release.ask()
+                except OSError as e:
+                    self._answer(500, f"Couldn't ask for the update: {e}")
+                    return
+                self._answer(200, "Updating. It downloads, restarts and checks itself, which takes a few minutes; "
+                                  "if the new version doesn't work, it goes back by itself.")
                 return
             length = int(self.headers.get("Content-Length") or 0)
             if not 0 < length <= CONFIG_MAX_BYTES:
@@ -295,6 +312,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: Se
                 return
             log.info("config.ini saved from %s; restarting", self.client_address[0])
             self._answer(200, "Saved; restarting.")
+            alerts.mark_restart()
             restart_soon()
 
         def _setup_answers(self, body: str) -> str | None:
@@ -423,6 +441,8 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: Se
                 return
             if path == "/report.json":
                 self._send(json.dumps(got).encode(), "application/json")
+            elif path == "/report.html":
+                self._send(got["html"].encode(), PAGE_TYPES[".html"])
             else:
                 self._send(got["text"].encode(), "text/plain; charset=utf-8")
 
