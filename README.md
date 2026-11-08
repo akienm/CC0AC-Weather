@@ -24,6 +24,7 @@ AcuRite, Chaney Instrument Co., or any other company named here. See
 [Settings in the browser](#settings-in-the-browser) ·
 [The status page](#the-status-page) ·
 [NOAA summaries](#noaa-climate-summaries) ·
+[Reports](#daily-weekly-and-monthly-reports) ·
 [Sensors](#sensors-names-icons-and-links) ·
 [Making it yours](#making-it-yours) ·
 [Units](#units) ·
@@ -105,7 +106,8 @@ works with. See [Trademarks, your own risk, and no warranty](#trademarks-your-ow
 - Data: Barometric forcasting in the output (works even offline)
 - Data: Climate summary for month or year
 - Data: Evapotranspiration
-- Data: Lightning (Still calibrating)
+- Data: Lightning (Still calibrating), with a strikes-by-distance chart and a distance past which strikes are ignored
+- Data: Daily, weekly and monthly reports by email, also on a web page
 - Pages: Charts
 - Pages: Config (only available on your local network)
 - Pages: Dashboard (main page)
@@ -551,16 +553,26 @@ the last good copy and says so on the page.
 `📈 Charts` on the dashboard opens `charts.html`: every reading from
 `weather.db` on one page — outdoor temperature (with dew point, feels-like and
 the low–high band), wind speed, gusts and direction, pressure, rain, UV and
-light, and temperature and humidity for every room. One row of buttons sets the
+light, lightning, and temperature and humidity for every room. One row of buttons sets the
 period for all of them: Today, 24 hours (this time yesterday to now), Week,
-Month, Year, All time, or a Range of dates. Today starts at the station's
+Month, Year, All time, or a Range: a date and time to a date and time, so a
+single storm can fill the chart. Today starts at the station's
 midnight: set `[station] timezone` (the setup page fills it in) when the
 computer's clock isn't the station's, as in Docker, whose clock is UTC.
 The period sits in the address (`charts.html#week`), so a view can be
-bookmarked. Rain also shows totals for today, this week, month and year, and
+bookmarked; a range reads `charts.html#range:2026-11-06T14:00/2026-11-06T18:30`.
+Rain also shows totals for today, this week, month and year, and
 since recording began.
 
-The page asks `/history.json?period=week` (or `?from=YYYY-MM-DD&to=YYYY-MM-DD`)
+With a lightning sensor there is a **lightning** chart: one dot for each time
+the sensor heard strikes, at its time and distance. The older a dot, the fainter
+it is, and a bigger dot is several strikes. A sensor sends only the distance of
+its last strike, so strikes heard between two readings share one dot and one
+distance. Strikes farther than `[lightning] ignore_beyond_mi` are left out (see
+[Weather alerts](#weather-alerts)).
+
+The page asks `/history.json?period=week` (or `?from=YYYY-MM-DD&to=YYYY-MM-DD`,
+each a date or a date and time, `YYYY-MM-DDTHH:MM`)
 and the server averages the readings into a few hundred points for whatever
 the period is: 5-minute averages for a day, daily ones across years. The charts
 use [uPlot](https://github.com/leeoniya/uPlot), loaded from jsDelivr.
@@ -714,6 +726,30 @@ and its year agree.
 real station: a month takes about 2 seconds and a year 1.5; the
 tests check every column on made-up readings.
 
+### Daily, weekly and monthly reports
+
+The station can email a summary of each day, week (Sunday to Saturday) and
+month. For every sensor it lists the low, average and high of temperature,
+feels-like, dew point, humidity, pressure, wind, UV and light, and the rain and
+lightning. An outdoor sensor is then compared with what is usual: the NOAA
+normals for those days (set `[station] latitude` and `longitude`), and the same
+days in earlier years, once the station has some. In `[reports]`:
+
+```ini
+send = daily, weekly, monthly   ; any of them; blank sends none
+email_to =                      ; blank: the alerts email_to
+hour = 7                        ; sent after this hour (0-23) the day after the period ends
+```
+
+Each report is sent once, through the mail server set up for
+[alerts](#weather-alerts), on the same 5-minute timer.
+
+The same report is a web page on your own network, for any period:
+`http://THIS_BOX:12345/report?period=day&date=2026-11-06` (or `period=week`, or
+`period=month&date=2026-10`; with no date, the last whole one).
+`/report.json` gives the title and text as JSON. A period not yet over is
+reported "so far".
+
 ### Sensors: names, icons and links
 
 Each sensor has its own section in config.ini, named by its ID, at the end of
@@ -737,7 +773,7 @@ phase) or `moon` (the moon in its phase). An outdoor card shows `sky` unless you
 say otherwise, and `[sun_moon] icon` sets the Sun & moon card's, `moon` unless you
 say otherwise. Tap a card and it opens its chart: an outdoor card the outdoor
 temperature, the rest the indoor temperature with that sensor's line picked out.
-`link =` chooses another (`outdoor`, `wind`, `pressure`, `rain`, `light`,
+`link =` chooses another (`outdoor`, `wind`, `pressure`, `rain`, `light`, `lightning`,
 `indoor`, `humidity`) or `none`. A sensor's corrections can go here too, as
 `calibration =` (see [Calibration](#calibration)).
 
@@ -799,7 +835,8 @@ A page gets everything from two addresses on the same server:
   `.js` files, for pages opened from a file or a cloud folder.
 - **`/history.json`**: readings averaged over a period.
   - Ask for `?period=today` (or `week`, `month`, `year`, `all`), or
-    `?from=YYYY-MM-DD&to=YYYY-MM-DD`.
+    `?from=YYYY-MM-DD&to=YYYY-MM-DD`. Either can carry a time,
+    `2026-11-06T14:30`; a date alone is the whole day.
   - The answer has `t`, a list of times in Unix seconds, and lists of the same
     length under:
     - `outdoor`: `temp_f`, `temp_min`, `temp_max`, `dew_point_f`,
@@ -810,6 +847,11 @@ A page gets everything from two addresses on the same server:
   - A slot with no readings holds `null`.
   - `rain` is a separate list per hour, day or week (`t`, `in`).
   - `rain_totals` has `today`, `week`, `month`, `year`, `all` and `since`.
+  - `strikes` has `t`, `mi` and `n`: for each reading that heard new strikes, its
+    time, the last strike's distance and how many. `sensors` counts the lightning
+    sensors (0: none), and `ignore_beyond_mi` is the limit, or `null`.
+- **`/report`** and **`/report.json`**: a day, week or month summed up (see
+  [Reports](#daily-weekly-and-monthly-reports)); your own network only.
 - **`/summaries.json`**: each sensor's days, weeks, months and years.
   - `sensors` lists each sensor (in display order) with `id`, `name`, `type`,
     `outdoor`, and lists `days` (each with `day`), and `weeks`, `months` and
@@ -1059,6 +1101,17 @@ Lightning needs a lightning sensor (the Atlas's add-on, or a tower such as the
 6045M). It gives the distance to the storm, not its direction. If you can hear
 thunder you are within about 10 miles of it, and the usual advice is to wait 30
 minutes after the last one before going back outside; those are the defaults.
+
+A sensor can hear storms far away. To leave those out, set a limit:
+
+```ini
+[lightning]
+ignore_beyond_mi = 20
+```
+
+Strikes farther than that are not counted today, not drawn on the lightning
+chart, not in the reports, and don't set off the alert. They are still stored
+as the sensor sent them. Blank, the default, counts every strike.
 
 The station's own outdoor sensor is used when it has been heard lately, and an
 internet one (`[online]`) only when it hasn't. Each alert has a little room
@@ -1429,6 +1482,7 @@ Check the types too: `python3 -m pip install mypy`, then `python3 -m mypy` from 
 | `cc0ac/mcp_server.py` | The read-only MCP server at `/mcp`, for AI assistants |
 | `cc0ac/importer.py` | `--import`: older readings from WeeWX, Cumulus, CSV files or Weather Underground |
 | `cc0ac/noaa.py` | `--noaa` and `/noaa.json`: NOAA-style month and year climate summaries |
+| `cc0ac/reports.py` | `[reports]` and `/report`: day, week and month summaries, by email and on the web |
 | `noaa.html` | The NOAA summary page at `/noaa` (your network only) |
 | `setup/install.sh` | Installs on a Pi, Debian, Ubuntu or a Mac (`install-pi.sh` is the old name and runs it) |
 | `setup/install.ps1` | Installs on Windows |
@@ -1448,6 +1502,17 @@ Each line says the version (or, before version numbers, the date) that added
 it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
+
+**1.4.4** · Nov 7, 2026
+- **Charts:** Range takes a date and a time at each end, not just dates.
+- **Lightning chart:** each strike at its time and distance, older ones fainter.
+- **`[lightning] ignore_beyond_mi`**: strikes farther away are left out of the
+  count, the chart, the reports and the alert, and still stored as heard.
+- **Reports \***: a daily, weekly and monthly email of every sensor's lows,
+  averages and highs, rain and lightning, beside the normals and earlier years
+  (`[reports]`), and the same at `/report`. The page is tested on a copy of a
+  real station's data; the email is tested only with made-up mail.
+- A card can open the lightning chart (`link = lightning`).
 
 **1.4.3** · Nov 6, 2026
 - **Lightning** counts each step of the sensor's running total as one strike. 1.3.19

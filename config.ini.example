@@ -400,6 +400,25 @@ quiet_minutes = 30
 ; lightning_mi = 10
 ; lightning_minutes = 30
 
+[lightning]
+; Strikes farther than this many miles are left out everywhere: the strikes
+; counted today, the lightning chart, the reports and the alert. They are still
+; stored as heard. Blank: every strike counts. (A sensor sends only the distance
+; of the last strike, so strikes between two readings share that one.)
+; ignore_beyond_mi = 20
+
+[reports]
+; A summary by email of each day, week (Sunday to Saturday) or month: every
+; sensor's lows, averages and highs, its rain and lightning, beside the normals
+; ([station] latitude and longitude) and the same days in earlier years. Sent
+; once, after `hour` (0-23, the station's time) on the day after the period ends,
+; through the alerts mail server, to email_to here or else the alerts email_to.
+; The same report, for any period, from your own network:
+;   http://THIS_BOX:12345/report?period=day|week|month&date=2026-11-06
+; send = daily, weekly, monthly
+; email_to =
+; hour = 7
+
 [console]
 ; A station console or WiFi gateway that can upload to a "custom server":
 ; Ambient Weather (awnet app, "Customized"), Ecowitt and Fine Offset relabels

@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.4.3)
+# How CC0AC-Weather installs and keeps itself up to date (1.4.4)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -189,6 +189,12 @@ station tries again every minute.
 1.4.3 counts lightning one for one. 1.3.19 read a rise of 256 in the sensor's running
 total as one strike, a guess from a single strike. A storm's worth of readings showed
 the total climbing by one at each strike, so the guess is gone.
+
+1.4.4 adds three things a lightning watcher asked for, and one more. The charts' Range
+takes a time as well as a date. A lightning chart shows each strike's time and
+distance. `[lightning] ignore_beyond_mi` leaves far strikes out. `[reports]` emails a
+daily, weekly or monthly summary, also at `/report`. All are off or blank until set, so
+an updated station looks and sends exactly as before, apart from the new chart.
 
 ## When it checks
 

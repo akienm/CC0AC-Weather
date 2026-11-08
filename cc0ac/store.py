@@ -101,7 +101,9 @@ def believed_before(db_path: Path, sensor_id: str) -> dict:
 
 
 #
-# /history.json?period=today|week|month|year|all, or ?from=YYYY-MM-DD&to=YYYY-MM-DD.
+# /history.json?period=today|week|month|year|all, or ?from=...&to=... where each is
+# a date (YYYY-MM-DD: from its midnight, to the end of that day) or a date and a
+# time (YYYY-MM-DDTHH:MM: that minute exactly), in the station's local time.
 # Readings are grouped into time buckets sized so any period comes back as a few
 # hundred points: every reading for today, daily averages for a year. Days and
 # weeks follow the station's local time, as the hub's daily rain does.
@@ -115,14 +117,29 @@ HISTORY_STEPS = [300, 900, 1800, 3600, 2 * 3600, 3 * 3600, 6 * 3600, 12 * 3600, 
 HISTORY_POINTS = 600   # about how many buckets a chart gets at most
 
 
+def _when(text: str) -> tuple[float, bool]:
+    """A local date or date and time → (epoch, whether it was a date alone)."""
+    text = text.strip()
+    for fmt, whole_day in (("%Y-%m-%d", True), ("%Y-%m-%dT%H:%M", False), ("%Y-%m-%dT%H:%M:%S", False),
+                           ("%Y-%m-%d %H:%M", False)):
+        try:
+            return datetime.strptime(text, fmt).astimezone().timestamp(), whole_day
+        except ValueError:
+            pass
+    raise ValueError(f"{text!r} is not YYYY-MM-DD or YYYY-MM-DDTHH:MM")
+
+
 def _history_bounds(q: Query, first: float, now: datetime) -> tuple[float, float, str]:
     """(from, to) in epoch seconds for the request, and the period it names."""
     midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
     period = q.get("period", "today")
     if "from" in q:
-        lo = datetime.strptime(q["from"], "%Y-%m-%d").astimezone()
-        hi = datetime.strptime(q.get("to", q["from"]), "%Y-%m-%d").astimezone().timestamp() + 86400
-        return lo.timestamp(), min(hi, now.timestamp()), "range"
+        lo, _ = _when(q["from"])
+        hi, whole_day = _when(q.get("to", q["from"]))
+        hi += 86400 if whole_day else 0
+        if hi <= lo:
+            raise ValueError("to must come after from")
+        return lo, min(hi, now.timestamp()), "range"
     days = {"24h": 1, "week": 7, "month": 30, "year": 365}
     if period in days:
         return now.timestamp() - days[period] * 86400, now.timestamp(), period
@@ -197,11 +214,69 @@ def _rain_buckets(con: sqlite3.Connection, lo: float, hi: float, step: int, off:
     return {"step": step, "t": ticks, "in": [round(buckets.get(b, 0), 2) for b in ticks]}
 
 
+#
+# Lightning, strike by strike. A lightning sensor sends a running count of the
+# strikes it has heard and the distance to the last one. Each rise in the count
+# is that many new strikes (a count smaller than the last means it started again,
+# so all of it is new), and a new time of the last strike is at least one, as the
+# recorder counts them for the dashboard. A rise is put at the distance the same
+# reading gives: the sensor sends only the last strike's, so when several came
+# between two readings they share it. A strike farther than [lightning]
+# ignore_beyond_mi is left out, here and wherever strikes are counted.
+
+def strike_rise(last: float | None, count: float, last_at: str | None, at: str | None) -> int:
+    """How many new strikes a reading's running count says, after the one before it."""
+    if last is None:
+        return 0
+    grew = int(count - last if count >= last else count)
+    if at and at != last_at:
+        grew = max(grew, 1)
+    return grew
+
+
+def ignored(mi: Any, beyond: float | None) -> bool:
+    """A strike past [lightning] ignore_beyond_mi."""
+    return beyond is not None and isinstance(mi, (int, float)) and mi > beyond
+
+
+STRIKES_SHOWN = 5000   # the newest this many readings with strikes, at most
+
+
+def strikes(con: sqlite3.Connection, lo: float, hi: float, beyond: float | None = None,
+            sensor: str | None = None) -> dict:
+    """Every reading in [lo, hi) that brought new strikes: {"t", "mi", "n", "sensors"}.
+    sensors counts the lightning sensors heard then, so a chart can tell "no strikes"
+    from "no lightning sensor". The hour before lo is read as well, so the first
+    reading in the period has one to follow."""
+    rows = con.execute("""SELECT sensor_id, received_utc, strike_count, last_strike_ts, last_strike_mi,
+            lag(strike_count) OVER w, lag(last_strike_ts) OVER w
+        FROM readings WHERE strike_count IS NOT NULL AND received_utc >= ? AND received_utc < ?
+          AND (? IS NULL OR sensor_id = ?)
+        WINDOW w AS (PARTITION BY sensor_id ORDER BY received_utc)
+        ORDER BY received_utc""", [epoch_to_iso(lo - 3600), epoch_to_iso(hi), sensor, sensor]).fetchall()
+    out: dict = {"t": [], "mi": [], "n": [], "sensors": 0}
+    heard = set()
+    for sid, at, count, struck, mi, last, last_struck in rows:
+        t = iso_to_epoch(at)
+        if t < lo:
+            continue
+        heard.add(sid)
+        n = strike_rise(last, count, last_struck, struck)
+        if n and not ignored(mi, beyond):
+            out["t"].append(int(t))
+            out["mi"].append(None if mi is None else round(mi, 1))
+            out["n"].append(n)
+    for k in ("t", "mi", "n"):
+        out[k] = out[k][-STRIKES_SHOWN:]
+    out["sensors"] = len(heard)
+    return out
+
+
 # The fields the charts draw that a held-back value can be shown on.
 HELD_SHOWN = ("temp_f", "humidity_pct", "wind_mph", "wind_gust_mph", "pressure_inhg", "uv_index")
 
 
-def history(db_path: Path, sensors: SensorNames, q: Query) -> dict:
+def history(db_path: Path, sensors: SensorNames, q: Query, ignore_beyond_mi: float | None = None) -> dict:
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
     try:
         now = datetime.now().astimezone()
@@ -263,6 +338,7 @@ def history(db_path: Path, sensors: SensorNames, q: Query) -> dict:
                 "held": held_out,
                 "rooms": rooms,
                 "rain": _rain_buckets(con, lo, hi, step, off),
+                "strikes": {**strikes(con, lo, hi, ignore_beyond_mi), "ignore_beyond_mi": ignore_beyond_mi},
                 "rain_totals": _rain_totals(con, now)}
     finally:
         con.close()

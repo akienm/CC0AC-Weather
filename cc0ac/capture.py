@@ -52,6 +52,7 @@ from cc0ac import (
     diagnostics,
     importer,
     iolog,
+    reports,
     sanity,
     secure_web,
     sensor_config,
@@ -70,6 +71,7 @@ from cc0ac.config import (
     sensor_map,
     station_settings,
     station_version,
+    strike_limit,
 )
 from cc0ac.forecast import run_forecast
 from cc0ac.recorder import (
@@ -228,7 +230,7 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
             "sensor_rows": card_rows(cfg, "sensor_rows"),
             "sensor_cards": sensor_config.cards(cfg), "sun_moon_icon": sensor_config.sun_moon_icon(cfg)}
     db_path = database_path(cfg)
-    recorder = Recorder()
+    recorder = Recorder(strike_limit(cfg))
     with recorder.lock:
         recorder.seed_heard(db_path, time.time())
     recorder.refresh_snapshot(write_path, sensors, page)
@@ -377,6 +379,7 @@ def main() -> None:
         except (OSError, ValueError, KeyError):
             sensors = []
         print(alerts.check_upkeep(cfg, upkeep.problems(diagnostics.BOOT_ROOT) + upkeep.low_batteries(sensors)))
+        print(reports.check(cfg, database_path(cfg), sensor_map(cfg), Path(cfg.get("device", "write_path")).expanduser()))
     elif args.test_alert:
         problems = alerts.send(cfg, f"{page_title(cfg)}: test", "A test message from the weather station.")
         print("Sent." if not problems else "Not sent: " + "; ".join(problems))

@@ -32,7 +32,7 @@ SETTINGS = frozenset({
     "device", "sensors", "sensor_order", "outdoor_rows", "sensor_rows", "units", "calibration", "sanity",
     "hub", "storage", "web", "duckdns", "updates", "backup", "buttons", "station", "weather_underground",
     "mqtt", "webhook", "influxdb", "windy", "pwsweather", "weathercloud", "cwop", "forecast", "climate",
-    "online", "alerts", "console", "capture", "sun_moon"})
+    "online", "alerts", "console", "capture", "sun_moon", "lightning", "reports"})
 
 LIVE_ICONS = {
     "sky": "the sun while it's up, else the moon in its phase",
@@ -41,7 +41,7 @@ LIVE_ICONS = {
 
 # link = <one of these>: the chart a card opens. Unset, the outdoor cards open
 # "outdoor" and the rest "indoor"; "none" opens nothing.
-LINKS = ("outdoor", "wind", "pressure", "rain", "light", "indoor", "humidity", "none")
+LINKS = ("outdoor", "wind", "pressure", "rain", "light", "lightning", "indoor", "humidity", "none")
 
 # Sources whose sensors are the house's own (rtl_433 hears the neighbours' too).
 OWN_SOURCES = ("acurite-access", "console")

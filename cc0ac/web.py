@@ -17,7 +17,7 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any
 
-from cc0ac import alerts, diagnostics, mcp_server, secure_web, units, upkeep, wizard
+from cc0ac import alerts, diagnostics, mcp_server, reports, secure_web, units, upkeep, wizard
 from cc0ac.config import (
     CONFIG_MAX_BYTES,
     DEFAULT_TITLE,
@@ -32,6 +32,7 @@ from cc0ac.config import (
     save_config,
     sensor_map,
     station_version,
+    strike_limit,
 )
 from cc0ac.status import LOG_PATH, log_folder, system_status
 from cc0ac.store import history, noaa_summary, summaries
@@ -115,7 +116,13 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: Se
             return answer(db_path, sensors or {}, q)
         return run
 
-    mcp_server_ = mcp_server.Server(mcp_server.Station(read_data, query(history), query(summaries)),
+    # [lightning] ignore_beyond_mi leaves far strikes off the lightning chart too.
+    beyond = strike_limit(cfg) if cfg is not None else None
+
+    def charts_data(db: Path, names: SensorNames, q: Query) -> dict:
+        return history(db, names, q, beyond)
+
+    mcp_server_ = mcp_server.Server(mcp_server.Station(read_data, query(charts_data), query(summaries)),
                                     station_version()) if mcp else None
 
     class WebHandler(BaseHTTPRequestHandler):
@@ -157,8 +164,11 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: Se
             if path in ("/noaa", "/noaa.json", "/noaa.txt") and cfg is not None:
                 self._noaa(path, dict(urllib.parse.parse_qsl(url.query)))
                 return
+            if path in ("/report", "/report.json") and cfg is not None:
+                self._report(path, dict(urllib.parse.parse_qsl(url.query)))
+                return
             if path in ("/history.json", "/summaries.json"):
-                self._query(history if path == "/history.json" else summaries,
+                self._query(charts_data if path == "/history.json" else summaries,
                             dict(urllib.parse.parse_qsl(url.query)))
                 return
             if path in DATA_FILES:
@@ -396,6 +406,25 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: Se
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+
+        def _report(self, path: str, q: Query) -> None:
+            if db_path is None or not db_path.exists():
+                self.send_error(404, "No database yet")
+                return
+            assert cfg is not None   # do_GET routes /report here only with a config
+            try:
+                got = reports.report(cfg, db_path, sensors or {}, write_path, q)
+            except ValueError as e:
+                self.send_error(400, str(e))
+                return
+            except sqlite3.Error as e:
+                log.error("Report failed: %s", e)
+                self.send_error(500, "Database error")
+                return
+            if path == "/report.json":
+                self._send(json.dumps(got).encode(), "application/json")
+            else:
+                self._send(got["text"].encode(), "text/plain; charset=utf-8")
 
         def _send(self, body: bytes, ctype: str) -> None:
             self.send_response(200)

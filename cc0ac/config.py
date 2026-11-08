@@ -107,6 +107,17 @@ def database_path(cfg: configparser.ConfigParser) -> Path:
     return Path(cfg.get("storage", "database", fallback=str(write_path / "weather.db"))).expanduser()
 
 
+def strike_limit(cfg: configparser.ConfigParser) -> float | None:
+    """[lightning] ignore_beyond_mi: strikes farther than this many miles are not
+    counted, charted, reported or alerted on. None (the default): every strike is."""
+    text = cfg.get("lightning", "ignore_beyond_mi", fallback="").strip()
+    try:
+        return float(text) if text else None
+    except ValueError:
+        log.warning("[lightning] ignore_beyond_mi = %s isn't a number; every strike is counted", text)
+        return None
+
+
 def station_settings(cfg: configparser.ConfigParser) -> dict:
     """[station] latitude/longitude/elevation_ft, for the page's sun and moon.
     Empty (and the sun/moon card hidden) unless latitude and longitude are set."""

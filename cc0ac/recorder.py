@@ -23,10 +23,12 @@ from cc0ac.store import (
     HISTORY_FIELDS,
     day_bounds,
     epoch_to_day,
+    ignored,
     iso_to_epoch,
     open_db,
     roll_up,
     store_reading,
+    strike_rise,
 )
 
 log = logging.getLogger("acurite")
@@ -74,7 +76,7 @@ class Recorder:
     pressure trend and the open database. One lives for the whole run (run_daemon makes
     it); a test makes its own, so nothing carries over from one to the next."""
 
-    def __init__(self) -> None:
+    def __init__(self, ignore_beyond_mi: float | None = None) -> None:
         self._current: dict[str, dict] = {}
         self.lock = threading.Lock()   # guards everything below
 
@@ -100,8 +102,11 @@ class Recorder:
         # restart doesn't lose the day's strikes. A count the source already keeps per
         # day comes out the same. A new time of the last strike counts as at least one
         # strike, whatever the count did. A rise also stamps last_strike_heard, our own
-        # time for it, which the lightning alert reads (alerts.py).
-        self._strikes: dict[str, dict] = {}   # sensor_id → {"day", "today", "last", "at", "rose"}
+        # time for it, which the lightning alert reads (alerts.py). A strike farther than
+        # ignore_beyond_mi ([lightning] in config.ini) is not counted, and the card keeps
+        # showing the last one that was.
+        self._strikes: dict[str, dict] = {}   # sensor_id → {"day", "today", "last", "at", "rose", "kept"}
+        self.ignore_beyond_mi = ignore_beyond_mi
 
         self._db: sqlite3.Connection | None = None
         self._rolled_through: str | None = None   # local day daily summaries were last brought up to
@@ -230,15 +235,16 @@ class Recorder:
             if self._current:
                 self._write_snapshot(write_path, sensors, page, old.get("written", ""), old.get("hub", ""))
 
-    def _count_strikes(self, sensor_id: str, count: int, day: str, struck_at: str | None = None) -> int:
+    def _count_strikes(self, sensor_id: str, count: int, day: str, struck_at: str | None = None,
+                       mi: float | None = None) -> int:
         s = self._strikes.setdefault(sensor_id, {"day": day, "today": 0, "last": None, "at": None})
         if s["day"] != day:
             s["day"], s["today"] = day, 0
-        grew = 0
-        if s["last"] is not None:
-            grew = count - s["last"] if count >= s["last"] else count
-            if struck_at and struck_at != s["at"]:
-                grew = max(grew, 1)
+        grew = strike_rise(s["last"], count, s["at"], struck_at)
+        if ignored(mi, self.ignore_beyond_mi):
+            grew = 0
+        elif grew:
+            s["kept"] = {"last_strike_mi": mi, "last_strike_ts": struck_at}
         s["today"] += grew
         s["last"], s["rose"] = count, grew > 0
         if struck_at:
@@ -254,10 +260,10 @@ class Recorder:
         midnight = day_bounds(day)[0]
         try:
             con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
-            before = con.execute("SELECT strike_count, last_strike_ts FROM readings WHERE sensor_id = ? AND strike_count IS NOT NULL"
+            before = con.execute("SELECT strike_count, last_strike_ts, last_strike_mi FROM readings WHERE sensor_id = ? AND strike_count IS NOT NULL"
                                  " AND received_utc < ? ORDER BY received_utc DESC LIMIT 1",
                                  (sensor_id, midnight)).fetchall()
-            today = con.execute("SELECT strike_count, last_strike_ts FROM readings WHERE sensor_id = ? AND strike_count IS NOT NULL"
+            today = con.execute("SELECT strike_count, last_strike_ts, last_strike_mi FROM readings WHERE sensor_id = ? AND strike_count IS NOT NULL"
                                 " AND received_utc >= ? ORDER BY received_utc", (sensor_id, midnight)).fetchall()
             con.close()
         except sqlite3.Error as exc:
@@ -265,8 +271,8 @@ class Recorder:
             return
         if before:
             self._strikes[sensor_id] = {"day": day, "today": 0, "last": before[0][0], "at": before[0][1]}
-        for count, at in today:
-            self._count_strikes(sensor_id, count, day, at)
+        for count, at, mi in today:
+            self._count_strikes(sensor_id, count, day, at, mi)
 
     def record_reading(self, reading: Reading, write_path: Path, sensors: SensorNames, page: dict | None = None,
                        db_path: Path | None = None) -> dict:
@@ -303,9 +309,16 @@ class Recorder:
                 if sensor_id not in self._strikes:
                     self._seed_strikes(db_path, sensor_id, iso_to_epoch(now))
                 entry["fields"]["strikes_today"] = self._count_strikes(sensor_id, fields["strike_count"], epoch_to_day(iso_to_epoch(now)),
-                                                                 fields.get("last_strike_ts"))
+                                                                 fields.get("last_strike_ts"), fields.get("last_strike_mi"))
                 if self._strikes[sensor_id]["rose"]:
                     entry["fields"]["last_strike_heard"] = now
+                if ignored(fields.get("last_strike_mi"), self.ignore_beyond_mi):
+                    for name in ("last_strike_mi", "last_strike_ts"):
+                        kept = (self._strikes[sensor_id].get("kept") or {}).get(name)
+                        if kept is None:
+                            entry["fields"].pop(name, None)
+                        else:
+                            entry["fields"][name] = kept
             if reading.channel:
                 entry["channel"] = reading.channel
             self._note_heard(sensor_id, _receiver_of(reading.source, reading.receiver), iso_to_epoch(now), reading.snr_db)
