@@ -1534,6 +1534,10 @@ it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
 
+**1.4.9** · Nov 9, 2026
+- **Rain bars fill their hour** (or day, or week): each bar now spans its whole
+  bucket, with a thin seam between neighbours, instead of 90% of it with a gap.
+
 **1.4.8** · Nov 9, 2026
 - **Private values out of `config.ini`**: a setting can point into another file,
   `file:secrets.env#NAME`, instead of holding its value. What the setup page
