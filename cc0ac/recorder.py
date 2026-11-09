@@ -212,7 +212,8 @@ class Recorder:
         # works from a file:// URL and from any static host without CORS.
         write_atomic(write_path / "current.js", f"window.ACURITE_CURRENT = {body};\n")
 
-    def refresh_snapshot(self, write_path: Path, sensors: SensorNames, page: dict | None) -> None:
+    def refresh_snapshot(self, write_path: Path, sensors: SensorNames, page: dict | None,
+                         disabled_sensors: set[str] | None = None) -> None:
         """At start, carry the last snapshot's sensors over and write it again with
         the settings just read. A change in config.ini (buttons, names, sensor
         order, title) then shows at once rather than at the next reading, and the
@@ -221,9 +222,14 @@ class Recorder:
             old = json.loads((write_path / "current.json").read_text())
         except (OSError, ValueError):
             return
+        disabled = {sid.lower() for sid in (disabled_sensors or set())}
+        removed_disabled = False
         with self.lock:
             for entry in old.get("sensors", []):
                 sid = entry.get("sensor_id") if isinstance(entry, dict) else None
+                if isinstance(sid, str) and sid.lower() in disabled:
+                    removed_disabled = True
+                    continue
                 if sid and isinstance(entry.get("fields"), dict):
                     entry["name"] = sensors.get(sid, entry.get("name") or f"{entry.get('type', 'unknown')} {sid}")
                     self._current.setdefault(sid, entry)
@@ -232,7 +238,7 @@ class Recorder:
             for key in ("pressure_change_3h", "zambretti"):
                 if old.get(key) is not None:
                     self._current_page.setdefault(key, old[key])
-            if self._current:
+            if self._current or removed_disabled:
                 self._write_snapshot(write_path, sensors, page, old.get("written", ""), old.get("hub", ""))
 
     def _count_strikes(self, sensor_id: str, count: int, day: str, struck_at: str | None = None,

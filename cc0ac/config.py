@@ -80,7 +80,7 @@ def apply_timezone(cfg: configparser.ConfigParser) -> None:
 def sensor_map(cfg: configparser.ConfigParser) -> SensorNames:
     """{sensor_id: display name}, in display order: each sensor's own section in
     the order they come in the file, then the older [sensors] (sensor_config.py)."""
-    return sensor_config.titles(cfg)
+    return sensor_config.active_titles(cfg)
 
 
 def add_heard_sensor(path: Path | None, sensor_id: str, kind: str) -> None:

@@ -235,7 +235,7 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
     recorder = Recorder(strike_limit(cfg))
     with recorder.lock:
         recorder.seed_heard(db_path, time.time())
-    recorder.refresh_snapshot(write_path, sensors, page)
+    recorder.refresh_snapshot(write_path, sensors, page, sensor_config.disabled_ids(cfg))
 
     queues = []
     for output in load_outputs():
@@ -253,6 +253,8 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
 
     def emit(reading: Reading) -> dict:
         sid = reading.sensor_id.lower()
+        if not sensor_config.is_enabled(cfg, sid):
+            return {"type": reading.type or "unknown", "name": reading.name or sid, "fields": {}}
         if (reading.source in sensor_config.OWN_SOURCES and sid and sid not in sensors
                 and sensor_config.is_sensor(sid) and re.fullmatch(r"[0-9a-z-]{1,24}", sid)):
             sensors[reading.sensor_id.lower()] = reading.sensor_id.lower()
