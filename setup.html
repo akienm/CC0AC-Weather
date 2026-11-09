@@ -65,7 +65,7 @@
 <section>
   <h2><span class="n">2</span>Name your sensors</h2>
   <p>Each sensor the hub hears is listed with the ID printed on it (open the battery cover). Give each one a name,
-     like <i>Kitchen</i> or <i>Back porch</i>. Uncheck <b>Use</b> to ignore a device; the arrows set the order they're shown in.</p>
+     like <i>Kitchen</i> or <i>Back porch</i>. <b>Use</b> says what a sensor is for: <i>Show</i> it (the usual), <i>Hide</i> it from the page but still record it and send it out, <i>Record only</i>, or <i>Ignore</i> it, say a neighbour's. The arrows set the order they're shown in.</p>
   <table>
     <thead><tr><th class="type">Type</th><th>ID</th><th>Name</th><th>Use</th><th></th></tr></thead>
     <tbody id="sensors"></tbody>
@@ -165,6 +165,8 @@
 
 <script>
 const $ = id => document.getElementById(id);
+// [<sensor id>] disposition (cc0ac/sensor_config.py): what a sensor's readings are used for.
+const USES = [["all", "Show"], ["hide", "Hide"], ["record_only", "Record only"], ["ignore", "Ignore"]];
 const ALERT_KEYS = ["quiet_minutes", "ntfy_topic", "email_to", "email_from", "smtp_host", "smtp_port",
                     "smtp_user", "smtp_password", "healthcheck_url"];
 let rows = [];   // [{id, type, name}], in display order
@@ -207,14 +209,15 @@ function drawSensors() {
   $("sensors").innerHTML = rows.map((r, i) => `<tr>
     <td class="type">${esc(r.type || "")}</td><td class="id">${esc(r.id)}</td>
     <td><input type="text" data-i="${i}" value="${esc(r.name || "")}" placeholder="${esc(r.type === "Atlas" ? "Outside" : "Name")}"></td>
-    <td><input type="checkbox" data-enabled="${i}" ${r.enabled ? "checked" : ""} aria-label="Use ${esc(r.name || r.id)}"></td>
+    <td><select data-use="${i}" aria-label="Use of ${esc(r.name || r.id)}">${USES.map(([v, label]) =>
+      `<option value="${v}" ${r.use === v ? "selected" : ""}>${label}</option>`).join("")}</select></td>
     <td class="move"><button data-up="${i}" ${i ? "" : "disabled"}>↑</button> <button data-down="${i}" ${i < rows.length - 1 ? "" : "disabled"}>↓</button></td>
   </tr>`).join("");
 }
 
 $("sensors").addEventListener("input", e => { if (e.target.dataset.i) rows[+e.target.dataset.i].name = e.target.value; });
 $("sensors").addEventListener("change", e => {
-  if (e.target.dataset.enabled !== undefined) rows[+e.target.dataset.enabled].enabled = e.target.checked;
+  if (e.target.dataset.use !== undefined) rows[+e.target.dataset.use].use = e.target.value;
 });
 $("sensors").addEventListener("click", e => {
   const up = e.target.dataset.up, down = e.target.dataset.down;
@@ -237,15 +240,15 @@ function merge(state) {
   const known = Object.keys(cur.sensors);
   const seen = new Map();
   for (const id of [...order, ...known]) if (!seen.has(id))
-    seen.set(id, {id, type: "", name: cur.sensors[id] || "", enabled: cur.sensor_enabled[id] !== false});
+    seen.set(id, {id, type: "", name: cur.sensors[id] || "", use: (cur.sensor_disposition || {})[id] || "all"});
   for (const s of [...(hub.sensors || []), ...(state.heard || [])]) {
     const id = s.id.toLowerCase();
     if (seen.has(id)) seen.get(id).type = s.type;
-    else seen.set(id, {id, type: s.type, name: s.type === "Atlas" ? "Outside" : "", enabled: true});
+    else seen.set(id, {id, type: s.type, name: s.type === "Atlas" ? "Outside" : "", use: "all"});
   }
   for (const r of rows) if (seen.has(r.id)) {
     if (r.name) seen.get(r.id).name = r.name;
-    seen.get(r.id).enabled = r.enabled;
+    seen.get(r.id).use = r.use;
   }
   rows = [...seen.values()];
   drawSensors();
@@ -326,7 +329,7 @@ function answers() {
   const alerts = {};
   for (const k of ALERT_KEYS) alerts[k] = $(k).value.trim();
   return {
-    sensors: rows.map(r => ({id: r.id, name: r.name.trim() || (r.type === "Atlas" ? "Outside" : ""), enabled: r.enabled})),
+    sensors: rows.map(r => ({id: r.id, name: r.name.trim() || (r.type === "Atlas" ? "Outside" : ""), disposition: r.use})),
     station: {name: $("name").value.trim(), latitude, longitude, elevation_ft: $("elev").value.trim(),
               timezone: $("tz").value.trim()},
     forecast: $("forecast").checked && latitude !== "",

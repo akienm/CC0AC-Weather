@@ -196,15 +196,18 @@ class Recorder:
         return round(value - then[-1], 2) if then else None
 
     def _write_snapshot(self, write_path: Path, sensors: SensorNames, page: dict | None, written: str, hub: str) -> None:
-        """current.json / current.js from self._current; the caller holds self.lock."""
+        """current.json / current.js from self._current, less the sensors the pages
+        leave out (sensors.hidden); the caller holds self.lock."""
         now = time.time()
-        for e in self._current.values():
+        left_out = getattr(sensors, "hidden", frozenset())
+        shown = [e for e in self._current.values() if str(e["sensor_id"]).lower() not in left_out]
+        for e in shown:
             e["reception"] = self.reception(e["sensor_id"], now)
         snapshot = {"written": written, "hub": hub,
                     **{k: v for k, v in (page or {}).items() if v},
                     **{k: v for k, v in self._current_page.items() if v is not None},
-                    "warnings": upkeep.problems(diagnostics.BOOT_ROOT) + upkeep.low_batteries(self._current.values()),
-                    "sensors": sorted(self._current.values(),
+                    "warnings": upkeep.problems(diagnostics.BOOT_ROOT) + upkeep.low_batteries(shown),
+                    "sensors": sorted(shown,
                                       key=lambda e: display_order(sensors, e["sensor_id"], e["name"]))}
         body = json.dumps(snapshot, indent=1)
         write_atomic(write_path / "current.json", body)
@@ -212,8 +215,7 @@ class Recorder:
         # works from a file:// URL and from any static host without CORS.
         write_atomic(write_path / "current.js", f"window.ACURITE_CURRENT = {body};\n")
 
-    def refresh_snapshot(self, write_path: Path, sensors: SensorNames, page: dict | None,
-                         disabled_sensors: set[str] | None = None) -> None:
+    def refresh_snapshot(self, write_path: Path, sensors: SensorNames, page: dict | None) -> None:
         """At start, carry the last snapshot's sensors over and write it again with
         the settings just read. A change in config.ini (buttons, names, sensor
         order, title) then shows at once rather than at the next reading, and the
@@ -222,13 +224,13 @@ class Recorder:
             old = json.loads((write_path / "current.json").read_text())
         except (OSError, ValueError):
             return
-        disabled = {sid.lower() for sid in (disabled_sensors or set())}
-        removed_disabled = False
+        left_out = getattr(sensors, "hidden", frozenset())
+        dropped = False
         with self.lock:
             for entry in old.get("sensors", []):
                 sid = entry.get("sensor_id") if isinstance(entry, dict) else None
-                if isinstance(sid, str) and sid.lower() in disabled:
-                    removed_disabled = True
+                if isinstance(sid, str) and sid.lower() in left_out:
+                    dropped = True      # hidden since the last snapshot: written again without it
                     continue
                 if sid and isinstance(entry.get("fields"), dict):
                     entry["name"] = sensors.get(sid, entry.get("name") or f"{entry.get('type', 'unknown')} {sid}")
@@ -238,7 +240,7 @@ class Recorder:
             for key in ("pressure_change_3h", "zambretti"):
                 if old.get(key) is not None:
                     self._current_page.setdefault(key, old[key])
-            if self._current or removed_disabled:
+            if self._current or dropped:
                 self._write_snapshot(write_path, sensors, page, old.get("written", ""), old.get("hub", ""))
 
     def _count_strikes(self, sensor_id: str, count: int, day: str, struck_at: str | None = None,

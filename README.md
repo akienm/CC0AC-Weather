@@ -1534,6 +1534,17 @@ it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
 
+**1.4.7** · Nov 9, 2026
+- **Each sensor's `disposition`** (setup page: Show, Hide, Record only, Ignore \*):
+  `hide` records it and sends it to the networks but leaves it off every page;
+  `record_only` records it and nothing else; `ignore` drops it, for a neighbor's
+  sensor the hub hears. Hidden sensors are out of the cards, charts (the outdoor
+  average too), summaries and reports. From yacko1975's
+  [#6](https://github.com/akienm/CC0AC-Weather/pull/6).
+- **Diagnostics on Windows and macOS** shows the boot loader's `station.log`, and
+  in Docker says where the log is. From yacko1975's
+  [#5](https://github.com/akienm/CC0AC-Weather/pull/5).
+
 **1.4.6** · Nov 8, 2026
 - **Update now \***: the setup page checks for a newer version when it opens and,
   if there is one, says 🟢 **Update available** with an **Update now** button. The

@@ -276,8 +276,25 @@ def strikes(con: sqlite3.Connection, lo: float, hi: float, beyond: float | None 
 HELD_SHOWN = ("temp_f", "humidity_pct", "wind_mph", "wind_gust_mph", "pressure_inhg", "uv_index")
 
 
-def history(db_path: Path, sensors: SensorNames, q: Query, ignore_beyond_mi: float | None = None) -> dict:
+def for_pages(db_path: Path, sensors: SensorNames) -> sqlite3.Connection:
+    """The database read-only, as the pages see it: a sensor the pages leave out
+    (sensors.hidden, sensor_config.py's disposition) is not in it. TEMP views named
+    readings and daily stand in front of the tables, and SQLite looks a bare name up
+    in TEMP first, so every query reading for a page leaves those sensors out without
+    each one having to say so."""
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
+    left_out = sorted(getattr(sensors, "hidden", ()))
+    if left_out:
+        ids = ", ".join("'" + sid.replace("'", "''") + "'" for sid in left_out)
+        for table in ("readings", "daily"):
+            if con.execute("SELECT 1 FROM main.sqlite_master WHERE type = 'table' AND name = ?", [table]).fetchone():
+                con.execute(f"CREATE TEMP VIEW {table} AS SELECT * FROM main.{table} "
+                            f"WHERE lower(sensor_id) NOT IN ({ids})")
+    return con
+
+
+def history(db_path: Path, sensors: SensorNames, q: Query, ignore_beyond_mi: float | None = None) -> dict:
+    con = for_pages(db_path, sensors)
     try:
         now = datetime.now().astimezone()
         off = int((now.utcoffset() or timedelta(0)).total_seconds())
@@ -443,7 +460,7 @@ def summaries(db_path: Path, sensors: SensorNames, q: Query) -> dict:
         keep = max(int(q.get("days", 400)), 1)
     except ValueError:
         raise ValueError("days must be a number")
-    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
+    con = for_pages(db_path, sensors)
     try:
         today = epoch_to_day(time.time())
         stored = []
@@ -477,7 +494,7 @@ def noaa_summary(cfg: configparser.ConfigParser, db_path: Path, sensors: SensorN
     year, month = noaa.period(q.get("period") or datetime.now().strftime("%Y-%m"))
     first = f"{year:04d}-{month or 1:02d}-01"
     last = f"{year + (month or 12) // 12:04d}-{(month or 12) % 12 + 1:02d}-01"
-    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
+    con = for_pages(db_path, sensors)
     try:
         # A day either side: the rows are UTC, the period is local.
         found = con.execute(f"""SELECT sensor_id, max(type), count(*) FROM readings WHERE type IN {OUTDOOR}

@@ -12,6 +12,7 @@ write_path = ~/AcuRite
 ;   icon = 🛋️
 ;   link = indoor
 ;   calibration = temp_f -1.5
+;   disposition = hide
 ;
 ; title: the name its card and every page show (unset, the ID).
 ; icon: an emoji, or a live one that changes by itself, worked out here from
@@ -23,6 +24,13 @@ write_path = ~/AcuRite
 ;   humidity, or none. Unset, an outdoor card opens outdoor and the rest indoor,
 ;   with that sensor's line picked out.
 ; calibration: see [calibration].
+; disposition: what its readings are used for:
+;     all          on the page, recorded, sent to the networks (unset, this)
+;     hide         recorded and sent to the networks, on no page
+;     record_only  recorded only: on no page, sent nowhere
+;     ignore       not recorded, on no page, sent nowhere (a neighbor's sensor)
+;   A hidden sensor is left out of every page: cards, charts, summaries, reports.
+;   Its readings already recorded stay in the database.
 ; The cards show in the order the sections come in; move a section to move its
 ; card. A sensor first heard from the hub gets a bare section at the end, its ID
 ; for a title, until you fill it in. Hub sensor IDs are on the hub's local page

@@ -6,6 +6,17 @@ sensor_config.py — each sensor's own section in config.ini, named by its ID.
     icon = 🛋️
     link = indoor
     calibration = temp_f -1.5
+    disposition = all
+
+disposition says what the sensor's readings are used for, each step doing less:
+
+    all          shown on the page, recorded, and sent out (Weather Underground, MQTT, …); the default
+    hide         recorded and sent out, but not on the page: its cards, charts, summaries and reports
+    record_only  recorded, but not on the page and not sent out
+    ignore       not used at all: not recorded, not on the page, not sent out (a neighbour's sensor)
+
+A hidden sensor's readings stay in the database, so setting it back to all brings
+its history back.
 
 Every section that isn't one of the program's own settings ([web], [windy], …)
 is a sensor, and the cards show in the order the sections come in the file. A
@@ -42,6 +53,11 @@ LIVE_ICONS = {
 # link = <one of these>: the chart a card opens. Unset, the outdoor cards open
 # "outdoor" and the rest "indoor"; "none" opens nothing.
 LINKS = ("outdoor", "wind", "pressure", "rain", "light", "lightning", "indoor", "humidity", "none")
+
+# What a sensor's readings are used for, each doing less than the one before (the docstring above).
+DISPOSITIONS = ("all", "hide", "record_only", "ignore")
+SENT = ("all", "hide")              # sent to the outputs
+RECORDED = ("all", "hide", "record_only")
 
 # Sources whose sensors are the house's own (rtl_433 hears the neighbours' too).
 OWN_SOURCES = ("acurite-access", "console")
@@ -97,20 +113,31 @@ def titles(cfg: configparser.ConfigParser) -> dict[str, str]:
     return {sid: e["title"] for sid, e in table(cfg).items()}
 
 
-def is_enabled(cfg: configparser.ConfigParser, sensor_id: str) -> bool:
-    """Whether a configured sensor is allowed to contribute readings."""
-    section = next((name for name in cfg.sections() if name.strip().lower() == sensor_id.strip().lower()), None)
-    return section is None or cfg.getboolean(section, "enabled", fallback=True)
+def dispositions(cfg: configparser.ConfigParser) -> dict[str, str]:
+    """{sensor ID: its disposition} for every sensor whose disposition isn't "all"."""
+    out = {}
+    for section in cfg.sections():
+        if not is_sensor(section):
+            continue
+        sid = section.strip().lower()
+        value = cfg.get(section, "disposition", fallback="").strip().lower()
+        if not value and cfg.get(section, "enabled", fallback="").strip().lower() in ("false", "no", "off", "0"):
+            value = "ignore"    # enabled = false, from before there was a disposition
+        if value and value not in DISPOSITIONS:
+            log.warning("[%s] disposition = %s isn't one of %s; taken as all", section, value, ", ".join(DISPOSITIONS))
+            value = "all"
+        if value and value != "all":
+            out[sid] = value
+    return out
 
 
-def active_titles(cfg: configparser.ConfigParser) -> dict[str, str]:
-    """Titles for sensors that are enabled, in display order."""
-    return {sid: name for sid, name in titles(cfg).items() if is_enabled(cfg, sid)}
+def disposition(cfg: configparser.ConfigParser, sensor_id: str) -> str:
+    return dispositions(cfg).get(sensor_id.strip().lower(), "all")
 
 
-def disabled_ids(cfg: configparser.ConfigParser) -> set[str]:
-    """IDs configured not to contribute readings."""
-    return {sid for sid in titles(cfg) if not is_enabled(cfg, sid)}
+def hidden(cfg: configparser.ConfigParser) -> frozenset[str]:
+    """The sensors the pages leave out: every disposition but all."""
+    return frozenset(dispositions(cfg))
 
 
 def title(cfg: configparser.ConfigParser, sensor_id: str) -> str:
@@ -122,8 +149,9 @@ def title(cfg: configparser.ConfigParser, sensor_id: str) -> str:
 def cards(cfg: configparser.ConfigParser) -> dict[str, dict]:
     """What the dashboard needs to dress each card: {ID: {"icon", "link"}}, only what is set."""
     out = {}
+    left_out = hidden(cfg)
     for sid, e in table(cfg).items():
-        if not is_enabled(cfg, sid):
+        if sid in left_out:
             continue
         dress = {k: e[k] for k in ("icon", "link") if e[k]}
         if dress:

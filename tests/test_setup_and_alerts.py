@@ -85,16 +85,16 @@ class ConfigEditing(unittest.TestCase):
         self.assertEqual(twice.count("[alerts]"), 1)
         self.assertEqual(wizard.apply_setup(twice, self.answers(sensors=[{"id": "00004321", "name": "Yard"}])), twice)
 
-    def test_disabled_sensor_state_is_saved_and_returned_to_setup(self):
+    def test_sensor_disposition_is_saved_and_returned_to_setup(self):
         out = wizard.apply_setup(self.text, self.answers(
-            sensors=[{"id": "00001111", "name": "Kitchen", "enabled": False},
+            sensors=[{"id": "00001111", "name": "Kitchen", "disposition": "record_only"},
                      {"id": "00004321", "name": "Outside"}]))
         cfg = configparser.ConfigParser()
         cfg.read_string(out)
-        self.assertFalse(sensor_config.is_enabled(cfg, "00001111"))
-        self.assertTrue(sensor_config.is_enabled(cfg, "00004321"))
-        self.assertEqual(wizard.setup_state(cfg, leases=Path("missing"))["current"]["sensor_enabled"],
-                         {"00001111": False, "00004321": True})
+        self.assertEqual(sensor_config.disposition(cfg, "00001111"), "record_only")
+        self.assertEqual(sensor_config.disposition(cfg, "00004321"), "all")
+        self.assertEqual(wizard.setup_state(cfg, leases=Path("missing"))["current"]["sensor_disposition"],
+                         {"00001111": "record_only", "00004321": "all"})
 
     def test_blank_password_keeps_the_saved_one(self):
         once = wizard.apply_setup(self.text, self.answers(alerts={"email_to": "a@b.c", "smtp_password": "pw1"}))

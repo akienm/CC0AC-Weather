@@ -235,7 +235,7 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
     recorder = Recorder(strike_limit(cfg))
     with recorder.lock:
         recorder.seed_heard(db_path, time.time())
-    recorder.refresh_snapshot(write_path, sensors, page, sensor_config.disabled_ids(cfg))
+    recorder.refresh_snapshot(write_path, sensors, page)
 
     queues = []
     for output in load_outputs():
@@ -251,10 +251,14 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
     corrections = calibration.rules(cfg)
     watch = sanity.Watch(cfg, recall=lambda sensor_id: believed_before(db_path, sensor_id))
 
+    # [<sensor id>] disposition: what each sensor's readings are used for (sensor_config.py).
+    dispositions = sensor_config.dispositions(cfg)
+
     def emit(reading: Reading) -> dict:
         sid = reading.sensor_id.lower()
-        if not sensor_config.is_enabled(cfg, sid):
-            return {"type": reading.type or "unknown", "name": reading.name or sid, "fields": {}}
+        use = dispositions.get(sid, "all")
+        if use not in sensor_config.RECORDED:      # ignore
+            return {"type": reading.type or "unknown", "name": sensors.get(sid) or reading.name or sid, "fields": {}}
         if (reading.source in sensor_config.OWN_SOURCES and sid and sid not in sensors
                 and sensor_config.is_sensor(sid) and re.fullmatch(r"[0-9a-z-]{1,24}", sid)):
             sensors[reading.sensor_id.lower()] = reading.sensor_id.lower()
@@ -265,7 +269,7 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
         reading.fields, reading.suspect = watch.check(
             reading.sensor_id, reading.fields, at, outdoor, recorder.reference_temp(reading.sensor_id, at) if outdoor else None)
         entry = recorder.record_reading(reading, write_path, sensors, page, db_path)
-        for name, todo in queues:
+        for name, todo in queues if use in sensor_config.SENT else ():
             try:
                 todo.put_nowait(reading)
             except queue.Full:

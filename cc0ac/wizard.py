@@ -232,11 +232,11 @@ def order_sections(text: str, names: list[str]) -> str:
     return "\n".join(out) + "\n"
 
 
-def write_sensors(text: str, names: dict[str, str], disabled: set[str] | None = None) -> str:
-    """Each sensor its own section with its title, in this order; a sensor's section
-    not among them removed; disabled sensors remain configured but don't contribute
-    readings. The older [sensors] and [sensor_order] are emptied (their comments kept)."""
-    disabled = {sid.strip().lower() for sid in (disabled or set())}
+def write_sensors(text: str, names: dict[str, str], uses: dict[str, str] | None = None) -> str:
+    """Each sensor its own section with its title and, unless it is all, its disposition
+    (uses, {ID: disposition}), in this order; a sensor's section not among them removed;
+    the older [sensors] and [sensor_order] emptied (their comments kept)."""
+    uses = {sid.strip().lower(): u for sid, u in (uses or {}).items()}
     lines = text.splitlines()
     spans = _section_spans(lines)
     gone = [n for n in spans if sensor_config.is_sensor(n) and n.strip().lower() not in names]
@@ -247,7 +247,8 @@ def write_sensors(text: str, names: dict[str, str], disabled: set[str] | None = 
     spelled = {n.strip().lower(): n for n in _section_spans(text.splitlines())}
     for sid, name in names.items():
         text = set_values(text, spelled.get(sid, sid),
-                          {"title": name, "enabled": "false" if sid in disabled else None})
+                          {"title": name, "disposition": None if uses.get(sid, "all") == "all" else uses[sid],
+                           "enabled": None})
     text = order_sections(text, [spelled.get(sid, sid) for sid in names])
     spans = _section_spans(text.splitlines())
     for older in ("sensors", "sensor_order"):
@@ -269,8 +270,13 @@ def apply_setup(text: str, answers: dict) -> str:
         if not re.fullmatch(r"[0-9A-Za-z-]{1,24}", str(s["id"]).strip()) or not sensor_config.is_sensor(str(s["id"])):
             raise ValueError(f"not a sensor ID: {s['id']!r}")
     names = {str(s["id"]).strip().lower(): _one_line(s.get("name")) or f"Sensor {s['id']}" for s in sensors}
-    disabled = {str(s["id"]).strip().lower() for s in sensors if s.get("enabled") is False}
-    text = write_sensors(text, names, disabled)
+    uses = {}
+    for s in sensors:
+        use = str(s.get("disposition") or "all").strip().lower()
+        if use not in sensor_config.DISPOSITIONS:
+            raise ValueError(f"not a disposition: {use!r} (one of {', '.join(sensor_config.DISPOSITIONS)})")
+        uses[str(s["id"]).strip().lower()] = use
+    text = write_sensors(text, names, uses)
     station = answers.get("station") or {}
     values = {"name": _one_line(station.get("name")) or None}
     for key, lo, hi in (("latitude", -90, 90), ("longitude", -180, 180), ("elevation_ft", -1500, 30000)):
@@ -344,7 +350,7 @@ def setup_state(cfg: configparser.ConfigParser, leases: Path = LEASES) -> dict:
     current = {
         "sensors": sensor_config.titles(cfg),
         "sensor_order": {str(n): sid for n, sid in enumerate(sensor_config.titles(cfg), 1)},
-        "sensor_enabled": {sid: sensor_config.is_enabled(cfg, sid) for sid in sensor_config.titles(cfg)},
+        "sensor_disposition": {sid: sensor_config.disposition(cfg, sid) for sid in sensor_config.titles(cfg)},
         "station": {k: cfg.get("station", k, fallback="") for k in ("name", "latitude", "longitude", "elevation_ft", "timezone")},
         "forecast": cfg.getboolean("forecast", "enabled", fallback=False),
         "online": cfg.getboolean("online", "enabled", fallback=False),

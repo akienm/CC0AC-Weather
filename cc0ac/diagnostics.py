@@ -20,7 +20,6 @@ import json
 import os
 import platform
 import re
-import shutil
 import subprocess
 import sys
 import tarfile
@@ -123,17 +122,15 @@ def _tail(path: Path, lines: int) -> str:
 
 
 def service_log() -> str:
-    """The service's own log: systemd's journal, or the file the boot loader keeps where there is none."""
-    if os.path.exists("/.dockerenv") or shutil.which("journalctl") is None:
-        return (
-            "No systemd journal here; in Docker the station's log is the container's output:\n" 
-            "docker compose logs cc0ac-weather\n"
-        )
-    if BOOT_ROOT is None:
-        return _run(["journalctl", "-u", f"cc0ac-weather@{os.environ.get('USER', '')}", "-n", "3000", "--no-pager"])
-    if (BOOT_ROOT / "station.log").exists():
+    """The service's own log: systemd's journal, or the file the boot loader keeps where there
+    is none (Windows, macOS). Docker has neither: its log is the container's output."""
+    if BOOT_ROOT is not None and (BOOT_ROOT / "station.log").exists():
         return _tail(BOOT_ROOT / "station.log", 3000)
-    return _run(["journalctl", "-u", "cc0ac-weather", "-n", "3000", "--no-pager"])
+    if os.path.exists("/.dockerenv"):
+        return ("No systemd journal here; in Docker the station's log is the container's output:\n"
+                "docker compose logs cc0ac-weather\n")
+    unit = f"cc0ac-weather@{os.environ.get('USER', '')}" if BOOT_ROOT is None else "cc0ac-weather"
+    return _run(["journalctl", "-u", unit, "-n", "3000", "--no-pager"])
 
 
 def bundle(cfg: configparser.ConfigParser, out_dir: Path | None = None) -> Path:

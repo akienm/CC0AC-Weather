@@ -18,7 +18,11 @@ from cc0ac import sensor_config, wizard
 
 log = logging.getLogger("acurite")
 
-SensorNames = Dict[str, str]   # sensor id → the name [sensors] gives it
+class SensorNames(Dict[str, str]):
+    """sensor id → its name, in display order. ``hidden``: the sensors the pages leave
+    out (sensor_config.hidden: disposition hide, record_only or ignore)."""
+    hidden: frozenset = frozenset()
+
 Query = Dict[str, str]         # a request's ?name=value pairs
 
 
@@ -80,7 +84,9 @@ def apply_timezone(cfg: configparser.ConfigParser) -> None:
 def sensor_map(cfg: configparser.ConfigParser) -> SensorNames:
     """{sensor_id: display name}, in display order: each sensor's own section in
     the order they come in the file, then the older [sensors] (sensor_config.py)."""
-    return sensor_config.active_titles(cfg)
+    names = SensorNames(sensor_config.titles(cfg))
+    names.hidden = sensor_config.hidden(cfg)
+    return names
 
 
 def add_heard_sensor(path: Path | None, sensor_id: str, kind: str) -> None:
