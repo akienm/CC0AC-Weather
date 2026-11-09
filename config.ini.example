@@ -1,3 +1,16 @@
+; Private values (passwords, keys, station IDs, alert addresses, the location) can
+; live in another file, so this one can be shown or sent with a problem report
+; and carry nothing private. Point a setting into the file instead of writing
+; its value:
+;
+;   smtp_password = file:secrets.env#ALERTS_SMTP_PASSWORD
+;   smtp_password = file:///home/pi/.my-secrets#SMTP_PASSWORD
+;
+; The path is the file (~ is your home; a path that isn't absolute is beside
+; this file) and the part after # names a NAME=value line in it. The setup page
+; does this for you: what it saves that is private goes into secrets.env beside
+; this file, readable by you alone. Keep secrets.env to yourself.
+
 [device]
 ; Folder where current.json, current.js, history.csv (and weather.html) are written.
 ; Sync this folder to your cloud storage — OneDrive, Google Drive, Dropbox, etc.

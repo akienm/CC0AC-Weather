@@ -322,7 +322,7 @@ def apply_setup(text: str, answers: dict) -> str:
         if not kept.get("smtp_password"):   # the page never shows it; blank means keep it
             kept.pop("smtp_password", None)
         text = set_values(text, "alerts", kept)
-        cfg = configparser.ConfigParser()
+        cfg = configparser.ConfigParser(interpolation=None)   # set or not: a reference counts as set
         cfg.read_string(text)
         on = any(cfg.get("alerts", k, fallback="").strip() for k in ("ntfy_topic", "email_to", "healthcheck_url"))
         keep = {"enabled": "true" if on else "false"}

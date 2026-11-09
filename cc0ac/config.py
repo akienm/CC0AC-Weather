@@ -14,7 +14,7 @@ from datetime import date
 from pathlib import Path
 from typing import Dict
 
-from cc0ac import sensor_config, wizard
+from cc0ac import private, sensor_config, wizard
 
 log = logging.getLogger("acurite")
 
@@ -32,7 +32,7 @@ DEFAULT_CONFIG = Path.home() / ".cc0ac-weather" / "config.ini"
 
 
 def load_config(path: Path) -> configparser.ConfigParser:
-    cfg = configparser.ConfigParser()
+    cfg = private.parser(path)
     if not path.exists():
         log.error("Config not found: %s", path)
         log.error("Copy config.ini.example to %s and edit it.", path)
@@ -40,6 +40,8 @@ def load_config(path: Path) -> configparser.ConfigParser:
     cfg.read(path)
     if add_new_settings(path):
         cfg.read(path)
+    for problem in private.problems(cfg):
+        log.error("Config: %s", problem)
     return cfg
 
 
@@ -211,16 +213,18 @@ DEFAULT_TITLE = "CC0AC Weather"
 CONFIG_MAX_BYTES = 1_000_000
 
 
-def check_config(text: str) -> str | None:
-    """Why this text can't be config.ini, or None if it reads cleanly."""
-    cfg = configparser.ConfigParser()
+def check_config(text: str, config_path: Path | None = None) -> str | None:
+    """Why this text can't be config.ini, or None if it reads cleanly (its file: references
+    pointing at lines that are there)."""
+    cfg = private.parser(config_path)
     try:
         cfg.read_string(text, source="config.ini")
         for section in cfg.sections():
             cfg.items(section)          # a broken %(name)s shows up only when read
     except configparser.Error as e:
         return f"Not saved: {e}"
-    return None
+    missing = private.problems(cfg)
+    return f"Not saved: {'; '.join(missing)}" if missing else None
 
 
 def save_config(config_path: Path, text: str) -> None:

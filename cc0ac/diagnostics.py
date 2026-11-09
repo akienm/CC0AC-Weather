@@ -29,7 +29,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from cc0ac import sensor_config
+from cc0ac import private, sensor_config
 
 CONFIG_DIR = Path.home() / ".cc0ac-weather"
 HERE = Path(__file__).resolve().parent.parent
@@ -42,9 +42,7 @@ _KEYS = re.compile(r"\b((?:PASSKEY|MAC|ID|id|PASSWORD|hub_id|station)=)[^&\s'\"]
 _IPV4 = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
 _APRS_POSITION = re.compile(r"\d{4}\.\d{2}[NS]/\d{5}\.\d{2}[EW]")   # in a CWOP packet: 3230.00N/10815.00W
 # Settings whose values are someone's identity or secret, in any section.
-SECRET_KEYS = ("station_id", "station_key", "password", "passcode", "key", "api_key", "user", "smtp_user",
-               "smtp_password", "ntfy_topic", "email_to", "email_from", "healthcheck_url", "hub_id", "station",
-               "token", "header", "username", "domain")
+SECRET_KEYS = private.PRIVATE_KEYS
 
 
 def _public(ip: str) -> bool:
@@ -138,8 +136,10 @@ def bundle(cfg: configparser.ConfigParser, out_dir: Path | None = None) -> Path:
     path = out_dir / f"cc0ac-diagnostics-{datetime.now():%Y%m%d-%H%M}.tar.gz"
     names = [t for sid, t in sensor_config.titles(cfg).items() if t != sid]
     # Station IDs, keys and the like, wherever they turn up (a CWOP answer names its station).
+    # The values themselves, a file: reference followed, so a secret that turns up in a log is caught.
     names += [v.strip() for s in cfg.sections() if s != "sensors"
-              for k, v in cfg.items(s, raw=True) if k in SECRET_KEYS and len(v.strip()) >= 4]
+              for k in cfg.options(s) if k in SECRET_KEYS and (s, k) not in private.NOT_PRIVATE
+              for v in (private.get_raw(cfg, s, k),) if len(v.strip()) >= 4]
     parts = {
         "info.txt": info(cfg),
         "settings.txt": settings(cfg),

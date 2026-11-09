@@ -17,7 +17,7 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any
 
-from cc0ac import alerts, diagnostics, mcp_server, release, reports, secure_web, units, upkeep, wizard
+from cc0ac import alerts, diagnostics, mcp_server, private, release, reports, secure_web, units, upkeep, wizard
 from cc0ac.config import (
     CONFIG_MAX_BYTES,
     DEFAULT_TITLE,
@@ -300,11 +300,14 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: Se
                 if answered is None:
                     return
                 text = answered
-            problem = check_config(text)
+            problem = check_config(text, config_path)
             if problem:
                 self._answer(400, problem)
                 return
             try:
+                if target == "/setup.cgi":
+                    # What the page saves that is private goes to secrets.env; config.ini keeps a reference.
+                    text = private.move_private(text, config_path)
                 save_config(config_path, text)
             except OSError as e:
                 log.error("Saving %s failed: %s", config_path, e)
@@ -328,7 +331,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: Se
                 self._answer(400, f"Not saved: {e}")
                 return None
             if answers.get("test_alert"):
-                cfg = configparser.ConfigParser()
+                cfg = private.parser(config_path)
                 cfg.read_string(text)
                 problems = alerts.send(cfg, f"{page_title(cfg)}: test", "A test message from the weather station's setup page.")
                 if not cfg.get("alerts", "ntfy_topic", fallback="").strip() and not cfg.get("alerts", "email_to", fallback="").strip():
@@ -337,7 +340,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: Se
                 return None
             if answers.get("backup_now"):
                 # To the place on the page, of the settings as saved now.
-                cfg = configparser.ConfigParser()
+                cfg = private.parser(config_path)
                 cfg.read_string(text)
                 result = upkeep.backup(cfg, config_path)
                 if result["ok"] is not None:

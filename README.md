@@ -1534,6 +1534,17 @@ it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
 
+**1.4.8** · Nov 9, 2026
+- **Private values out of `config.ini`**: a setting can point into another file,
+  `file:secrets.env#NAME`, instead of holding its value. What the setup page
+  saves that is private (passwords, keys, station IDs, alert addresses, the
+  location) goes into `secrets.env` beside `config.ini`, readable by you alone,
+  so `config.ini` can be shown or sent with a problem report and carry nothing
+  private. A setting that points at nothing says so in the log, naming the
+  setting, never a value. Diagnostics still hides those values wherever they turn
+  up, and the backup carries `secrets.env`. A config from before moves the next
+  time the setup page saves it.
+
 **1.4.7** · Nov 9, 2026
 - **Each sensor's `disposition`** (setup page: Show, Hide, Record only, Ignore \*):
   `hide` records it and sends it to the networks but leaves it off every page;

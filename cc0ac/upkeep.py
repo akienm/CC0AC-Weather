@@ -39,6 +39,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from cc0ac import private
+
 KEEP = 8
 WATCHED = {5: "sectors moved to spares", 197: "sectors waiting to be moved", 198: "unreadable sectors"}
 
@@ -126,6 +128,8 @@ def snapshot(cfg: configparser.ConfigParser, config_path: Path, dest: Path) -> P
     out = dest / name
     with tempfile.TemporaryDirectory(dir=dest) as tmp:
         files = {"config.ini": config_path}
+        for f in private.files(cfg):         # what config.ini points into: without it, a restore has no passwords
+            files.setdefault(f.name, f)
         if db.exists():
             copy = Path(tmp) / "weather.db"
             with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as src, sqlite3.connect(copy) as dst:
@@ -208,7 +212,7 @@ class Share:
 def destination(cfg: configparser.ConfigParser) -> Share | Folder:
     path = cfg.get("backup", "path", fallback="").strip()
     if is_share(path) and os.name != "nt":
-        return Share(path, cfg.get("backup", "user", fallback="").strip(), cfg.get("backup", "password", raw=True, fallback=""))
+        return Share(path, cfg.get("backup", "user", fallback="").strip(), private.get_raw(cfg, "backup", "password"))
     return Folder(path)
 
 
@@ -288,7 +292,7 @@ def main(argv: list[str] | None = None) -> None:
         _write_json(Path(args.out), result)
         print("; ".join(result["problems"]) or result.get("unchecked") or f"{len(result['disks'])} disk(s) fine")
     else:
-        cfg = configparser.ConfigParser()   # read as the station reads it
+        cfg = private.parser(Path(args.config))   # read as the station reads it
         cfg.read(args.config)
         result = backup(cfg, Path(args.config))
         if result["ok"] is not None:
