@@ -20,14 +20,14 @@ usage: setup-phone.sh --url URL [options]
   --lock-adb           turn USB debugging off for good. After this, changing settings
                        or releasing the phone needs a factory reset. Most locked down.
   --wifi SSID PASS     join a WPA2 network first (Android 11 and later)
-  --apk FILE           install this apk (default: build/weather-kiosk.apk)
+  --apk FILE           install this apk (default: build/cc0ac-weather.apk)
   -s SERIAL            which phone, when more than one is plugged in
   --release            undo the kiosk, give up device ownership, uninstall the app
 USAGE
 }
 
 PKG=org.cc0ac.weatherkiosk
-APK=build/weather-kiosk.apk
+APK=build/cc0ac-weather.apk
 URL="" SLEEP="" WAKE="" LOCKSCREEN="" EXITPIN="" CAMERA="" LOCKADB="" SSID="" PASS="" RELEASE=""
 ADB=(adb)
 command -v adb >/dev/null || ADB=("${ANDROID_HOME:-$HOME/Android/sdk}/platform-tools/adb")

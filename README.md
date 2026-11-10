@@ -228,27 +228,38 @@ and Weather Underground carry on as before.
 
 That's it: the dashboard is at the same address, and the charts are linked from it.
 
-## A wall display: the Android kiosk app
+## On Android: a home-screen widget, or a wall display
 
-An old Android phone can hang on the wall and show the weather page and nothing
-else ([more below](#wall-displays-old-android-phones-as-weather-kiosks)). You
-don't need to build the app: download `weather-kiosk.apk` and `setup-phone.sh`
-from the [kiosk release](https://github.com/akienm/CC0AC-Weather/releases/tag/kiosk-v1.0),
-put them in one folder, and run
+One Android app, `cc0ac-weather.apk` on the [app release](https://github.com/akienm/CC0AC-Weather/releases/tag/android-v2.0), does two
+things ([android/README.md](android/README.md) has the details):
 
-    ./setup-phone.sh --apk weather-kiosk.apk --url http://cc0ac-weather.local/
+- **A widget on your own phone's home screen**: the temperature now and how it
+  feels, and, as you make it bigger, today's high and low, the wind, the next few
+  hours and the rest of the week. Open the APK on the phone to install it, put the
+  widget on the home screen, tap it and give it the station's address. A tap then
+  opens the dashboard. It needs Android 8 or newer.
+- **A wall display on an old phone** that shows the weather page and nothing else
+  ([more below](#wall-displays-old-android-phones-as-weather-kiosks)). Download
+  `cc0ac-weather.apk` and `setup-phone.sh` into one folder and run
 
-The phone has to be freshly reset and plugged into the computer by USB, with
-USB debugging on ([kiosk/README.md](kiosk/README.md) has the steps). It can't
-be done from the phone alone, because Android only lets an app take over a
-phone that way over USB. Once the kiosk is set up it refuses app installs, so
-to update it, download the newer APK and run the same command again.
+      ./setup-phone.sh --apk cc0ac-weather.apk --url http://cc0ac-weather.local/
+
+  The phone has to be freshly reset and plugged into the computer by USB, with
+  USB debugging on. It can't be done from the phone alone, because Android only
+  lets an app take over a phone that way over USB. Once the kiosk is set up it
+  refuses app installs, so to update it, download the newer APK and run the same
+  command again. A phone set up with the first kiosk app takes this one as an update.
+
+**Away from home the widget needs a way in.** It reads the station directly, so
+on mobile data or someone else's Wi-Fi it works only if you've set up Tailscale
+(or similar) or a port forward; see
+[Seeing it from outside your house](#seeing-it-from-outside-your-house).
 
 The releases can be watched with [Obtainium](https://obtainium.imranr.dev/): add
 `https://github.com/akienm/CC0AC-Weather` and set *Filter release titles by
-regular expression* to `Kiosk`, so it skips the card-image releases. It tells
-you when there's a new version. Obtainium runs on an ordinary phone, not on the
-kiosk itself.
+regular expression* to `Kiosk`, so it skips the card-image releases (the app's
+releases keep "Kiosk" in their titles). It tells you when there's a new version.
+Obtainium runs on an ordinary phone, not on the kiosk itself.
 
 ## Troubleshooting
 
@@ -1373,14 +1384,15 @@ developer options on, the same thing from a computer:
 
 ## Wall displays: old Android phones as weather kiosks
 
-`kiosk/` turns a spare, freshly reset Android phone into a wall display that shows
+`android/` turns a spare, freshly reset Android phone into a wall display that shows
 only your weather page. It has no lock screen and no way out, goes dark when idle,
 and wakes at a touch. One command sets it up over USB:
 
-    kiosk/setup-phone.sh --url http://my-pi.local:12345/
+    android/setup-phone.sh --url http://my-pi.local:12345/
 
-The app is ready-built on the [kiosk release](https://github.com/akienm/CC0AC-Weather/releases/tag/kiosk-v1.0)
-(`--apk weather-kiosk.apk`). See [kiosk/README.md](kiosk/README.md) for the options and how to build it.
+The app is ready-built on the [app release](https://github.com/akienm/CC0AC-Weather/releases/tag/android-v2.0)
+(`--apk cc0ac-weather.apk`); the same app is the home-screen widget. See
+[android/README.md](android/README.md) for the options and how to build it.
 
 ## What leaves your house
 
@@ -1568,6 +1580,17 @@ it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
 
+**Android app 2.0** · Nov 10, 2026
+- **The kiosk and a home-screen widget in one app** (`android/`, which was
+  `kiosk/`). On an ordinary phone it's a widget: the temperature, feels-like,
+  high and low, wind, the next hours and up to seven days, growing with its size,
+  read from the station's own `current.js` and `forecast.js` with no account. On a
+  phone `setup-phone.sh` sets up, it's the kiosk as before. It's
+  `cc0ac-weather.apk` on the [app release](https://github.com/akienm/CC0AC-Weather/releases/tag/android-v2.0), and a version 1 kiosk takes it
+  as an update and stays a kiosk. Tested on the Android 14 emulator only: not yet
+  on a real phone, and not the smallest and widest widget sizes, °C, or the
+  background refresh. **\***
+
 **1.4.11** · Nov 10, 2026
 - **Last strike says when**: the lightning card shows the time of the last
   strike before its distance, like `11/6/26 7:45 AM · 6 mi`, in the viewer's
@@ -1575,7 +1598,7 @@ tested part ran on.
 - **The wall-display app ready-built**: `weather-kiosk.apk` and `setup-phone.sh`
   are on the [kiosk release](https://github.com/akienm/CC0AC-Weather/releases/tag/kiosk-v1.0),
   so a phone can be set up without the Android SDK; see
-  [the install section](#a-wall-display-the-android-kiosk-app).
+  [the install section](#on-android-a-home-screen-widget-or-a-wall-display).
 
 **1.4.10** · Nov 10, 2026
 - **A USB radio from the setup page**: a new section, *A radio*, says whether an

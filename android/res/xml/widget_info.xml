@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- updatePeriodMillis is 0: RefreshJob fetches, at the interval each widget was given. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="110dp"
+    android:minHeight="40dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="40dp"
+    android:targetCellWidth="3"
+    android:targetCellHeight="2"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="0"
+    android:initialLayout="@layout/widget"
+    android:configure="org.cc0ac.weatherkiosk.ConfigActivity"
+    android:widgetFeatures="reconfigurable"
+    android:widgetCategory="home_screen"
+    android:description="@string/description" />

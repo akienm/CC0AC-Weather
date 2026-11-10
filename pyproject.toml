@@ -6,7 +6,7 @@ requires-python = ">=3.8"
 python_version = "3.10"   # the oldest mypy 2 can target; the code itself avoids runtime use of newer syntax
 platform = "linux"
 files = ["."]
-exclude = ["^tests/", "^kiosk/", "^reddit_announcement/", "^updates/migrations/"]
+exclude = ["^tests/", "^android/", "^reddit_announcement/", "^updates/migrations/"]
 check_untyped_defs = true
 warn_unused_ignores = true
 warn_redundant_casts = true

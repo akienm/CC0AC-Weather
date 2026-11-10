@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The widget needs Android 8 (java.time); on older phones, which are kiosks, it is off. -->
+    <bool name="widget_on">false</bool>
+</resources>

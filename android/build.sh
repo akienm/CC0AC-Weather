@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build weather-kiosk.apk with the plain SDK tools: no Gradle, no Android Studio.
+# Build cc0ac-weather.apk with the plain SDK tools: no Gradle, no Android Studio.
 # Needs: a JDK 17 (JAVA_HOME or on PATH) and an Android SDK with build-tools;34.0.0
 # and platforms;android-34 (ANDROID_HOME, default ~/Android/sdk).
 set -euo pipefail
@@ -13,7 +13,7 @@ if [ -z "${JAVA_HOME:-}" ] && ! command -v javac >/dev/null; then
 fi
 [ -n "${JAVA_HOME:-}" ] && export PATH="$JAVA_HOME/bin:$PATH"
 for f in "$BT/aapt2" "$BT/d8" "$BT/apksigner" "$JAR"; do
-    [ -e "$f" ] || { echo "missing $f (see kiosk/README.md, 'Building')" >&2; exit 1; }
+    [ -e "$f" ] || { echo "missing $f (see android/README.md, 'Building')" >&2; exit 1; }
 done
 
 # The signing key lives outside the repo. Keep it: an update must be signed by the same key.
@@ -39,6 +39,6 @@ javac -source 17 -target 17 -Xlint:-options -classpath "$JAR" -d build/classes \
 (cd build && zip -qj unsigned.apk classes.dex)
 "$BT/zipalign" -f 4 build/unsigned.apk build/aligned.apk
 "$BT/apksigner" sign --ks "$KEYSTORE" --ks-pass "file:$KEYPASS_FILE" \
-    --out build/weather-kiosk.apk build/aligned.apk
-"$BT/apksigner" verify build/weather-kiosk.apk
-echo "built $(pwd)/build/weather-kiosk.apk"
+    --out build/cc0ac-weather.apk build/aligned.apk
+"$BT/apksigner" verify build/cc0ac-weather.apk
+echo "built $(pwd)/build/cc0ac-weather.apk"

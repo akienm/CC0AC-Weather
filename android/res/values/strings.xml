@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CC0AC Weather</string>
+    <string name="description">Your station\'s weather: now, the next hours and the coming days</string>
+</resources>
