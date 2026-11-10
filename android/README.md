@@ -1,17 +1,16 @@
-# CC0AC Weather for Android: a home-screen widget, or a wall kiosk
+# CC0AC Weather for Android: a home-screen widget, and kiosk mode
 
-One app, `cc0ac-weather.apk` on the [app release](https://github.com/akienm/CC0AC-Weather/releases/tag/android-v2.0), with two uses:
+One app, `cc0ac-weather.apk` on the [app release](https://github.com/akienm/CC0AC-Weather/releases/tag/android-v2.1), with two uses:
 
-- **On your own phone** it's a home-screen widget showing your station: the
-  temperature now, how it feels, and, as you make it bigger, the next hours and
-  the coming days. Install it like any app.
-- **On a spare, freshly reset phone** it's a kiosk, a wall display showing only
-  your weather page. `setup-phone.sh` sets that up over USB.
+- **A home-screen widget** showing your station: the temperature now, how it
+  feels, and, as you make it bigger, the next hours and the coming days.
+- **Kiosk mode**, which turns the phone into a wall display showing your weather
+  page full screen. Switch it on from the app's own page; no computer needed.
+  For a display nobody can leave, `setup-phone.sh` locks it on a freshly reset
+  phone over USB.
 
-Nothing changes on an ordinary phone because the kiosk is in the app: the kiosk
-only switches on when `setup-phone.sh` makes the app the phone's "device owner",
-and Android allows that only on a phone that was just reset. A phone that was
-set up as a kiosk with version 1 takes this one as an update.
+Install it like any app. A phone set up as a kiosk with an earlier version takes
+this one as an update and stays a kiosk.
 
 ## The widget
 
@@ -37,7 +36,7 @@ or Open-Meteo elsewhere.
 ### Setting it up
 
 1. Install `cc0ac-weather.apk` from the
-   [app release](https://github.com/akienm/CC0AC-Weather/releases/tag/android-v2.0).
+   [app release](https://github.com/akienm/CC0AC-Weather/releases/tag/android-v2.1).
    Your phone will ask you to allow installs from your browser or file app.
 2. Open **CC0AC Weather** and tap **Put one on my home screen**, or long-press
    the home screen and choose it from the widgets.
@@ -77,12 +76,32 @@ has the steps for both. Either way, the widget reads only `current.js` and
 `forecast.js`, the same two files the dashboard itself loads. Those are the
 files any outside visitor can see.
 
-## The wall kiosk
+## Kiosk mode
+
+Kiosk mode shows your weather page full screen and nothing else. It goes dark
+when nobody is using it, and a touch brings it back with fresh readings.
+
+### From the phone
+
+1. Open **CC0AC Weather**. Under **Kiosk mode**, type your station's address,
+   for example `http://192.168.1.50:12345/`.
+2. Leave **Make it this phone's home screen** ticked, so the kiosk comes back by
+   itself after a restart or a power cut, and tap **Start kiosk mode**.
+3. Android asks whether CC0AC Weather should be the home app, and then whether
+   to pin it to the screen. Say yes to both.
+
+To leave, press Back and choose **Leave**. The phone's own home screen comes back.
+After a restart, the pin is asked for again once the phone is unlocked.
+
+This is for a phone anyone in the house may pick up and use for something else.
+For one on the wall that nobody can leave, lock it, below.
+
+## A locked kiosk
 
 This turns a spare Android phone into a wall display that shows your weather page
 and does nothing else. There are no apps, no notifications, no lock screen, no
-login and no way out (unless you ask for one). It goes dark when nobody is
-using it, and a touch brings it back.
+login and no way out (unless you ask for one). It is the same kiosk mode, locked:
+Back does nothing, and there is nothing to leave it with.
 
 It uses Android's own kiosk mode, the "device owner" that schools and shops use to
 lock tablets down. The phone ends up with far less exposed than a normal phone:
@@ -107,7 +126,7 @@ transfer, no camera, no calls or texts, and no browser to wander off into.
        ./setup-phone.sh --url http://my-pi.local:12345/
 
    Without a copy of this project, download `cc0ac-weather.apk` and
-   `setup-phone.sh` from the [app release](https://github.com/akienm/CC0AC-Weather/releases/tag/android-v2.0)
+   `setup-phone.sh` from the [app release](https://github.com/akienm/CC0AC-Weather/releases/tag/android-v2.1)
    into one folder and add `--apk cc0ac-weather.apk`. The same command with a
    newer APK updates the phone.
 
@@ -146,32 +165,58 @@ readings.
 
 ## Building the app
 
-`./build.sh` builds `build/cc0ac-weather.apk`, which `setup-phone.sh` installs. To build it you need a
-JDK 17 and the Android SDK command-line tools. You don't need Gradle or Android
-Studio.
+`./build.sh` builds two files from the same code:
+
+- `build/cc0ac-weather.apk`, the one on the release, which `setup-phone.sh`
+  installs and a phone installs by hand;
+- `build/cc0ac-weather.aab`, the bundle Google Play takes. It's built only when
+  bundletool is found (`$BUNDLETOOL`, or a `bundletool-all-*.jar` in
+  `~/Android/bundletool/`); without it you get the APK alone.
+
+To build it you need a JDK 17 and the Android SDK command-line tools. You don't
+need Gradle or Android Studio.
 
     # one time: SDK into ~/Android/sdk
-    sdkmanager --sdk_root=$HOME/Android/sdk "platform-tools" "build-tools;34.0.0" "platforms;android-34"
+    sdkmanager --sdk_root=$HOME/Android/sdk "platform-tools" "build-tools;36.0.0" "platforms;android-36"
+    # for the .aab: bundletool from https://github.com/google/bundletool/releases
+    # into ~/Android/bundletool/
 
     ./build.sh
 
 The first build makes a signing key at `~/.cc0ac-weather/kiosk-release.jks`.
 **Keep it.** Android only accepts an update signed by the same key, and without
-it you would have to release and set up each phone again.
+it you would have to release and set up each phone again. The bundle is signed
+with the same key, as Play's upload key.
 
 ## How it works
 
-- `KioskActivity` is a full-screen WebView. It becomes the phone's home screen
-  through the `Home` alias, which is off until `Policies` turns it on as device
-  owner (and off again at release), and it is pinned with Android's lock-task mode. Home, Back, Recents and the notification
-  shade all do nothing.
+- `KioskActivity` is a full-screen WebView. `Kiosk` switches kiosk mode on and
+  off. Switched on from the app's page, it asks Android for the home role and
+  pins the screen (`startLockTask`), which Android asks the user about; the pin
+  is asked only once the phone is unlocked, since Android drops a request made
+  behind the lock screen. As device owner, `Policies` makes the pin permanent
+  and the `Home` alias the home screen, and Back, Home, Recents and the
+  notification shade all do nothing.
 - `Policies` applies the device-owner policies every time the app starts, so a
   setting can't drift.
 - Settings arrive through `ConfigReceiver`, which only the USB (adb) shell may
   call, so nothing running on the phone can change them.
-- Tested on an Android 14 emulator: setup, every escape key, sleep and touch wake,
-  power-button sleep, restart with no lock screen, the exit PIN, an unreachable
-  page, and release.
+- Tested on an Android 14 emulator (locked): setup, every escape key, sleep and
+  touch wake, power-button sleep, restart with no lock screen, the exit PIN, an
+  unreachable page, and release.
+- Tested on Android 14 and Android 16 emulators (version 2.1, kiosk mode from
+  the app's page): the home-app and pin prompts, Back asking to leave, Leave
+  unpinning and giving the home screen back, a restart coming back to the kiosk
+  and asking for the pin after unlock (Android 14), not becoming the home
+  screen when unticked, and going dark and waking at a touch.
+- The app targets Android 16 (API 36), as Google Play requires: its pages sit
+  clear of the status and navigation bars, and Back is Android's predictive
+  back. Tested on an Android 16 emulator.
+- When a station can't be reached, the widget's settings say why: a certificate
+  the phone doesn't trust (one the station made itself), a certificate for
+  another name, https sent to a port that speaks only http, nothing listening,
+  or no such name. Each was tested on the Android 16 emulator against a test
+  server.
 - The widget (`WeatherWidget`, drawn by `Render`, fetched by `Station` and
   refreshed by `RefreshJob`) reads `current.js` and `forecast.js` itself and keeps
   its own copy per widget. On Android 12 and later the layout changes smoothly as
@@ -186,5 +231,5 @@ it you would have to release and set up each phone again.
   reported; a tap opens the dashboard. The phone couldn't look up a `.local`
   name, and the settings page said so and pointed to the number address, which
   worked. The outdoor sensor comes first in the list, as on the dashboard, so a
-  new widget shows outside. Not yet tested: the kiosk on a real phone, the
+  new widget shows outside. Not yet tested: kiosk mode on a real phone, the
   smallest and widest widget sizes, °C, and the background refresh.

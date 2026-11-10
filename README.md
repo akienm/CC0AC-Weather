@@ -228,9 +228,9 @@ and Weather Underground carry on as before.
 
 That's it: the dashboard is at the same address, and the charts are linked from it.
 
-## On Android: a home-screen widget, or a wall display
+## On Android: a home-screen widget, and kiosk mode
 
-One Android app, `cc0ac-weather.apk` on the [app release](https://github.com/akienm/CC0AC-Weather/releases/tag/android-v2.0), does two
+One Android app, `cc0ac-weather.apk` on the [app release](https://github.com/akienm/CC0AC-Weather/releases/tag/android-v2.1), does two
 things ([android/README.md](android/README.md) has the details):
 
 - **A widget on your own phone's home screen**: the temperature now and how it
@@ -238,17 +238,19 @@ things ([android/README.md](android/README.md) has the details):
   hours and the rest of the week. Open the APK on the phone to install it, put the
   widget on the home screen, tap it and give it the station's address. A tap then
   opens the dashboard. It needs Android 8 or newer.
-- **A wall display on an old phone** that shows the weather page and nothing else
-  ([more below](#wall-displays-old-android-phones-as-weather-kiosks)). Download
+- **Kiosk mode**, which turns the phone into a wall display of the weather page.
+  Open the app, give it the station's address and tap **Start kiosk mode**;
+  Android asks whether to make it the home screen and pin it. Back leaves it.
+  For a display nobody can leave, lock it from a computer
+  ([more below](#wall-displays-old-android-phones-as-weather-kiosks)): download
   `cc0ac-weather.apk` and `setup-phone.sh` into one folder and run
 
       ./setup-phone.sh --apk cc0ac-weather.apk --url http://cc0ac-weather.local/
 
-  The phone has to be freshly reset and plugged into the computer by USB, with
-  USB debugging on. It can't be done from the phone alone, because Android only
-  lets an app take over a phone that way over USB. Once the kiosk is set up it
+  The phone has to be freshly reset and plugged in by USB, with USB debugging on,
+  because Android only lets an app lock a phone down that way. A locked kiosk
   refuses app installs, so to update it, download the newer APK and run the same
-  command again. A phone set up with the first kiosk app takes this one as an update.
+  command again.
 
 **Away from home the widget needs a way in.** It reads the station directly, so
 on mobile data or someone else's Wi-Fi it works only if you've set up Tailscale
@@ -540,7 +542,7 @@ are answered locally.
 | **No station** | the test suite only | the National Weather Service (US) or Open-Meteo (anywhere) as the only source: `[online]`, see [UPDATES.md](UPDATES.md#internet-weather-a-station-with-no-station) |
 | **Computer** | Raspberry Pi 400, Raspberry Pi OS (Debian 13); an Ubuntu laptop | other Pis (3 B+, 4, 5), Mac, Windows, Docker |
 | **Installing** | the boot loader's install, update and roll-back, in a test folder; Docker's first start on Windows 11 | the card image and the installers end to end on a fresh machine |
-| **Android app** | the widget on a Pixel 8 Pro (Android 17) with a live station; the kiosk on an Android 14 emulator | the kiosk on a real phone |
+| **Android app** | the widget on a Pixel 8 Pro (Android 17) with a live station; kiosk mode on Android 14 and 16 emulators | kiosk mode on a real phone |
 | **Weather networks** | — | Windy, PWSweather, Weathercloud, CWOP with real accounts |
 | **MCP** | a test client over the network | Claude Desktop through `mcp-remote` |
 
@@ -1384,13 +1386,14 @@ developer options on, the same thing from a computer:
 
 ## Wall displays: old Android phones as weather kiosks
 
-`android/` turns a spare, freshly reset Android phone into a wall display that shows
-only your weather page. It has no lock screen and no way out, goes dark when idle,
-and wakes at a touch. One command sets it up over USB:
+The Android app's kiosk mode shows only your weather page, full screen. It goes
+dark when idle and wakes at a touch. Switch it on from the app itself, or, for a
+spare phone on the wall that nobody can leave (no lock screen, no way out), lock
+it with one command over USB on a freshly reset phone:
 
     android/setup-phone.sh --url http://my-pi.local:12345/
 
-The app is ready-built on the [app release](https://github.com/akienm/CC0AC-Weather/releases/tag/android-v2.0)
+The app is ready-built on the [app release](https://github.com/akienm/CC0AC-Weather/releases/tag/android-v2.1)
 (`--apk cc0ac-weather.apk`); the same app is the home-screen widget. See
 [android/README.md](android/README.md) for the options and how to build it.
 
@@ -1579,6 +1582,20 @@ Each line says the version (or, before version numbers, the date) that added
 it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
+
+**Android app 2.1** · Nov 10, 2026
+- **Kiosk mode from the phone**: the app's page has a **Kiosk mode** switch. Give
+  it the station's address and it becomes a full-screen wall display, asking
+  Android to make it the home screen and to pin it; Back leaves it. No computer
+  needed. `setup-phone.sh` still makes the same mode locked, with no way out.
+  Tested on Android 14 and 16 emulators, not yet on a real phone. **\***
+- **One build for GitHub and Google Play**: `build.sh` makes the `.apk` and the
+  `.aab` Play takes from the same code, now targeting Android 16 (API 36), as
+  Play requires. Tested on an Android 16 emulator. **\***
+- **Says why it couldn't reach the station**: a certificate the phone doesn't
+  trust, a certificate for another name, https at a port that speaks only http,
+  nothing listening, or no such name, in the widget's settings and on the widget.
+  Tested on the Android 16 emulator. **\***
 
 **Android app 2.0** · Nov 10, 2026
 - **The kiosk and a home-screen widget in one app** (`android/`, which was
