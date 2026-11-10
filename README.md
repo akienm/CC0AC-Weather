@@ -540,7 +540,7 @@ are answered locally.
 | **No station** | the test suite only | the National Weather Service (US) or Open-Meteo (anywhere) as the only source: `[online]`, see [UPDATES.md](UPDATES.md#internet-weather-a-station-with-no-station) |
 | **Computer** | Raspberry Pi 400, Raspberry Pi OS (Debian 13); an Ubuntu laptop | other Pis (3 B+, 4, 5), Mac, Windows, Docker |
 | **Installing** | the boot loader's install, update and roll-back, in a test folder; Docker's first start on Windows 11 | the card image and the installers end to end on a fresh machine |
-| **Wall kiosk** | an Android 14 emulator | a real phone |
+| **Android app** | the widget on a Pixel 8 Pro (Android 17) with a live station; the kiosk on an Android 14 emulator | the kiosk on a real phone |
 | **Weather networks** | — | Windy, PWSweather, Weathercloud, CWOP with real accounts |
 | **MCP** | a test client over the network | Claude Desktop through `mcp-remote` |
 
@@ -1587,8 +1587,9 @@ tested part ran on.
   read from the station's own `current.js` and `forecast.js` with no account. On a
   phone `setup-phone.sh` sets up, it's the kiosk as before. It's
   `cc0ac-weather.apk` on the [app release](https://github.com/akienm/CC0AC-Weather/releases/tag/android-v2.0), and a version 1 kiosk takes it
-  as an update and stays a kiosk. Tested on the Android 14 emulator only: not yet
-  on a real phone, and not the smallest and widest widget sizes, °C, or the
+  as an update and stays a kiosk. The widget is tested on a Pixel 8 Pro with the
+  live station; the kiosk on the Android 14 emulator only. Not yet tested: the
+  kiosk on a real phone, the smallest and widest widget sizes, °C, or the
   background refresh. **\***
 
 **1.4.11** · Nov 10, 2026

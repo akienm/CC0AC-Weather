@@ -179,5 +179,12 @@ it you would have to release and set up each phone again.
 - Tested on an Android 14 emulator (version 2): a version 1 kiosk updated to 2
   stays a kiosk and survives a restart; released and installed fresh, the app
   isn't offered as a home screen, its icon opens the widget's page, and a widget
-  is pinned, pointed at a station, and shown offline. Not yet tested: a real
-  phone, the smallest and widest widget sizes, °C, and the background refresh.
+  is pinned, pointed at a station, and shown offline.
+- Tested on a Pixel 8 Pro, Android 17, against a live station (the widget only):
+  installed as an ordinary app, pinned from its own page, pointed at the
+  station, and drawn with the same temperature, feels-like and wind the station
+  reported; a tap opens the dashboard. The phone couldn't look up a `.local`
+  name, and the settings page said so and pointed to the number address, which
+  worked. The outdoor sensor comes first in the list, as on the dashboard, so a
+  new widget shows outside. Not yet tested: the kiosk on a real phone, the
+  smallest and widest widget sizes, °C, and the background refresh.

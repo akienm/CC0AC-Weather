@@ -79,16 +79,22 @@ final class Station {
         }
     }
 
-    /** Sensors that read a temperature, as {sensor_id, label}. */
+    /** The dashboard's outdoor types (weather.html OUTDOOR, sources/__init__.py OUTDOOR_TYPES). */
+    static final java.util.Set<String> OUTDOOR =
+            new java.util.HashSet<>(java.util.Arrays.asList("Atlas", "Iris", "5N1", "outdoor"));
+
+    /** Sensors that read a temperature, as {sensor_id, label}: the outdoor ones first, as on
+     *  the dashboard, so a new widget shows outside unless told otherwise. */
     static List<String[]> sensors(JSONObject current) {
-        List<String[]> out = new ArrayList<>();
+        List<String[]> out = new ArrayList<>(), rooms = new ArrayList<>();
         JSONArray list = current.optJSONArray("sensors");
         if (list == null) return out;
         for (int i = 0; i < list.length(); i++) {
             JSONObject s = list.optJSONObject(i);
             if (s == null || s.optJSONObject("fields") == null || !s.optJSONObject("fields").has("temp_f")) continue;
-            out.add(new String[]{s.optString("sensor_id"), label(s)});
+            (OUTDOOR.contains(s.optString("type")) ? out : rooms).add(new String[]{s.optString("sensor_id"), label(s)});
         }
+        out.addAll(rooms);
         return out;
     }
 
