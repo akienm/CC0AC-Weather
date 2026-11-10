@@ -27,6 +27,11 @@ transfer, no camera, no calls or texts, and no browser to wander off into.
 
        ./setup-phone.sh --url http://my-pi.local:12345/
 
+   Without a copy of this project, download `weather-kiosk.apk` and
+   `setup-phone.sh` from the [kiosk release](https://github.com/akienm/CC0AC-Weather/releases/tag/kiosk-v1.0)
+   into one folder and add `--apk weather-kiosk.apk`. The same command with a
+   newer APK updates the phone.
+
 The phone switches to the weather page straight away. Unplug it and hang it on
 the wall. It comes back to the weather page by itself after a restart or a power
 cut.

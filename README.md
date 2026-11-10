@@ -228,6 +228,28 @@ and Weather Underground carry on as before.
 
 That's it: the dashboard is at the same address, and the charts are linked from it.
 
+## A wall display: the Android kiosk app
+
+An old Android phone can hang on the wall and show the weather page and nothing
+else ([more below](#wall-displays-old-android-phones-as-weather-kiosks)). You
+don't need to build the app: download `weather-kiosk.apk` and `setup-phone.sh`
+from the [kiosk release](https://github.com/akienm/CC0AC-Weather/releases/tag/kiosk-v1.0),
+put them in one folder, and run
+
+    ./setup-phone.sh --apk weather-kiosk.apk --url http://cc0ac-weather.local/
+
+The phone has to be freshly reset and plugged into the computer by USB, with
+USB debugging on ([kiosk/README.md](kiosk/README.md) has the steps). It can't
+be done from the phone alone, because Android only lets an app take over a
+phone that way over USB. Once the kiosk is set up it refuses app installs, so
+to update it, download the newer APK and run the same command again.
+
+The releases can be watched with [Obtainium](https://obtainium.imranr.dev/): add
+`https://github.com/akienm/CC0AC-Weather` and set *Filter release titles by
+regular expression* to `Kiosk`, so it skips the card-image releases. It tells
+you when there's a new version. Obtainium runs on an ordinary phone, not on the
+kiosk itself.
+
 ## Troubleshooting
 
 **If <http://cc0ac-weather.local/> doesn't open:** some Android phones and
@@ -1357,7 +1379,8 @@ and wakes at a touch. One command sets it up over USB:
 
     kiosk/setup-phone.sh --url http://my-pi.local:12345/
 
-See [kiosk/README.md](kiosk/README.md) for the options and how to build it.
+The app is ready-built on the [kiosk release](https://github.com/akienm/CC0AC-Weather/releases/tag/kiosk-v1.0)
+(`--apk weather-kiosk.apk`). See [kiosk/README.md](kiosk/README.md) for the options and how to build it.
 
 ## What leaves your house
 
