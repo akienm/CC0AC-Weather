@@ -188,6 +188,20 @@ The first build makes a signing key at `~/.cc0ac-weather/kiosk-release.jks`.
 it you would have to release and set up each phone again. The bundle is signed
 with the same key, as Play's upload key.
 
+## Uploading to Google Play
+
+`play-upload.py` sends `build/cc0ac-weather.aab` to Google Play as a service
+account: internal testing by default, or `--track alpha|beta|production`, with
+`--notes` for what's new and `--dry-run` to have Play check it without releasing
+anything. It needs only Python and openssl. The top of the file lists the one-time
+steps: create the app in the Play Console and upload its first bundle there by
+hand, then make a service account and give it permission to release. Its key
+goes in `~/.cc0ac-weather/play-service-account.json`, never in a repo.
+
+A copy installed from Play is updated only by Play (Play's rules forbid an app
+updating itself from anywhere else); the APK on the release keeps updating
+copies installed from it.
+
 ## How it works
 
 - `KioskActivity` is a full-screen WebView. `Kiosk` switches kiosk mode on and
