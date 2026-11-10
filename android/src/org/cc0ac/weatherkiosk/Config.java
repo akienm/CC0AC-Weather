@@ -3,7 +3,8 @@ package org.cc0ac.weatherkiosk;
 import android.content.Context;
 import android.content.SharedPreferences;
 
-/** The kiosk's settings. Written only by ConfigReceiver (adb), read everywhere else. */
+/** The kiosk's settings. A locked kiosk's are written only by ConfigReceiver (adb); kiosk
+ *  mode switched on from the app's page writes url, kiosk_on and as_home (Kiosk.start). */
 final class Config {
     static final String PREFS = "kiosk";
 

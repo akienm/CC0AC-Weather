@@ -2,6 +2,10 @@ package org.cc0ac.weatherkiosk;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.KeyguardManager;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.IntentFilter;
 import android.content.Intent;
 import android.graphics.Color;
 import android.os.Build;
@@ -36,6 +40,7 @@ public class KioskActivity extends Activity {
     private Config cfg;
     private boolean asleep;
     private boolean loadFailed;
+    private boolean askedToPin;   // kiosk mode switched on here: ask Android to pin once per opening
     private int cornerTaps;
     private long firstCornerTap;
 
@@ -46,6 +51,7 @@ public class KioskActivity extends Activity {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         Policies.apply(this);
+        registerReceiver(unlocked, new IntentFilter(Intent.ACTION_USER_PRESENT));
         cfg = Config.load(this);
 
         if (Build.VERSION.SDK_INT >= 27) {
@@ -107,7 +113,8 @@ public class KioskActivity extends Activity {
 
     private void load() {
         if (cfg.url.isEmpty()) {
-            showMessage("No weather station address is set.\nRun setup-phone.sh with --url.");
+            showMessage(Kiosk.locked(this) ? "No weather station address is set.\nRun setup-phone.sh with --url."
+                    : "No weather station address is set.\nPress Back, then set one on CC0AC Weather's page.");
             return;
         }
         handler.removeCallbacks(retry);
@@ -125,6 +132,7 @@ public class KioskActivity extends Activity {
     protected void onNewIntent(Intent i) {
         super.onNewIntent(i);
         if (i.getBooleanExtra("reload", false)) {
+            askedToPin = false;
             cfg = Config.load(this);
             load();
             wake();
@@ -135,13 +143,7 @@ public class KioskActivity extends Activity {
     protected void onResume() {
         super.onResume();
         hideSystemBars();
-        if (Policies.isOwner(this)) {
-            try {
-                startLockTask();
-            } catch (IllegalStateException | SecurityException ignored) {
-                // already pinned, or ownership was just released
-            }
-        }
+        if (Kiosk.locked(this)) pin();   // pinned for good, no question asked
         wake();
     }
 
@@ -154,7 +156,42 @@ public class KioskActivity extends Activity {
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        if (hasFocus) hideSystemBars();
+        if (!hasFocus) return;
+        hideSystemBars();
+        askToPin();
+    }
+
+    /** Switched on from the app's page: Android asks "Pin this app?", once per opening, so
+     *  saying no doesn't bring the question back. Never behind the lock screen: after a
+     *  restart the home screen is up and focused under it, and the question is dropped
+     *  there, so it waits for the unlock (unlocked). */
+    private void askToPin() {
+        if (Kiosk.locked(this) || !Kiosk.on(this) || askedToPin || Kiosk.pinned(this)) return;
+        KeyguardManager km = getSystemService(KeyguardManager.class);
+        if (km != null && km.isKeyguardLocked()) return;
+        askedToPin = true;
+        pin();
+    }
+
+    private final BroadcastReceiver unlocked = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context c, Intent i) {
+            handler.postDelayed(KioskActivity.this::askToPin, 1000);   // once the lock screen has gone
+        }
+    };
+
+    @Override
+    protected void onDestroy() {
+        unregisterReceiver(unlocked);
+        super.onDestroy();
+    }
+
+    private void pin() {
+        try {
+            startLockTask();
+        } catch (IllegalStateException | SecurityException ignored) {
+            // already pinned, or ownership was just released
+        }
     }
 
     @SuppressWarnings("deprecation")
@@ -259,6 +296,15 @@ public class KioskActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        if (web.canGoBack()) web.goBack();
+        if (web.canGoBack()) {
+            web.goBack();
+        } else if (!Kiosk.locked(this)) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Leave kiosk mode?")
+                    .setMessage("The phone goes back to its own home screen. Turn kiosk mode on again from CC0AC Weather's page.")
+                    .setPositiveButton("Leave", (d, w) -> Kiosk.leave(this))
+                    .setNegativeButton("Stay", null)
+                    .show();
+        }
     }
 }

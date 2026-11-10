@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- One app, two uses. On an ordinary phone it is a home-screen widget (and the
-     launcher icon opens InfoActivity). On a freshly reset phone that setup-phone.sh
-     makes it the device owner of, it is a kiosk: the Home alias below is switched on
-     by Policies.apply, and only then, so an ordinary phone is never offered the
-     weather page as its home screen. The package name is the kiosk's, so a phone
+<!-- One app, two uses: a home-screen widget, and kiosk mode (a wall display). The
+     launcher icon opens InfoActivity, which places the widget and switches kiosk mode
+     on. The Home alias below is switched on only when kiosk mode asks to be the home
+     screen (Kiosk.start), or on a phone setup-phone.sh made this app the device owner
+     of (Policies.apply), so an ordinary phone is never offered the weather page as
+     its home screen unasked. The package name is the kiosk's, so a phone
      that is already a kiosk takes this as an update. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="org.cc0ac.weatherkiosk"
@@ -76,10 +77,9 @@
             </intent-filter>
         </receiver>
 
-        <!-- The widget -->
+        <!-- The app's page: the widget's instructions (Android 8+) and the kiosk-mode switch. -->
         <activity
             android:name=".InfoActivity"
-            android:enabled="@bool/widget_on"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
