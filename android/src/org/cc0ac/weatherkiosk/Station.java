@@ -56,6 +56,32 @@ final class Station {
         return u;
     }
 
+    /** Why a fetch failed, in words the person setting it up can act on. An https address
+     *  fails in ways http never does, and Java's own messages for them name only classes. */
+    static String explain(Exception e, String base) {
+        // most specific first: an untrusted certificate arrives as an SSLHandshakeException
+        // wrapping a CertPathValidatorException (measured, Android 16)
+        if (in(e, java.security.cert.CertPathValidatorException.class) || in(e, java.security.cert.CertificateException.class)) {
+            return "This phone doesn't trust the station's certificate (one the station made for itself, "
+                    + "or one that has expired). Use http://, or give the station a certificate from a public authority.";
+        }
+        if (in(e, javax.net.ssl.SSLPeerUnverifiedException.class)) {
+            return "The station's certificate is for another name. Use the name it was made for, or http://.";
+        }
+        if (in(e, javax.net.ssl.SSLException.class)) {
+            return "Nothing speaks https at " + base + ". If the station is plain http there, use http://.";
+        }
+        if (in(e, java.net.UnknownHostException.class)) return "No such name: " + base + ".";
+        if (in(e, java.net.SocketTimeoutException.class)) return "Nothing answered at " + base + " in time.";
+        if (in(e, java.net.ConnectException.class)) return "Nothing is listening at " + base + ".";
+        return e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+    }
+
+    private static boolean in(Throwable t, Class<? extends Throwable> kind) {
+        for (; t != null; t = t.getCause()) if (kind.isInstance(t)) return true;
+        return false;
+    }
+
     /** The JSON object inside "window.ACURITE_CURRENT = {...};". */
     static JSONObject fetchJs(String base, String file) throws Exception {
         HttpURLConnection http = (HttpURLConnection) new URL(base + file).openConnection();
@@ -113,7 +139,7 @@ final class Station {
             JSONObject current = fetchJs(base, "current.js");
             e.putString(key(id, "current"), current.toString()).putString(key(id, "error"), "");
         } catch (Exception ex) {
-            e.putString(key(id, "error"), ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage());
+            e.putString(key(id, "error"), explain(ex, base));
         }
         try {
             e.putString(key(id, "forecast"), fetchJs(base, "forecast.js").toString());

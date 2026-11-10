@@ -110,7 +110,8 @@ public class ConfigActivity extends Activity {
                 found = Station.sensors(current);
                 if (found.isEmpty()) err = "The station answered, but has no sensor reading a temperature yet.";
             } catch (Exception e) {
-                err = "Couldn't reach a station at " + base + ": " + e.getMessage()
+                android.util.Log.w("cc0ac", "look " + base, e);
+                err = "Couldn't reach a station at " + base + ". " + Station.explain(e, base)
                         + (base.contains(".local") ? "\nSome phones can't find .local names; try the station's number address." : "");
             }
             final String problem = err;
