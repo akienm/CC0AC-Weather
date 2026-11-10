@@ -1583,6 +1583,11 @@ it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
 
+**Android app 2.2** · Nov 10, 2026
+- **Its own icon**: a sun behind a cloud, in place of Android's plain default. On
+  Android 8 and later it takes the shape your launcher gives icons. Checked on the
+  Android 16 emulator.
+
 **Android app 2.1** · Nov 10, 2026
 - **Kiosk mode from the phone**: the app's page has a **Kiosk mode** switch. Give
   it the station's address and it becomes a full-screen wall display, asking

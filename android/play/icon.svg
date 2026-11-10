@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="512" height="512">
+  <!-- Master for the launcher icon. Adaptive-icon grid: 108 square, the safe circle is the middle 66.
+       A sun behind a cloud, in the dashboard's accent blue and the chart's sun yellow, on its black. -->
+  <rect width="108" height="108" fill="#101820"/>
+  <g transform="translate(0 5)">
+  <circle cx="62" cy="44" r="13" fill="#FFDD44"/>
+  <g stroke="#FFDD44" stroke-width="3" stroke-linecap="round">
+    <line x1="62" y1="23" x2="62" y2="27"/>
+    <line x1="77" y1="29" x2="74.2" y2="31.8"/>
+    <line x1="83" y1="44" x2="79" y2="44"/>
+    <line x1="47" y1="29" x2="49.8" y2="31.8"/>
+  </g>
+  <path d="M33 74 a10 10 0 0 1 2-19.8 a14 14 0 0 1 26.5-4.5 a11 11 0 0 1 14.5 10.3 a7 7 0 0 1 -1 14 z"
+        fill="#44AAFF"/>
+  </g>
+</svg>

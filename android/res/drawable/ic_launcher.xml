@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launcher icon before Android 8: the picture on its dark square. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#101820" android:pathData="M0,0 H108 V108 H0 z" />
+    <group android:translateY="5">
+        <path android:fillColor="#FFDD44" android:pathData="M49,44 a13,13 0 1,0 26,0 a13,13 0 1,0 -26,0 z" />
+        <path android:strokeColor="#FFDD44" android:strokeWidth="3" android:strokeLineCap="round"
+            android:pathData="M62,23 L62,27 M77,29 L74.2,31.8 M83,44 L79,44 M47,29 L49.8,31.8" />
+        <path android:fillColor="#44AAFF"
+            android:pathData="M33,74 a10,10 0 0,1 2,-19.8 a14,14 0 0,1 26.5,-4.5 a11,11 0 0,1 14.5,10.3 a7,7 0 0,1 -1,14 z" />
+    </group>
+</vector>
