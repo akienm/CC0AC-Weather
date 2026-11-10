@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Build cc0ac-weather.apk with the plain SDK tools: no Gradle, no Android Studio.
-# Needs: a JDK 17 (JAVA_HOME or on PATH) and an Android SDK with build-tools;34.0.0
-# and platforms;android-34 (ANDROID_HOME, default ~/Android/sdk).
+# Needs: a JDK 17 (JAVA_HOME or on PATH) and an Android SDK with build-tools;36.0.0
+# and platforms;android-36 (ANDROID_HOME, default ~/Android/sdk).
 set -euo pipefail
 cd "$(dirname "$0")"
 
 SDK="${ANDROID_HOME:-$HOME/Android/sdk}"
-BT="$SDK/build-tools/34.0.0"
-JAR="$SDK/platforms/android-34/android.jar"
+BT="$SDK/build-tools/36.0.0"
+JAR="$SDK/platforms/android-36/android.jar"
 if [ -z "${JAVA_HOME:-}" ] && ! command -v javac >/dev/null; then
     JAVA_HOME="$(ls -d "$HOME"/Android/jdk-17* 2>/dev/null | head -1)"
 fi
@@ -42,3 +42,21 @@ javac -source 17 -target 17 -Xlint:-options -classpath "$JAR" -d build/classes \
     --out build/cc0ac-weather.apk build/aligned.apk
 "$BT/apksigner" verify build/cc0ac-weather.apk
 echo "built $(pwd)/build/cc0ac-weather.apk"
+
+# The same app as an Android App Bundle, for Google Play: the same code, resources and
+# key (Play takes it as the upload key). bundletool: https://github.com/google/bundletool
+BUNDLETOOL="${BUNDLETOOL:-$(ls "$HOME"/Android/bundletool/bundletool-all-*.jar 2>/dev/null | tail -1)}"
+if [ -z "$BUNDLETOOL" ]; then
+    echo "no bundletool jar (BUNDLETOOL, or ~/Android/bundletool/): built the .apk only" >&2
+    exit 0
+fi
+"$BT/aapt2" link --proto-format -o build/proto.apk -I "$JAR" --manifest AndroidManifest.xml build/res/*.flat
+rm -rf build/base && mkdir -p build/base/manifest build/base/dex
+(cd build/base && unzip -q ../proto.apk && mv AndroidManifest.xml manifest/ && cp ../classes.dex dex/)
+(cd build/base && zip -qr ../base.zip .)
+java -jar "$BUNDLETOOL" build-bundle --modules=build/base.zip --output=build/unsigned.aab
+cp build/unsigned.aab build/cc0ac-weather.aab
+jarsigner -sigalg SHA256withRSA -digestalg SHA-256 -keystore "$KEYSTORE" \
+    -storepass:file "$KEYPASS_FILE" build/cc0ac-weather.aab kiosk >/dev/null
+jarsigner -verify build/cc0ac-weather.aab >/dev/null
+echo "built $(pwd)/build/cc0ac-weather.aab"

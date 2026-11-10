@@ -52,6 +52,10 @@ public class KioskActivity extends Activity {
         super.onCreate(b);
         Policies.apply(this);
         registerReceiver(unlocked, new IntentFilter(Intent.ACTION_USER_PRESENT));
+        if (Build.VERSION.SDK_INT >= 33) {
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                    android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, this::back);
+        }
         cfg = Config.load(this);
 
         if (Build.VERSION.SDK_INT >= 27) {
@@ -196,6 +200,14 @@ public class KioskActivity extends Activity {
 
     @SuppressWarnings("deprecation")
     private void hideSystemBars() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            android.view.WindowInsetsController c = getWindow().getInsetsController();
+            if (c != null) {
+                c.hide(android.view.WindowInsets.Type.systemBars());
+                c.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                return;
+            }
+        }
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                         | View.SYSTEM_UI_FLAG_FULLSCREEN
@@ -294,8 +306,14 @@ public class KioskActivity extends Activity {
                 .show();
     }
 
+    /** Android 13+ hands Back to a callback (and from target 36 only to it); older ones call this. */
     @Override
+    @SuppressWarnings("deprecation")
     public void onBackPressed() {
+        back();
+    }
+
+    private void back() {
         if (web.canGoBack()) {
             web.goBack();
         } else if (!Kiosk.locked(this)) {

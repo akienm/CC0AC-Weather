@@ -88,6 +88,7 @@ public class ConfigActivity extends Activity {
         box.addView(save);
 
         ScrollView scroll = new ScrollView(this);
+        scroll.setFitsSystemWindows(true);   // clear of the status and navigation bars (edge to edge from target 35)
         scroll.addView(box);
         setContentView(scroll);
         if (!url.getText().toString().trim().isEmpty()) look();
