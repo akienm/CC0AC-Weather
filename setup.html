@@ -31,6 +31,7 @@
   input[type=text], input[type=email], input[type=password], input[type=number] {
     width: 100%; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); padding: 7px 9px; }
   input:focus { outline: none; border-color: var(--accent); }
+  select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); padding: 5px 7px; max-width: 100%; }
   table { width: 100%; border-collapse: collapse; }
   th { text-align: left; color: var(--muted); font-weight: normal; font-size: 13px; padding: 4px; }
   td { padding: 4px; vertical-align: middle; }
@@ -63,8 +64,19 @@
 </section>
 
 <section>
-  <h2><span class="n">2</span>Name your sensors</h2>
-  <p>Each sensor the hub hears is listed with the ID printed on it (open the battery cover). Give each one a name,
+  <h2><span class="n">2</span>A radio</h2>
+  <p>A USB radio (an RTL-SDR dongle: the RTL-SDR Blog V3 or V4, NooElec, and most other RTL2832U sticks) hears
+     the sensors directly, with a hub or without one. Plug it into a USB port; a short extension cable keeps its
+     antenna away from the computer's own noise.</p>
+  <div id="radio">Looking for a radio…</div>
+  <p><label><input type="checkbox" id="radioon"> Listen with the radio. Saving with this ticked starts it.</label></p>
+  <p><label>Your sensors' band: <select id="band"></select></label></p>
+  <div class="row" style="margin-top:8px"><button id="radiocheck">Look again</button></div>
+</section>
+
+<section>
+  <h2><span class="n">3</span>Name your sensors</h2>
+  <p>Each sensor the hub or the radio hears is listed with the ID printed on it (open the battery cover). Give each one a name,
      like <i>Kitchen</i> or <i>Back porch</i>. <b>Use</b> says what a sensor is for: <i>Show</i> it (the usual), <i>Hide</i> it from the page but still record it and send it out, <i>Record only</i>, or <i>Ignore</i> it, say a neighbour's. The arrows set the order they're shown in.</p>
   <table>
     <thead><tr><th class="type">Type</th><th>ID</th><th>Name</th><th>Use</th><th></th></tr></thead>
@@ -74,7 +86,7 @@
 </section>
 
 <section>
-  <h2><span class="n">3</span>Where is the station?</h2>
+  <h2><span class="n">4</span>Where is the station?</h2>
   <label for="name">Station name (shown at the top of every page)</label>
   <input type="text" id="name" placeholder="My Weather">
   <label for="where">Location: latitude, longitude</label>
@@ -95,7 +107,7 @@
 </section>
 
 <section>
-  <h2><span class="n">4</span>Tell me when it stops</h2>
+  <h2><span class="n">5</span>Tell me when it stops</h2>
   <p>If readings stop coming in for a while, the station sends you a message, and another when they're back.
      The simplest way is the free <b>ntfy</b> app on your phone:</p>
   <p>1. Install <b>ntfy</b> from the App Store or Google Play.<br>
@@ -130,7 +142,7 @@
 </section>
 
 <section>
-  <h2><span class="n">5</span>Updates</h2>
+  <h2><span class="n">6</span>Updates</h2>
   <div id="updnow" hidden><div class="row"><span id="updsays"></span><button id="updbtn" hidden>Update now</button></div>
     <p class="help" id="updhelp"></p></div>
   <div class="check"><input type="radio" name="updates" id="upd_yes"><label for="upd_yes" style="margin:0"><b>Yes</b>: install security fixes and small repairs by itself</label></div>
@@ -141,7 +153,7 @@
 </section>
 
 <section>
-  <h2><span class="n">6</span>A copy somewhere else</h2>
+  <h2><span class="n">7</span>A copy somewhere else</h2>
   <p>Once a week, at the update time, the station can copy its settings and every reading to another computer or a
      network drive, and keep the newest few. Leave this blank for no copy.</p>
   <label for="bk_path">Copy to (a folder, or a share like <code>\\nas\backups\weather</code>)</label>
@@ -204,6 +216,37 @@ function showHub(hub) {
   $("hub").innerHTML = bits.join(", ") + ".";
 }
 
+function showRadio(radio) {
+  const m = radio.heard_minutes;
+  const ago = m !== undefined && m !== null ? `last heard a sensor ${m < 1.5 ? "just now" : Math.round(m) + " minutes ago"}` : "";
+  const list = radio.radios;
+  let says;
+  if (!radio.installed) {
+    says = `<span class="bad">The radio software isn't installed here.</span> On a Raspberry Pi or Debian:
+      <code>sudo apt install rtl-433 rtl-sdr</code>, then unplug the radio and plug it back in.
+      (An update through the boot loader installs it by itself.)`;
+  } else if (list === null) {
+    says = "This computer doesn't show its USB devices to the station, so I can't see whether a radio is plugged in."
+      + (radio.enabled ? " The radio is switched on." : "");
+  } else if (!list.length) {
+    says = `<span class="bad">No radio plugged in that I can see.</span> Plug it in, then press Look again.`;
+  } else {
+    const tv = list.filter(r => r.tv_driver);
+    says = `<span class="good">Found</span> ${list.map(r => esc(r.name)).join(", ")}.`;
+    if (tv.length) says += ` <span class="bad">The computer's TV driver (${esc(tv[0].tv_driver)}) has it,</span>
+      so the radio software can't open it: restart this computer once (the radio software keeps that driver off from then on).`;
+  }
+  if (ago) says += ` ${radio.enabled ? "Working" : "It"}: ${ago}.`;
+  $("radio").innerHTML = says;
+}
+
+function fillBands(radio) {
+  const bands = Object.entries(radio.bands);
+  if (!radio.bands[radio.frequency]) bands.push([radio.frequency, `${radio.frequency}, as config.ini has it`]);
+  $("band").innerHTML = bands.map(([v, label]) =>
+    `<option value="${esc(v)}" ${v === radio.frequency ? "selected" : ""}>${esc(label)}</option>`).join("");
+}
+
 function drawSensors() {
   $("nosensors").hidden = rows.length > 0;
   $("sensors").innerHTML = rows.map((r, i) => `<tr>
@@ -258,9 +301,14 @@ async function start(first) {
   const state = await load();
   if (!state) return;
   showHub(state.hub);
+  showRadio(state.radio);
   merge(state);
   if (!first) return;
   $("hubon").checked = state.current.hub;
+  // A radio plugged in on a station with nothing else: ticked, ready to save.
+  $("radioon").checked = state.radio.enabled
+    || (!state.current.hub && state.radio.installed && !!(state.radio.radios || []).length && !rows.length);
+  fillBands(state.radio);
   const st = state.current.station, al = state.current.alerts;
   $("name").value = st.name || "";
   if (st.latitude && st.longitude) $("where").value = `${st.latitude}, ${st.longitude}`;
@@ -335,6 +383,7 @@ function answers() {
     forecast: $("forecast").checked && latitude !== "",
     online: $("online").checked,
     hub: $("hubon").checked,
+    radio: {enabled: $("radioon").checked, frequency: $("band").value},
     alerts,
     updates: {automatic: $("upd_yes").checked, time: $("upd_time").value.trim() || "06:00"},
     backup: {path: $("bk_path").value.trim(), user: $("bk_user").value.trim(),
@@ -351,6 +400,7 @@ async function post(body) {
 function say(el, msg, bad) { $(el).textContent = msg; $(el).className = bad ? "bad" : "good"; }
 
 $("recheck").onclick = () => start(false);
+$("radiocheck").onclick = () => start(false);
 
 $("test").onclick = async () => {
   try {

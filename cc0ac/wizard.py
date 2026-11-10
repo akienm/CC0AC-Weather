@@ -20,6 +20,7 @@ from __future__ import annotations
 import configparser
 import json
 import re
+import shutil
 import time
 import urllib.request
 from datetime import datetime
@@ -30,6 +31,15 @@ from typing import Any
 from cc0ac import sensor_config
 
 LEASES = Path("/var/lib/misc/dnsmasq.leases")
+USB = Path("/sys/bus/usb/devices")
+# USB IDs of the RTL2832U radios rtl_433 reads: the RTL-SDR Blog V3 and V4, NooElec's,
+# and most "TV stick" dongles are 0bda:2838; some older sticks are 0bda:2832.
+RADIO_IDS = {("0bda", "2838"), ("0bda", "2832")}
+TV_DRIVERS = ("dvb_usb_rtl28xxu", "rtl2832", "rtl2830")   # the kernel's TV driver, which holds the radio
+BANDS = {"433.92M": "433 MHz: AcuRite, La Crosse, and most older or European sensors",
+         "915M": "915 MHz: North American Ambient, Ecowitt and other Fine Offset sensors",
+         "868M": "868 MHz: European Ecowitt and Fine Offset sensors"}
+_FREQUENCY = re.compile(r"\d{2,4}(\.\d{1,6})?[MmKkGg]?(\s*,\s*\d{2,4}(\.\d{1,6})?[MmKkGg]?)*")
 HUB_FIELDS = {"Mac": "hub_id", "Ver": "firmware", "Ser": "server", "ID": "wu_station",
               "Dev": "wu_sensor", "Ele": "elevation_ft"}       # never "PS": the WU password
 _HUB_VALUE = re.compile(r"\$\('txt(Mac|Ver|Ser|ID|Dev|Ele)'\)\.value\s*=\s*'([^'<>]*)'")
@@ -263,6 +273,7 @@ def apply_setup(text: str, answers: dict) -> str:
     answers: {"sensors": [{"id", "name"}, ...] in display order,
               "station": {"name", "latitude", "longitude", "elevation_ft", "timezone"},
               "forecast": bool, "online": bool, "hub": bool, "alerts": {"ntfy_topic", "email_to", ...},
+              "radio": {"enabled": bool, "frequency": "915M" or "" for 433.92M},
               "updates": {"automatic": bool, "time": "HH:MM"},
               "backup": {"path", "user", "password", "keep"}}"""
     sensors = [s for s in answers.get("sensors", []) if str(s.get("id", "")).strip()]
@@ -300,6 +311,17 @@ def apply_setup(text: str, answers: dict) -> str:
         text = set_values(text, "online", {"enabled": "true" if answers["online"] else "false"})
     if "hub" in answers:
         text = set_values(text, "hub", {"enabled": "true" if answers["hub"] else "false"})
+    radio = answers.get("radio")
+    if radio is not None:
+        band = str(radio.get("frequency") or "").strip()
+        if band and not _FREQUENCY.fullmatch(band):
+            raise ValueError(f"not a radio frequency: {band!r}")
+        # 433.92M is rtl_433's own default, so it is left unset, as config.ini.example has it.
+        values = {"enabled": "true" if radio.get("enabled") else "false",
+                  "frequency": None if band in ("", "433.92M") else band}
+        if band not in ("", "433.92M") and _protocols(text) in (None, ACURITE_PROTOCOLS):
+            values["protocols"] = "all"   # AcuRite's decoders hear nothing on 915 or 868; rtl_433's own set does
+        text = set_values(text, "capture", values)
     updates = answers.get("updates")
     if updates is not None:
         when = str(updates.get("time") or "06:00").strip()
@@ -332,6 +354,21 @@ def apply_setup(text: str, answers: dict) -> str:
 
 ALERT_KEYS = ("quiet_minutes", "ntfy_topic", "ntfy_server", "email_to", "email_from",
               "smtp_host", "smtp_port", "smtp_user", "smtp_password", "healthcheck_url")
+
+
+ACURITE_PROTOCOLS = ["40", "74"]   # sources/rtl_433.py's default
+
+
+def _protocols(text: str) -> list[str] | None:
+    """[capture] protocols as config.ini has it, or None if unset."""
+    cfg = configparser.ConfigParser(inline_comment_prefixes=("#", ";"), interpolation=None)
+    try:
+        cfg.read_string(text)
+    except configparser.Error:
+        return []
+    if not cfg.has_option("capture", "protocols"):
+        return None
+    return [p.strip() for p in cfg.get("capture", "protocols").split(",") if p.strip()]
 
 
 def _one_line(v: Any) -> str:
@@ -378,7 +415,48 @@ def setup_state(cfg: configparser.ConfigParser, leases: Path = LEASES) -> dict:
     heard = hub_heard(cfg)
     if heard is not None:
         hub["heard_minutes"] = heard
-    return {"hub": hub, "current": current, "heard": heard_sensors(cfg)}
+    return {"hub": hub, "radio": radio_state(cfg), "current": current, "heard": heard_sensors(cfg)}
+
+
+def radios(usb: Path = USB) -> list[dict] | None:
+    """The RTL-SDR radios plugged in, read from the kernel's list of USB devices:
+    [{"name", "tv_driver"}]; tv_driver is the kernel's TV driver if it holds the radio
+    (rtl_433 can't open it then). None if this computer doesn't show its USB devices
+    (a Mac, Windows, or a container not given them)."""
+    if not usb.is_dir():
+        return None
+    found = []
+    for dev in sorted(usb.iterdir()):
+        try:
+            ids = ((dev / "idVendor").read_text().strip().lower(), (dev / "idProduct").read_text().strip().lower())
+        except OSError:
+            continue
+        if ids not in RADIO_IDS:
+            continue
+        name = " ".join(_read(dev / f) for f in ("manufacturer", "product") if _read(dev / f)) or "RTL-SDR radio"
+        drivers = {link.resolve().name for link in dev.glob(f"{dev.name}:*/driver") if link.exists()}
+        found.append({"name": name, "tv_driver": next((d for d in TV_DRIVERS if d in drivers), "")})
+    return found
+
+
+def _read(path: Path) -> str:
+    try:
+        return re.sub(r"[^ -~]", "", path.read_text()).strip()[:60]
+    except OSError:
+        return ""
+
+
+def radio_state(cfg: configparser.ConfigParser, usb: Path = USB) -> dict:
+    """What the setup page shows about the radio: is rtl_433 here, is a radio plugged
+    in, is capture on, which band, and when the radio last heard a sensor."""
+    state = {"installed": shutil.which("rtl_433") is not None, "radios": radios(usb),
+             "enabled": cfg.getboolean("capture", "enabled", fallback=False),
+             "frequency": cfg.get("capture", "frequency", fallback="").strip() or "433.92M",
+             "bands": BANDS}
+    heard = hub_heard(cfg, receiver="radio")
+    if heard is not None:
+        state["heard_minutes"] = heard
+    return state
 
 
 def _current_json(cfg: configparser.ConfigParser) -> dict:
@@ -390,11 +468,12 @@ def _current_json(cfg: configparser.ConfigParser) -> dict:
         return {}
 
 
-def hub_heard(cfg: configparser.ConfigParser, now: float | None = None) -> float | None:
-    """Minutes since the hub last sent anything (current.json's reception), or None if never."""
+def hub_heard(cfg: configparser.ConfigParser, now: float | None = None, receiver: str = "hub") -> float | None:
+    """Minutes since the hub (or the radio: receiver="radio") last sent anything
+    (current.json's reception), or None if never."""
     newest = None
     for s in _current_json(cfg).get("sensors") or []:
-        last = ((s.get("reception") or {}).get("hub") or {}).get("last") if isinstance(s, dict) else None
+        last = ((s.get("reception") or {}).get(receiver) or {}).get("last") if isinstance(s, dict) else None
         try:
             t = datetime.fromisoformat(str(last).replace("Z", "+00:00")).timestamp()
         except ValueError:

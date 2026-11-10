@@ -1216,7 +1216,18 @@ sensors directly (see *Radio capture* below).
 ## Radio capture (no hub)
 
 With an RTL-SDR USB radio dongle and [rtl_433](https://github.com/merbanan/rtl_433),
-the program hears the sensors itself, no hub needed:
+the program hears the sensors itself, no hub needed. Most RTL2832U dongles work:
+the RTL-SDR Blog V3 and V4, NooElec's, and the generic "TV stick" ones.
+
+**On the card image, or any Pi or Debian install** (1.4.10 on): plug the dongle
+in, open the setup page, tick **Listen with the radio** under *A radio*, pick
+your sensors' band, and save. The radio software comes installed (an older
+install gets it with its next update), the station's user may open the dongle,
+and the computer's TV driver is kept off it. The setup page says whether it
+sees the dongle; the sensors it hears appear under *Name your sensors* within a
+few minutes, the neighbours' too (set those to *Ignore*).
+
+**By hand**, on any other Linux:
 
 ```bash
 sudo apt install rtl-sdr rtl-433
@@ -1533,6 +1544,18 @@ Each line says the version (or, before version numbers, the date) that added
 it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
+
+**1.4.10** · Nov 10, 2026
+- **A USB radio from the setup page**: a new section, *A radio*, says whether an
+  RTL-SDR dongle is plugged in (and whether the computer's TV driver has it),
+  turns listening on, and picks the band: 433 MHz for AcuRite, 915 MHz for North
+  American Ambient and Ecowitt (which also switches on rtl_433's own decoders),
+  or 868 MHz. Asked on Reddit for the RTL-SDR Blog V3 on the card image.
+- **The radio software comes with the install** on a Pi or Debian, the card image
+  included; an older install gets it with its next update: rtl-433 and rtl-sdr,
+  and a file that keeps the kernel's TV driver off the dongle. If the packages
+  can't be installed, the station runs without them and the setup page says how. **\***
+- The Docker image carries rtl-433, for a dongle passed in (`compose.yaml`). **\***
 
 **1.4.9** · Nov 9, 2026
 - **Rain bars fill their hour** (or day, or week): each bar now spans its whole

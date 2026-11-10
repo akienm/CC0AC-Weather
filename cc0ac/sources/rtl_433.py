@@ -48,7 +48,7 @@ log = logging.getLogger("acurite")
 
 NAME = "rtl_433"
 CONFIG_DIR = Path.home() / ".cc0ac-weather"
-DEFAULT_PROTOCOLS = ["40", "74"]   # see config.ini.example; `rtl_433 -R help` lists them all
+DEFAULT_PROTOCOLS = ["40", "74"]   # see config.ini.example (wizard.ACURITE_PROTOCOLS too); `rtl_433 -R help` lists them all
 RAW_KEEP_DAYS = 14
 
 # rtl_433's model names → the hub's names for the same sensors.
