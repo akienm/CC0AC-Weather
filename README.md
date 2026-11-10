@@ -1568,6 +1568,15 @@ it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
 
+**1.4.11** · Nov 10, 2026
+- **Last strike says when**: the lightning card shows the time of the last
+  strike before its distance, like `11/6/26 7:45 AM · 6 mi`, in the viewer's
+  own time and date style (Anthony's request).
+- **The wall-display app ready-built**: `weather-kiosk.apk` and `setup-phone.sh`
+  are on the [kiosk release](https://github.com/akienm/CC0AC-Weather/releases/tag/kiosk-v1.0),
+  so a phone can be set up without the Android SDK; see
+  [the install section](#a-wall-display-the-android-kiosk-app).
+
 **1.4.10** · Nov 10, 2026
 - **A USB radio from the setup page**: a new section, *A radio*, says whether an
   RTL-SDR dongle is plugged in (and whether the computer's TV driver has it),

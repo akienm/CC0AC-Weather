@@ -537,6 +537,17 @@ function outdoorCard(s, data, sk) {
 
 // The rows of each kind of card, by the names [outdoor_rows] and [sensor_rows] in
 // config.ini use, in the order shown when the config doesn't say.
+// When the sensor heard its last strike, short, before the distance: "11/6/26 7:45 AM · 19 mi".
+// The AcuRite hub writes it in UTC with no zone; an Ecowitt-style console sends epoch seconds.
+function strikeTime(ts) {
+  if (ts == null || ts === '') return '';
+  const s = String(ts);
+  const d = /^\d+(\.\d+)?$/.test(s) ? new Date(Number(s) * 1000)
+          : new Date(/(Z|[+-]\d\d:?\d\d)$/i.test(s) ? s : s + 'Z');
+  if (isNaN(d) || d.getFullYear() < 2000) return '';
+  return d.toLocaleString([], { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit' })
+          .replace(',', '') + ' · ';
+}
 const OUTDOOR_ROWS = {
   feels_like:  f => row('🌡️ Feels like', Units.num('temperature', f.feels_like_f) + '°'),
   humidity:    f => row('💧 Humidity', num(f.humidity_pct, 0) + '%'),
@@ -554,7 +565,7 @@ const OUTDOOR_ROWS = {
   // strikes_today is worked out by the server from the sensor's running count (record_reading).
   lightning:   f => row('⚡ Lightning', f.strikes_today == null ? '—'
                  : `${f.strikes_today} strike${f.strikes_today == 1 ? '' : 's'} today`),
-  last_strike: f => row('⚡ Last strike', Units.text('distance', f.last_strike_mi)),
+  last_strike: f => row('⚡ Last strike', strikeTime(f.last_strike_ts) + Units.text('distance', f.last_strike_mi)),
 };
 const SENSOR_ROWS = {
   humidity:  f => row('💧 Humidity', num(f.humidity_pct, 0) + '%'),

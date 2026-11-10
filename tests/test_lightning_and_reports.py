@@ -165,6 +165,17 @@ class FarStrikesNotCounted(unittest.TestCase):
             st.close()
 
 
+class LastStrikeShowsWhen(unittest.TestCase):
+    """The card's last strike says when, then how far (Anthony, 2026-11-10). Checked in a
+    browser against his snapshot: the hub's 2026-11-06T12:45:34 (UTC, no zone) showed as
+    11/6/26 7:45 AM in New York and 1:45 PM in Berlin."""
+    def test_the_row_carries_the_time(self):
+        page = (HERE / "weather.html").read_text()
+        self.assertIn("strikeTime(f.last_strike_ts) + Units.text('distance', f.last_strike_mi)", page)
+        self.assertIn("s + 'Z'", page)                     # the hub's time is UTC without a zone
+        self.assertIn("new Date(Number(s) * 1000)", page)  # a console's is epoch seconds
+
+
 class Periods(unittest.TestCase):
     today = date(2026, 11, 7)   # a Saturday
 
