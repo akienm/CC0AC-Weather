@@ -51,13 +51,14 @@ PAGE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 DATA_FILES = {"/current.js": "application/javascript", "/current.json": "application/json",
               "/forecast.js": "application/javascript", "/forecast.json": "application/json",
               "/climate.js": "application/javascript", "/climate.json": "application/json",
+              "/air.js": "application/javascript", "/air.json": "application/json",
               "/history.csv": "text/csv"}
 
 # From outside your network (anything through the router's port forward) only the
 # dashboard and the charts are served, with what those two pages load; everything
 # else answers 404. Your own network gets every page, the data files and /config.cgi.
 OUTSIDE_PATHS = {"/", "/weather.html", "/charts.html", "/theme.css", "/units.js",
-                 "/current.js", "/forecast.js", "/climate.js", "/history.json"}
+                 "/current.js", "/forecast.js", "/climate.js", "/air.js", "/history.json"}
 
 
 def _local_client(address: str) -> bool:

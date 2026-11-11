@@ -351,6 +351,15 @@ source = auto
 ; them (sent in the User-Agent). A website or an email address.
 contact = github.com/akienm/CC0AC-Weather
 
+[air]
+; Air quality from Open-Meteo (air-quality-api.open-meteo.com; free, no key,
+; worldwide) for [station] latitude and longitude: the US Air Quality Index and
+; its band, the pollutant behind it, PM2.5, PM10, ozone, UV, and the highest AQI
+; forecast for today and tomorrow. A model's estimate for the spot, not a
+; monitor's reading. In Europe it adds pollen. Fetched hourly into air.json and
+; air.js; the dashboard shows an Air card.
+enabled = false
+
 [climate]
 ; Records (hottest, coldest, highest gust, wettest day; for the day, month, year
 ; and all time) and how today compares with normal, written hourly to

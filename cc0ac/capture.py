@@ -76,6 +76,7 @@ from cc0ac.config import (
     strike_limit,
 )
 from cc0ac.forecast import run_forecast
+from cc0ac import air
 from cc0ac.recorder import (
     Recorder,
 )
@@ -284,6 +285,16 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
 
     if cfg.getboolean("forecast", "enabled", fallback=False):
         threading.Thread(target=run_forecast, args=(cfg, write_path), daemon=True).start()
+
+    # Air quality: air.json every hour (air.py). Needs [station] latitude/longitude.
+    if cfg.getboolean("air", "enabled", fallback=False):
+        at = station_settings(cfg)
+        if at:
+            contact = cfg.get("forecast", "contact", fallback="").strip() or "github.com/akienm/CC0AC-Weather"
+            threading.Thread(target=air.run, args=(at["latitude"], at["longitude"], contact, write_path),
+                             daemon=True, name="air").start()
+        else:
+            log.warning("Air quality is on but [station] latitude/longitude are not set; air quality off")
 
     # Records and normals: climate.json every hour (climate.py).
     def outdoor_days() -> list[dict]:

@@ -43,7 +43,7 @@ SETTINGS = frozenset({
     "device", "sensors", "sensor_order", "outdoor_rows", "sensor_rows", "units", "calibration", "sanity",
     "hub", "storage", "web", "duckdns", "updates", "backup", "buttons", "station", "weather_underground",
     "mqtt", "webhook", "influxdb", "windy", "pwsweather", "weathercloud", "cwop", "forecast", "climate",
-    "online", "alerts", "console", "capture", "sun_moon", "lightning", "reports"})
+    "air", "online", "alerts", "console", "capture", "sun_moon", "lightning", "reports"})
 
 LIVE_ICONS = {
     "sky": "the sun while it's up, else the moon in its phase",

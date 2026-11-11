@@ -123,6 +123,7 @@
   <div class="pane" id="p-sky"></div>
   <div class="pane" id="p-rooms"></div>
   <div class="pane" id="p-climate"></div>
+  <div class="pane" id="p-air"></div>
 </div>
 <div id="error"></div>
 
@@ -790,10 +791,44 @@ function drawClimate() {
   pane('p-climate', JSON.stringify(cl || null) + Units.key(), climateCard(cl));
 }
 
+// ── Air quality: air.js (window.ACURITE_AIR), from air.py ────────────────────
+
+// The EPA band's colour as a dot, the band's name beside the number.
+const aqiText = (v, b) => v == null ? '—'
+  : `<span style="color:${b?.colour || 'inherit'}">●</span> ${Math.round(v)}${b ? ` <span class="ts">${esc(b.name)}</span>` : ''}`;
+const UG = n => n == null ? '—' : `${Math.round(n * 10) / 10} µg/m³`;
+
+function airCard(a) {
+  if (!a || a.aqi === undefined) return '';
+  const p = a.pollutants || {};
+  const dayName = d => d === a.days?.[0]?.day ? 'today' : new Date(d + 'T12:00').toLocaleDateString([], { weekday: 'long' });
+  const peaks = (a.days || []).map(d => row(`📈 Highest ${dayName(d.day)}`, aqiText(d.max_aqi, d.band))).join('');
+  const pollen = (a.pollen || []).map(x => row(`🌼 ${esc(x.name)} pollen`, `${Math.round(x.value)} ${esc(x.unit)}`)).join('');
+  return `<div class="card outdoor">
+    <div class="name"><span>🌫️ Air quality</span>${partAge(a, 'air', a.updated)}</div>
+    <div class="rows">
+      ${row('US AQI', aqiText(a.aqi, a.band))}
+      ${row('Mostly from', a.main_pollutant ? esc(a.main_pollutant) : '—')}
+      ${peaks}
+      ${row('PM2.5', UG(p.pm2_5?.value))}
+      ${row('PM10', UG(p.pm10?.value))}
+      ${row('Ozone', UG(p.ozone?.value))}
+      ${row('☀️ UV index', a.uv_index == null ? '—' : String(Math.round(a.uv_index * 10) / 10))}
+      ${pollen}
+    </div>
+    <div class="ts" style="margin-top:8px">${esc(a.source || '')} · an estimate for this spot, not a monitor</div>
+  </div>`;
+}
+
+function drawAir() {
+  const a = window.ACURITE_AIR;
+  pane('p-air', JSON.stringify(a || null), airCard(a));
+}
+
 // ── Loading ──────────────────────────────────────────────────────────────────
 
 // weather.html?embed: for an iframe on another page. ?panes=outdoor,daily shows
-// only those panes (outdoor, hourly, daily, sky, rooms, climate).
+// only those panes (outdoor, hourly, daily, sky, rooms, climate, air).
 const QUERY = new URLSearchParams(location.search);
 if (QUERY.has('embed')) document.documentElement.classList.add('embed');
 if (QUERY.get('panes')) {
@@ -846,6 +881,8 @@ function loadCurrent() {
 const loadForecast = () => loadScript('forecast', 'forecast.js', drawForecast);
 // Missing climate.js is fine too; it is rewritten hourly.
 const loadClimate = () => loadScript('climate', 'climate.js', drawClimate);
+// Missing air.js is fine: [air] is off, and the pane stays empty.
+const loadAir = () => loadScript('air', 'air.js', drawAir);
 
 // Stale readings first try a full reload, which also clears a stuck timer or a page
 // left running across an update. Only when current.js still loads (a reload while the
@@ -859,14 +896,16 @@ function reloadIfStale() {
 
 // A phone that slept, or a tab left in the background, catches up when looked at.
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') { loadCurrent(); loadForecast(); loadClimate(); }
+  if (document.visibilityState === 'visible') { loadCurrent(); loadForecast(); loadClimate(); loadAir(); }
 });
 
 loadCurrent();
 loadForecast();
 loadClimate();
+loadAir();
 setInterval(loadForecast, FORECAST_POLL_SECONDS * 1000);
 setInterval(loadClimate, FORECAST_POLL_SECONDS * 1000);
+setInterval(loadAir, FORECAST_POLL_SECONDS * 1000);
 setInterval(() => { tickAges(); drawForecast(); reloadIfStale(); }, 60 * 1000);
 </script>
 </body>
