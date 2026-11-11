@@ -798,8 +798,8 @@ const aqiText = (v, b) => v == null ? '—'
   : `<span style="color:${b?.colour || 'inherit'}">●</span> ${Math.round(v)}${b ? ` <span class="ts">${esc(b.name)}</span>` : ''}`;
 const UG = n => n == null ? '—' : `${Math.round(n * 10) / 10} µg/m³`;
 
-// The pollen forecast (Google's Pollen API or pollen.com): a row a day, its index
-// and level, and under it the plants behind it.
+// The pollen forecast (Google's Pollen API or pollen.com): a row a day with its
+// index and level, then the plants behind it (once when the days agree).
 function pollenRows(a) {
   const f = a.pollen_forecast;
   if (!f) return '';
@@ -808,15 +808,15 @@ function pollenRows(a) {
   const when = d => d === local(0) ? 'today' : d === local(1) ? 'tomorrow'
     : new Date(d + 'T12:00').toLocaleDateString([], { weekday: 'long' });
   const failed = a.errors && a.errors.pollen ? partAge(a, 'pollen', f.updated) : '';
-  return f.days.filter(d => d.day >= local(0)).map((d, i) => {
-    const level = d.level ? ` <span class="ts">${esc(d.level.name)}</span>` : '';
-    const value = d.index == null ? '—'
-      : `<span style="color:${d.level?.colour || 'inherit'}">●</span> ${Math.round(d.index * 10) / 10} of ${f.scale}${level}`;
-    const plants = (d.types || []).map(t => esc(t.name) + (t.level && f.scale === 5 ? ` ${esc(t.level.name.toLowerCase())}` : ''))
-      .join(', ');
-    return row(`🌼 Pollen ${when(d.day)}`, value + (i === 0 ? failed : ''))
-      + (plants ? `<div class="ts" style="text-align:right;margin:-2px 0 4px">${plants}</div>` : '');
-  }).join('');
+  const days = f.days.filter(d => d.day >= local(0));
+  const plants = d => (d.types || []).map(t => esc(t.name) + (t.level && f.scale === 5 ? ` ${esc(t.level.name.toLowerCase())}` : ''))
+    .join(', ');
+  const level = d => d.index == null ? '—' : `<span style="color:${d.level?.colour || 'inherit'}">●</span> `
+    + `${Math.round(d.index * 10) / 10} of ${f.scale}${d.level ? ` <span class="ts">${esc(d.level.name)}</span>` : ''}`;
+  const same = days.every(d => plants(d) === plants(days[0]));
+  return days.map((d, i) => row(`🌼 Pollen ${when(d.day)}`, level(d) + (i === 0 ? failed : ''))).join('')
+    + days.filter((d, i) => plants(d) && (i === 0 || !same))
+      .map(d => row(same ? '🌿 Pollen from' : `🌿 ${when(d.day)[0].toUpperCase() + when(d.day).slice(1)} from`, plants(d))).join('');
 }
 
 function airCard(a) {
