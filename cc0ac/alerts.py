@@ -336,7 +336,8 @@ def check_upkeep(cfg: configparser.ConfigParser, problems: list[str], state_path
 #   or started again after stopping without saying so (a crash, or the power).
 #   A restart for saved settings says nothing.
 # sensors: one sensor quiet for quiet_minutes while others still report (when
-#   they all stop, that is the "no readings" message), and back.
+#   they all stop, that is the "no readings" message), or one receiver (radio,
+#   hub, console) hearing nothing while another still does, and back.
 # held_back: a reading held back as impossible (sanity.py), and believed again.
 
 NOTICES = ("service", "sensors", "held_back")
@@ -417,6 +418,61 @@ def _field_words(field: str) -> str:
     return " ".join(w for w in (words.get(p, p) for p in field.split("_")) if w)
 
 
+# The receivers: what hears the sensors. Each sensor's reception (recorder.py) says
+# which heard it lately, but only for the last hour, so the time each receiver last
+# heard anything is kept in the alert state. One switched on that has gone quiet
+# while the others still hear is a notice: two receivers hearing the same sensors
+# hide each other's silence from the per-sensor notice. Its name, and what to try.
+RECEIVER_WORDS = {
+    "radio": ("The radio (rtl_433)", "Check the radio dongle is plugged in; if rtl_433 keeps failing to start, "
+                                     "unplug the dongle and plug it back in."),
+    "hub": ("The hub", "Check the hub has power and its cable is in."),
+    "console": ("The console", "Check the console is on and still sending to the station."),
+}
+RTL_433_LAST_EXIT = Path.home() / ".cc0ac-weather" / "rtl_433-last-exit.txt"   # sources/rtl_433.py writes it
+
+
+def _receivers_on(cfg: configparser.ConfigParser) -> list[str]:
+    from cc0ac.sources import acurite_access, console_upload, rtl_433
+    on = []
+    if rtl_433.enabled(cfg) and not cfg.get("capture", "read", fallback="").strip():
+        on.append("radio")
+    if acurite_access.enabled(cfg):
+        on.append("hub")
+    if console_upload.enabled(cfg):
+        on.append("console")
+    return on
+
+
+def _quiet_receivers(cfg: configparser.ConfigParser, snapshot: dict, now: float, quiet: float, station_fresh: bool,
+                     state: dict, state_path: Path) -> dict[str, tuple[str, str]]:
+    heard: dict = dict(state.get("receivers_heard") or {})    # receiver -> when it last heard anything
+    for s in snapshot.get("sensors", []):
+        for who, r in (s.get("reception") or {}).items():
+            at = _stamp(str((r or {}).get("last") or ""))
+            if at is not None and at > float(heard.get(who) or 0):
+                heard[who] = at
+    _save_state(state_path, "receivers_heard", heard)
+    found = {}
+    for who in _receivers_on(cfg):
+        last = heard.get(who)
+        if not station_fresh or last is None or now - float(last) <= quiet:
+            continue
+        label, hint = RECEIVER_WORDS[who]
+        since = datetime.fromtimestamp(float(last)).astimezone().strftime("%a %b %d %H:%M")
+        message = (f"{label} hasn't heard any sensor since {since} ({(now - float(last)) / 60:.0f} minutes), "
+                   f"though readings still come in another way. {hint}")
+        if who == "radio":
+            try:
+                said = RTL_433_LAST_EXIT.read_text().strip()
+                if said and RTL_433_LAST_EXIT.stat().st_mtime > float(last):
+                    message += f" rtl_433's last words: {said}"
+            except OSError:
+                pass
+        found[f"receiver:{who}"] = (label, message)
+    return found
+
+
 def check_sensors(cfg: configparser.ConfigParser, write_path: Path, now: float | None = None,
                   state_path: Path = STATE_FILE) -> str:
     """One message when a sensor goes quiet while the rest report, or a reading is held
@@ -450,6 +506,8 @@ def check_sensors(cfg: configparser.ConfigParser, write_path: Path, now: float |
             found[f"held:{sid}"] = (label, f"{label}: a reading was held back as impossible ({said}). "
                                            "The last believed value is shown until it reads true again.")
     state = _load_state(state_path)
+    if "sensors" in wanted:
+        found.update(_quiet_receivers(cfg, snapshot, now, quiet, station_fresh, state, state_path))
     sent: dict = dict(state.get("sensors") or {})      # key -> the sensor's name
     name = cfg.get("station", "name", fallback="").strip() or "Weather station"
     did = []
@@ -463,8 +521,9 @@ def check_sensors(cfg: configparser.ConfigParser, write_path: Path, now: float |
             sent.update({k: label for k, (label, _) in new.items()})
             did.append(f"told ({len(new)})")
     if gone:
-        lines = [f"{sent[k]} is being heard again." if k.startswith("quiet:") else f"{sent[k]}: its readings are believed again."
-                 for k in gone]
+        lines = [f"{sent[k]} is being heard again." if k.startswith("quiet:")
+                 else f"{sent[k]} is hearing the sensors again." if k.startswith("receiver:")
+                 else f"{sent[k]}: its readings are believed again." for k in gone]
         problems = send(cfg, f"{name}: sensors fine again", "\n".join(lines))
         if problems:
             did.append("sensor all-clear failed: " + "; ".join(problems))

@@ -35,7 +35,9 @@ import json
 import logging
 import os
 import subprocess
+import threading
 import time
+from collections import deque
 from collections.abc import Collection, Iterable, Iterator
 from datetime import datetime, timezone
 from pathlib import Path
@@ -256,6 +258,23 @@ def _sensors(cfg: configparser.ConfigParser) -> set:
     return set(sensor_config.titles(cfg))
 
 
+LAST_EXIT = CONFIG_DIR / "rtl_433-last-exit.txt"   # the alerts quote it (alerts.py)
+STDERR_KEEP = 4
+
+
+def _keep_tail(stream) -> tuple[deque, threading.Thread]:
+    """rtl_433's last few lines of messages, read as it runs so its pipe never fills."""
+    tail: deque = deque(maxlen=STDERR_KEEP)
+
+    def read() -> None:
+        for line in stream:
+            if line.strip():
+                tail.append(line.strip())
+    reader = threading.Thread(target=read, daemon=True, name="rtl_433-stderr")
+    reader.start()
+    return tail, reader
+
+
 def run(cfg: configparser.ConfigParser, emit: Emit) -> None:
     cmd = command(cfg)
     reading_files = "-r" in cmd
@@ -267,8 +286,9 @@ def run(cfg: configparser.ConfigParser, emit: Emit) -> None:
         log.info("rtl_433: no [sensors] listed, so every sensor heard is recorded, neighbours' too")
     while True:
         try:
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             log.info("rtl_433 started (pid %d): %s", proc.pid, " ".join(cmd))
+            said, reader = _keep_tail(proc.stderr)
             assert proc.stdout is not None   # PIPE
             for r in readings(proc.stdout, receiver, rain, sensors, raw_log):
                 try:
@@ -278,6 +298,7 @@ def run(cfg: configparser.ConfigParser, emit: Emit) -> None:
                 except Exception as exc:
                     log.error("RADIO record failed: %s (raw=%s)", exc, r.raw)
             ret = proc.wait()
+            reader.join(timeout=2)    # its last lines, written as it exited
         except FileNotFoundError:
             log.error("rtl_433 is not installed (sudo apt install rtl-433); radio capture off")
             return
@@ -287,7 +308,13 @@ def run(cfg: configparser.ConfigParser, emit: Emit) -> None:
         if reading_files:
             log.info("rtl_433 finished reading %s", cfg.get("capture", "read"))
             return
-        log.warning("rtl_433 exited (code %s); restarting in 10s", ret)
+        last = " | ".join(said) if ret != -1 else ""
+        log.warning("rtl_433 exited (code %s)%s; restarting in 10s", ret, f": {last}" if last else "")
+        if last:
+            try:
+                LAST_EXIT.write_text(f"exit code {ret}: {last}\n")
+            except OSError:
+                pass
         time.sleep(10)
 
 

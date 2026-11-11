@@ -421,7 +421,8 @@ quiet_minutes = 30
 ; About the station itself, sent the same ways (all on unless listed otherwise):
 ; service (it started, now on which version; it was stopped; it started again
 ; after stopping without saying so), sensors (one sensor quiet for quiet_minutes
-; while the others still report, and back), held_back (a reading held back as
+; while the others still report, or one receiver, the radio, hub or console,
+; hearing nothing while another still does; and back), held_back (a reading held back as
 ; impossible, see [sanity], and believed again). A restart for saved settings
 ; sends nothing. List only the ones you want; for none, leave it blank.
 ; notices = service, sensors, held_back
