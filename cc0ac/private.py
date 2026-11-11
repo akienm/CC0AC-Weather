@@ -31,7 +31,7 @@ SECRETS_FILE = "secrets.env"
 PRIVATE_KEYS = frozenset((
     "station_id", "station_key", "password", "passcode", "key", "api_key", "user", "smtp_user",
     "smtp_password", "ntfy_topic", "email_to", "email_from", "healthcheck_url", "hub_id", "station",
-    "token", "header", "username", "domain", "latitude", "longitude"))
+    "token", "header", "username", "domain", "latitude", "longitude", "google_api_key", "pollen_zip"))
 # Not private, though the name says so: [web] key is where the TLS key file is.
 NOT_PRIVATE = frozenset((("web", "key"),))
 # Read without %(name)s by the code that uses them, so moved as written.

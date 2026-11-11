@@ -798,12 +798,34 @@ const aqiText = (v, b) => v == null ? '—'
   : `<span style="color:${b?.colour || 'inherit'}">●</span> ${Math.round(v)}${b ? ` <span class="ts">${esc(b.name)}</span>` : ''}`;
 const UG = n => n == null ? '—' : `${Math.round(n * 10) / 10} µg/m³`;
 
+// The pollen forecast (Google's Pollen API or pollen.com): a row a day, its index
+// and level, and under it the plants behind it.
+function pollenRows(a) {
+  const f = a.pollen_forecast;
+  if (!f) return '';
+  const local = n => { const d = new Date(Date.now() + n * 86400000);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  const when = d => d === local(0) ? 'today' : d === local(1) ? 'tomorrow'
+    : new Date(d + 'T12:00').toLocaleDateString([], { weekday: 'long' });
+  const failed = a.errors && a.errors.pollen ? partAge(a, 'pollen', f.updated) : '';
+  return f.days.filter(d => d.day >= local(0)).map((d, i) => {
+    const level = d.level ? ` <span class="ts">${esc(d.level.name)}</span>` : '';
+    const value = d.index == null ? '—'
+      : `<span style="color:${d.level?.colour || 'inherit'}">●</span> ${Math.round(d.index * 10) / 10} of ${f.scale}${level}`;
+    const plants = (d.types || []).map(t => esc(t.name) + (t.level && f.scale === 5 ? ` ${esc(t.level.name.toLowerCase())}` : ''))
+      .join(', ');
+    return row(`🌼 Pollen ${when(d.day)}`, value + (i === 0 ? failed : ''))
+      + (plants ? `<div class="ts" style="text-align:right;margin:-2px 0 4px">${plants}</div>` : '');
+  }).join('');
+}
+
 function airCard(a) {
   if (!a || a.aqi === undefined) return '';
   const p = a.pollutants || {};
   const dayName = d => d === a.days?.[0]?.day ? 'today' : new Date(d + 'T12:00').toLocaleDateString([], { weekday: 'long' });
   const peaks = (a.days || []).map(d => row(`📈 Highest ${dayName(d.day)}`, aqiText(d.max_aqi, d.band))).join('');
-  const pollen = (a.pollen || []).map(x => row(`🌼 ${esc(x.name)} pollen`, `${Math.round(x.value)} ${esc(x.unit)}`)).join('');
+  const pollen = (a.pollen || []).map(x => row(`🌼 ${esc(x.name)} pollen`, `${Math.round(x.value)} ${esc(x.unit)}`)).join('')
+    + pollenRows(a);
   return `<div class="card outdoor">
     <div class="name"><span>🌫️ Air quality</span>${partAge(a, 'air', a.updated)}</div>
     <div class="rows">
@@ -816,7 +838,7 @@ function airCard(a) {
       ${row('☀️ UV index', a.uv_index == null ? '—' : String(Math.round(a.uv_index * 10) / 10))}
       ${pollen}
     </div>
-    <div class="ts" style="margin-top:8px">${esc(a.source || '')} · an estimate for this spot, not a monitor</div>
+    <div class="ts" style="margin-top:8px">${esc(a.source || '')} · an estimate for this spot, not a monitor${a.pollen_forecast ? ` · pollen: ${esc(a.pollen_forecast.source)}` : ''}</div>
   </div>`;
 }
 

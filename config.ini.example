@@ -360,6 +360,19 @@ contact = github.com/akienm/CC0AC-Weather
 ; air.js; the dashboard shows an Air card.
 enabled = false
 
+; A pollen forecast for today and tomorrow, from either of these (Google first,
+; then pollen.com if Google doesn't answer). Leave both out for no pollen.
+;
+; Google's Pollen API: worldwide, an index of 0-5 for grass, tree and weed. Needs
+; a Google Maps Platform API key with the Pollen API switched on (Google Cloud
+; console; it has a free monthly allowance, and wants a billing account).
+; google_api_key = file:secrets.env#AIR_GOOGLE_API_KEY
+;
+; pollen.com: US only, an index of 0-12 and the plants behind it, for a ZIP code.
+; Free and no key, but its API is the one its own page uses, not a published
+; one, so it may stop working without notice.
+; pollen_zip = 12345
+
 [climate]
 ; Records (hottest, coldest, highest gust, wettest day; for the day, month, year
 ; and all time) and how today compares with normal, written hourly to
