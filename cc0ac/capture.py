@@ -40,6 +40,7 @@ import queue
 import re
 import signal
 import sqlite3
+import subprocess
 import sys
 import threading
 import time
@@ -219,6 +220,29 @@ def _run_output(cfg: configparser.ConfigParser, output: Any, todo: queue.Queue) 
             log.warning("%s output failed: %s", output.NAME, exc)
 
 
+CHECK_EVERY_S = 60     # the readings check (--check); the boot loader keeps the same pace
+
+
+def _check_loop(config_path: Path | None, every: float = CHECK_EVERY_S) -> None:
+    """The readings check, run as its own process every minute: what the boot loader does
+    for a station it started. A station started any other way (by hand, a unit of its
+    own, as akienpi was) used to have no check at all, so nothing ever said a word."""
+    cmd = [sys.executable, str(Path(__file__).resolve().parent.parent / "acurite-capture.py"), "--check"]
+    if config_path is not None:
+        cmd[2:2] = ["--config", str(config_path)]
+    said = None
+    while True:
+        time.sleep(every)
+        try:
+            out = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            line = (out.stdout or out.stderr).strip()
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            line = f"didn't run: {exc}"
+        if line != said:
+            log.info("Readings check: %s", line)
+            said = line
+
+
 def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) -> None:
     iolog.keep()
     write_path = Path(cfg.get("device", "write_path")).expanduser()
@@ -310,6 +334,11 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
     threading.Thread(target=climate.run, args=(where.get("latitude"), where.get("longitude"), write_path,
                                                outdoor_days, cfg.getboolean("climate", "normals", fallback=True),
                                                bases), daemon=True, name="climate").start()
+
+    # The readings check: from outside under the boot loader, from here otherwise.
+    if (config_path is not None and not os.environ.get("CC0AC_BOOTLOADER_ROOT")
+            and not cfg.get("capture", "read", fallback="").strip()):
+        threading.Thread(target=_check_loop, args=(config_path,), daemon=True, name="check").start()
 
     # [alerts] notices = service: a message that it started, and one when it is stopped.
     threading.Thread(target=lambda: log.info("Notice: %s", alerts.service_started(cfg, station_version())),

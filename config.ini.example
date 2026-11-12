@@ -403,13 +403,16 @@ source = auto
 
 [alerts]
 ; A message when readings stop, and another when they come back. Checked every
-; 5 minutes by its own timer (cc0ac-weather-check.timer, which setup/install-pi.sh
-; installs; or run  python3 acurite-capture.py --check  from cron), so it still
-; speaks up if this program itself has died. The setup page (/setup) fills
-; this in; test with  python3 acurite-capture.py --test-alert
+; minute by the boot loader from outside the station, so it still speaks up if the
+; station itself has died (a station started some other way checks itself, as
+; often). The setup page (/setup) fills this in; test with
+;   python3 acurite-capture.py --test-alert
 enabled = false
 ; How long without a reading before a message goes out (the hub sends every 5).
 quiet_minutes = 30
+; How long one receiver (the radio, hub or console) may hear nothing before a short
+; message pointing at the status page goes out.
+; receiver_quiet_minutes = 5
 ;
 ; ntfy (ntfy.sh): a free phone app. Subscribe in the app to a topic nobody else
 ; would guess, and put the same name here.
@@ -435,7 +438,7 @@ quiet_minutes = 30
 ; service (it started, now on which version; it was stopped; it started again
 ; after stopping without saying so), sensors (one sensor quiet for quiet_minutes
 ; while the others still report, or one receiver, the radio, hub or console,
-; hearing nothing while another still does; and back), held_back (a reading held back as
+; hearing nothing for receiver_quiet_minutes; and back), held_back (a reading held back as
 ; impossible, see [sanity], and believed again). A restart for saved settings
 ; sends nothing. List only the ones you want; for none, leave it blank.
 ; notices = service, sensors, held_back

@@ -261,6 +261,61 @@ def _sensors(cfg: configparser.ConfigParser) -> set:
 LAST_EXIT = CONFIG_DIR / "rtl_433-last-exit.txt"   # the alerts quote it (alerts.py)
 STDERR_KEEP = 4
 
+# Getting a failing radio going again, the way a person would, so it keeps on working
+# (Akien 2026-11-11: "it's supposed to be an appliance ... like a maytag"). On 11-09 a
+# restart left rtl_433 exiting within seconds, 11,161 times over 46 hours, until the
+# whole station was restarted. A run that ends before STEADY_S counts as a failed start:
+#   1-2 failed starts: start it again in 10 s;
+#   RESET_AFTER: reset the dongle on its USB port too (as unplugging it would);
+#   RESTART_AFTER: end the whole station so its service starts it fresh, at most once
+#     an hour (RESTARTED marks when), so a dongle that is gone can't keep the hub down;
+#   after that: try again every minute. The receiver notice (alerts.py) has told by then.
+STEADY_S = 120
+RESET_AFTER = 3
+RESTART_AFTER = 6
+RESTART_GAP_S = 3600
+RESTARTED = CONFIG_DIR / "rtl_433-restarted-station.txt"
+USBDEVFS_RESET = 0x5514                    # _IO('U', 20), linux/usbdevice_fs.h
+RTL_SDR_IDS = {("0bda", "2838"), ("0bda", "2832")}
+USB_DEVICES = Path("/sys/bus/usb/devices")
+
+
+def reset_dongles(devices: Path = USB_DEVICES) -> list[str]:
+    """Reset every RTL-SDR dongle on its USB port (as if unplugged and plugged back in).
+    Says what it did, one line each; nothing where there is no such dongle or no Linux."""
+    import fcntl
+    did = []
+    for d in sorted(devices.glob("*")) if devices.is_dir() else []:
+        try:
+            ids = ((d / "idVendor").read_text().strip(), (d / "idProduct").read_text().strip())
+            if ids not in RTL_SDR_IDS:
+                continue
+            node = Path(f"/dev/bus/usb/{int((d / 'busnum').read_text()):03d}/{int((d / 'devnum').read_text()):03d}")
+            with open(node, "wb") as f:
+                fcntl.ioctl(f, USBDEVFS_RESET, 0)
+            did.append(f"reset {ids[0]}:{ids[1]} at {node}")
+        except (OSError, ValueError) as exc:
+            did.append(f"could not reset {d.name}: {exc}")
+    return did
+
+
+def next_step(failed: int, now: float, restarted_at: float | None) -> str:
+    """What to do after `failed` failed starts in a row: retry, reset, restart or wait."""
+    if failed >= RESTART_AFTER:
+        if restarted_at is None or now - restarted_at >= RESTART_GAP_S:
+            return "restart"
+        return "wait"
+    if failed == RESET_AFTER:
+        return "reset"
+    return "retry"
+
+
+def _restarted_at() -> float | None:
+    try:
+        return RESTARTED.stat().st_mtime
+    except OSError:
+        return None
+
 
 def _keep_tail(stream) -> tuple[deque, threading.Thread]:
     """rtl_433's last few lines of messages, read as it runs so its pipe never fills."""
@@ -284,7 +339,9 @@ def run(cfg: configparser.ConfigParser, emit: Emit) -> None:
     sensors = _sensors(cfg)
     if not sensors:
         log.info("rtl_433: no [sensors] listed, so every sensor heard is recorded, neighbours' too")
+    failed = 0
     while True:
+        started = time.time()
         try:
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             log.info("rtl_433 started (pid %d): %s", proc.pid, " ".join(cmd))
@@ -309,13 +366,29 @@ def run(cfg: configparser.ConfigParser, emit: Emit) -> None:
             log.info("rtl_433 finished reading %s", cfg.get("capture", "read"))
             return
         last = " | ".join(said) if ret != -1 else ""
-        log.warning("rtl_433 exited (code %s)%s; restarting in 10s", ret, f": {last}" if last else "")
+        failed = 0 if time.time() - started >= STEADY_S else failed + 1
+        step = next_step(failed, time.time(), _restarted_at())
+        log.warning("rtl_433 exited (code %s)%s; %s", ret, f": {last}" if last else "",
+                    {"retry": "restarting in 10s", "reset": "resetting the dongle, then restarting in 10s",
+                     "restart": "restarting the whole station", "wait": "trying again in a minute"}[step])
         if last:
             try:
                 LAST_EXIT.write_text(f"exit code {ret}: {last}\n")
             except OSError:
                 pass
-        time.sleep(10)
+        if step == "reset":
+            for line in reset_dongles() or ["no RTL-SDR dongle found on USB"]:
+                log.warning("rtl_433: %s", line)
+        elif step == "restart":
+            try:
+                RESTARTED.write_text(f"{time.strftime('%Y-%m-%d %H:%M:%S')} after {failed} failed starts\n")
+            except OSError:
+                pass
+            log.error("rtl_433 failed to start %d times in a row; ending the station so it starts fresh", failed)
+            for handler in logging.getLogger().handlers:
+                handler.flush()
+            os._exit(75)       # its service (systemd, the boot loader) starts it again
+        time.sleep(60 if step == "wait" else 10)
 
 
 def discover(cfg: configparser.ConfigParser, duration_s: int = 300) -> None:

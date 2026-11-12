@@ -1,12 +1,12 @@
 """
 Tell someone when readings stop ([alerts]).
 
-    python3 acurite-capture.py --check        # run every few minutes by a timer
+    python3 acurite-capture.py --check        # run every minute
     python3 acurite-capture.py --test-alert   # send a test message now
 
-The check runs apart from the program that records, from its own systemd timer
-(cc0ac-weather-check.timer), so it still speaks up when that program has hung or
-died, not only when the hub goes quiet. It reads the time of the newest reading
+The check runs as a process of its own, every minute, started by the boot loader (or,
+for a station started some other way, by the station), so under the boot loader it
+still speaks up when the program that records has hung or died. It reads the time of the newest reading
 from current.json. Once that is older than quiet_minutes it sends one message,
 "no readings since ...", and when readings come back it sends one more, "back".
 In between it says nothing.
@@ -30,6 +30,7 @@ import json
 import logging
 import re
 import smtplib
+import socket
 import ssl
 import time
 import urllib.request
@@ -420,9 +421,12 @@ def _field_words(field: str) -> str:
 
 # The receivers: what hears the sensors. Each sensor's reception (recorder.py) says
 # which heard it lately, but only for the last hour, so the time each receiver last
-# heard anything is kept in the alert state. One switched on that has gone quiet
-# while the others still hear is a notice: two receivers hearing the same sensors
-# hide each other's silence from the per-sensor notice. Its name, and what to try.
+# heard anything is kept in the alert state, and its raw log's last write counts too
+# (a restarted station has no reception yet). One switched on that has heard nothing
+# for receiver_quiet_minutes (5) is a short notice pointing at the status page, whether
+# or not another receiver still hears: two receivers hearing the same sensors hide
+# each other's silence from the per-sensor notice. Its name, and what to try.
+RECEIVER_QUIET_MINUTES = 5
 RECEIVER_WORDS = {
     "radio": ("The radio (rtl_433)", "Check the radio dongle is plugged in; if rtl_433 keeps failing to start, "
                                      "unplug the dongle and plug it back in."),
@@ -444,24 +448,48 @@ def _receivers_on(cfg: configparser.ConfigParser) -> list[str]:
     return on
 
 
-def _quiet_receivers(cfg: configparser.ConfigParser, snapshot: dict, now: float, quiet: float, station_fresh: bool,
-                     state: dict, state_path: Path) -> dict[str, tuple[str, str]]:
+def _raw_log_written(cfg: configparser.ConfigParser) -> dict[str, float]:
+    """{receiver: when its newest non-empty raw log was last written}."""
+    from cc0ac import status     # status imports the web side; only the check needs it
+    written = {}
+    for who, folder in status._raw_dirs(cfg).items():
+        days = status._log_days(folder)
+        if days and (folder / days[0]).stat().st_size:
+            written[who] = (folder / days[0]).stat().st_mtime
+    return written
+
+
+def status_url(cfg: configparser.ConfigParser) -> str:
+    """The status page as this station's own network reaches it (it is not served outside)."""
+    port = (cfg.get("web", "port", fallback="12345").split(",")[0].strip() or "12345")
+    return f"http://{socket.gethostname()}.local:{port}/status"
+
+
+def _quiet_receivers(cfg: configparser.ConfigParser, snapshot: dict, now: float, state: dict,
+                     state_path: Path) -> dict[str, tuple[str, str]]:
     heard: dict = dict(state.get("receivers_heard") or {})    # receiver -> when it last heard anything
     for s in snapshot.get("sensors", []):
         for who, r in (s.get("reception") or {}).items():
             at = _stamp(str((r or {}).get("last") or ""))
             if at is not None and at > float(heard.get(who) or 0):
                 heard[who] = at
+    try:
+        for who, at in _raw_log_written(cfg).items():
+            if at > float(heard.get(who) or 0):
+                heard[who] = at
+    except OSError:
+        pass
     _save_state(state_path, "receivers_heard", heard)
+    quiet = _setting(cfg, "receiver_quiet_minutes", RECEIVER_QUIET_MINUTES) * 60
     found = {}
     for who in _receivers_on(cfg):
         last = heard.get(who)
-        if not station_fresh or last is None or now - float(last) <= quiet:
+        if last is None or now - float(last) <= quiet:
             continue
         label, hint = RECEIVER_WORDS[who]
         since = datetime.fromtimestamp(float(last)).astimezone().strftime("%a %b %d %H:%M")
-        message = (f"{label} hasn't heard any sensor since {since} ({(now - float(last)) / 60:.0f} minutes), "
-                   f"though readings still come in another way. {hint}")
+        message = (f"{label} hasn't heard any sensor since {since} ({(now - float(last)) / 60:.0f} minutes). "
+                   f"{hint} Status: {status_url(cfg)}")
         if who == "radio":
             try:
                 said = RTL_433_LAST_EXIT.read_text().strip()
@@ -507,7 +535,7 @@ def check_sensors(cfg: configparser.ConfigParser, write_path: Path, now: float |
                                            "The last believed value is shown until it reads true again.")
     state = _load_state(state_path)
     if "sensors" in wanted:
-        found.update(_quiet_receivers(cfg, snapshot, now, quiet, station_fresh, state, state_path))
+        found.update(_quiet_receivers(cfg, snapshot, now, state, state_path))
     sent: dict = dict(state.get("sensors") or {})      # key -> the sensor's name
     name = cfg.get("station", "name", fallback="").strip() or "Weather station"
     did = []

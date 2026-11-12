@@ -42,7 +42,7 @@ from typing import Any
 
 PLATFORMS = ("pi", "debian", "docker", "windows", "macos")
 REPO = "akienm/CC0AC-Weather"
-CHECK_EVERY_S = 300            # the reading-stopped check (--check)
+CHECK_EVERY_S = 60             # the readings check (--check): a receiver quiet 5 minutes is told
 HEALTH_WAIT_S = 15 * 60        # a new version has this long to prove itself
 HEALTH_POLL_S = 10
 ALIVE = "running"        # touched every minute by `run`

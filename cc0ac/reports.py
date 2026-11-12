@@ -14,7 +14,7 @@ what is usual here:
 A week runs Sunday to Saturday, as the rain totals do. Without a date: the last
 whole day, week or month. A period that hasn't ended yet says "so far".
 
-The emails ride the alert check (cc0ac-weather-check.timer, every 5 minutes):
+The emails ride the alert check (every minute, by the boot loader or the station itself):
 after [reports] hour on the day a period ends, the report for it goes out once,
 through [alerts]' mail server. alert-state.json remembers which went out.
 """
