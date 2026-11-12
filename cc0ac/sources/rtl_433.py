@@ -266,17 +266,22 @@ STDERR_KEEP = 4
 # restart left rtl_433 exiting within seconds, 11,161 times over 46 hours, until the
 # whole station was restarted. A run that ends before STEADY_S counts as a failed start:
 #   1-2 failed starts: start it again in 10 s;
-#   RESET_AFTER: reset the dongle on its USB port too (as unplugging it would);
+#   RESET_AFTER: reset the dongle on its USB port too (it keeps its power);
+#   REPLUG_AFTER: unplug it and plug it back in, in software (the kernel lets go of it
+#     and finds it again; takes root, by the script and sudoers rule migration 0009
+#     installs; skipped where they aren't);
 #   RESTART_AFTER: end the whole station so its service starts it fresh, at most once
 #     an hour (RESTARTED marks when), so a dongle that is gone can't keep the hub down;
 #   after that: try again every minute. The receiver notice (alerts.py) has told by then.
 STEADY_S = 120
 RESET_AFTER = 3
-RESTART_AFTER = 6
+REPLUG_AFTER = 5
+RESTART_AFTER = 7
 RESTART_GAP_S = 3600
 RESTARTED = CONFIG_DIR / "rtl_433-restarted-station.txt"
 USBDEVFS_RESET = 0x5514                    # _IO('U', 20), linux/usbdevice_fs.h
 RTL_SDR_IDS = {("0bda", "2838"), ("0bda", "2832")}
+REPLUG = Path("/usr/local/libexec/cc0ac-weather/replug-radio")   # migration 0009
 USB_DEVICES = Path("/sys/bus/usb/devices")
 
 
@@ -307,7 +312,23 @@ def next_step(failed: int, now: float, restarted_at: float | None) -> str:
         return "wait"
     if failed == RESET_AFTER:
         return "reset"
+    if failed == REPLUG_AFTER:
+        return "replug"
     return "retry"
+
+
+def replug_dongles(script: Path = REPLUG) -> list[str]:
+    """Unplug and plug back in, in software, every RTL-SDR dongle: the root script migration
+    0009 installs, through sudo without a password (never asks; says so if it can't)."""
+    if not script.exists():
+        return [f"can't replug: {script} isn't installed (an update installs it)"]
+    cmd = [str(script)] if os.geteuid() == 0 else ["sudo", "-n", str(script)]
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return [f"can't replug: {exc}"]
+    said = (out.stdout + out.stderr).strip().splitlines()
+    return said if out.returncode == 0 else [f"replug failed (exit {out.returncode})"] + said
 
 
 def _restarted_at() -> float | None:
@@ -370,6 +391,7 @@ def run(cfg: configparser.ConfigParser, emit: Emit) -> None:
         step = next_step(failed, time.time(), _restarted_at())
         log.warning("rtl_433 exited (code %s)%s; %s", ret, f": {last}" if last else "",
                     {"retry": "restarting in 10s", "reset": "resetting the dongle, then restarting in 10s",
+                     "replug": "unplugging and replugging the dongle, then restarting in 10s",
                      "restart": "restarting the whole station", "wait": "trying again in a minute"}[step])
         if last:
             try:
@@ -378,6 +400,9 @@ def run(cfg: configparser.ConfigParser, emit: Emit) -> None:
                 pass
         if step == "reset":
             for line in reset_dongles() or ["no RTL-SDR dongle found on USB"]:
+                log.warning("rtl_433: %s", line)
+        elif step == "replug":
+            for line in replug_dongles():
                 log.warning("rtl_433: %s", line)
         elif step == "restart":
             try:

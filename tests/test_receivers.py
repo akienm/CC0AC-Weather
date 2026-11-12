@@ -166,11 +166,11 @@ class Rtl433GetsGoingAgain(unittest.TestCase):
         return rtl_433.next_step(failed, NOW, None if restarted_ago is None else NOW - restarted_ago)
 
     def test_the_ladder(self):
-        self.assertEqual([self.step(n) for n in range(1, 8)],
-                         ["retry", "retry", "reset", "retry", "retry", "restart", "restart"])
+        self.assertEqual([self.step(n) for n in range(1, 9)],
+                         ["retry", "retry", "reset", "retry", "replug", "retry", "restart", "restart"])
 
     def test_the_station_is_restarted_at_most_once_an_hour(self):
-        self.assertEqual(self.step(6, restarted_ago=600), "wait")
+        self.assertEqual(self.step(7, restarted_ago=600), "wait")
         self.assertEqual(self.step(40, restarted_ago=3599), "wait")
         self.assertEqual(self.step(41, restarted_ago=3600), "restart")
 
@@ -196,9 +196,9 @@ class Rtl433GetsGoingAgain(unittest.TestCase):
         from cc0ac.sources import rtl_433
         with tempfile.TemporaryDirectory() as d:
             home = Path(d)
-            saved = (rtl_433.command, rtl_433.time.sleep, rtl_433.os._exit, rtl_433.reset_dongles,
+            saved = (rtl_433.command, rtl_433.time.sleep, rtl_433.os._exit, rtl_433.reset_dongles, rtl_433.replug_dongles,
                      rtl_433.CONFIG_DIR, rtl_433.LAST_EXIT, rtl_433.RESTARTED)
-            resets, slept = [], []
+            resets, replugs, slept = [], [], []
 
             class Ended(Exception):
                 pass
@@ -208,16 +208,17 @@ class Rtl433GetsGoingAgain(unittest.TestCase):
             rtl_433.command = lambda cfg: ["sh", "-c", "echo Input device start failed >&2; exit 3"]
             rtl_433.time.sleep, rtl_433.os._exit = slept.append, end
             rtl_433.reset_dongles = lambda: resets.append(1) or ["reset 0bda:2838"]
+            rtl_433.replug_dongles = lambda: replugs.append(1) or ["replugged 1-1.3"]
             rtl_433.CONFIG_DIR, rtl_433.LAST_EXIT, rtl_433.RESTARTED = home, home / "last.txt", home / "restarted.txt"
             try:
                 with self.assertRaises(Ended) as ended:
                     rtl_433.run(configparser.ConfigParser(), lambda r: {})
                 self.assertEqual(ended.exception.args, (75,))
-                self.assertEqual((len(resets), slept), (1, [10] * 5))
+                self.assertEqual((len(resets), len(replugs), slept), (1, 1, [10] * 6))
                 self.assertTrue(rtl_433.RESTARTED.exists())
                 self.assertIn("exit code 3: Input device start failed", rtl_433.LAST_EXIT.read_text())
             finally:
-                (rtl_433.command, rtl_433.time.sleep, rtl_433.os._exit, rtl_433.reset_dongles,
+                (rtl_433.command, rtl_433.time.sleep, rtl_433.os._exit, rtl_433.reset_dongles, rtl_433.replug_dongles,
                  rtl_433.CONFIG_DIR, rtl_433.LAST_EXIT, rtl_433.RESTARTED) = saved
 
 if __name__ == "__main__":

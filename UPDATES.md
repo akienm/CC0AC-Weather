@@ -246,7 +246,7 @@ this:
    `docker`, `windows`, `macos`), so a step for the Pi never runs on Windows.
 3. It starts the station program from the chosen version, and restarts it if it
    stops.
-4. It runs the reading-stopped check (`--check`) every 5 minutes, from outside
+4. It runs the reading-stopped check (`--check`) every minute, from outside
    the station program, so the check still happens if the station has died.
 
 The service that the operating system starts (systemd, launchd, a Windows
@@ -316,6 +316,27 @@ weather gear at all becomes a weather display:
 Open-Meteo when it doesn't. The forecast works the same way (`[forecast] source`),
 so outside the US the hourly and 7-day cards come from Open-Meteo. Open-Meteo has
 no alerts, so the alert banner shows only in the US.
+
+## When the radio won't start
+
+If `rtl_433` keeps stopping within two minutes of starting, the station works up a
+ladder of fixes, the way you would by hand: it tries again after each stop; on
+the 3rd it resets the dongle on its USB port; on the 5th it unplugs the dongle
+and plugs it back in, in software (the kernel lets go of it and finds it again;
+only its power stays on); on the 7th it ends the whole station so its service
+starts it fresh, at most once an hour. Each step goes in the log, and the last
+thing `rtl_433` said before it stopped is kept in `rtl_433-last-exit.txt`.
+
+Unplugging takes root. Migration `0009` (Pi and Debian) installs a small root
+script, `/usr/local/libexec/cc0ac-weather/replug-radio`, and a sudoers rule,
+`/etc/sudoers.d/cc0ac-weather-radio`, that lets the station's user run that one
+script, with no arguments, and nothing else. The rule is checked with `visudo`
+before it is written. An updated station gets both with its next update; nothing
+to do by hand. A station set up without the boot loader skips the step until
+they are installed (copy the script from the migration and add the rule with
+`sudo visudo -f /etc/sudoers.d/cc0ac-weather-radio`). A real power cut is not
+offered: a Pi 4 or 400 switches the power of all its USB ports together, and a Pi
+that boots from a USB disk would cut its own disk.
 
 ## Looking after the computer: disks and a backup
 
