@@ -52,11 +52,30 @@ def _interval(times: list[float]) -> float | None:
     gaps = [b - a for a, b in zip(times, times[1:]) if b - a >= 2]
     if len(gaps) < 4:
         return None
+    total = sum(gaps)
+
+    def over(base: float) -> tuple[float, int]:
+        # A missed reading makes a gap of two or three intervals; those still count,
+        # and over many of them the whole-second rounding of the times averages out.
+        steps = [(g, n) for g in gaps if 1 <= (n := round(g / base)) <= 8]
+        return sum(g for g, _ in steps), sum(n for _, n in steps)
+
     base = sorted(gaps)[len(gaps) // 10]
-    # A missed reading makes a gap of two or three intervals; those still count,
-    # and over many of them the whole-second rounding of the times averages out.
-    steps = [(g, round(g / base)) for g in gaps if round(g / base) <= 8]
-    return sum(g for g, _ in steps) / sum(n for _, n in steps)
+    covered, n = over(base)
+    long = [g for g in gaps if round(g / base) > 8]
+    if len(long) >= 4 and sum(long) >= total / 2:
+        # Gaps far longer than the short ones, many of them, and most of the time: a
+        # rhythm of their own, after a receiver back from an outage sent its backlog
+        # in a burst (the hub, 37 readings 4 s apart on 2026-11-11, then every 300 s;
+        # the card said "hub 7%" for an hour). The rhythm is then the gap half the
+        # time is spent in. (One long silence is not a rhythm: it stays a silence.)
+        run = 0.0
+        for g in sorted(gaps):
+            run += g
+            if run >= total / 2:
+                covered, n = over(g)
+                break
+    return covered / n if n else None
 
 
 class Reception(TypedDict, total=False):

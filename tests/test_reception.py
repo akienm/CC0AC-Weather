@@ -56,6 +56,17 @@ class Reception(unittest.TestCase):
         heard("t4", "radio", [NOW - 600 + i * 16.25 for i in range(37)])
         self.assertGreaterEqual(rec.reception("t4", NOW)["radio"]["percent"], 95)
 
+    def test_a_backlog_after_an_outage_is_not_the_rhythm(self):
+        # akienpi, 2026-11-11: the hub came back after three hours dark and sent its
+        # backlog, 37 readings 4 s apart, then its 5-minute uploads again. The card
+        # said "hub 7%", one every 4.3 s, for the next hour.
+        burst = [NOW - 3000 + i * 4 for i in range(37)]
+        heard("t9", "hub", [NOW - 3590 + i * 300 for i in range(12) if NOW - 3590 + i * 300 < burst[0]]
+                           + burst + [burst[-1] + 60 + i * 300 for i in range(9)])
+        r = rec.reception("t9", NOW)["hub"]
+        self.assertTrue(250 <= r["every_s"] <= 350, r)
+        self.assertEqual(r["percent"], 100)
+
     def test_receivers_counted_apart_and_old_readings_dropped(self):
         heard("t5", "hub", [NOW - 7200 + i * 300 for i in range(25)])
         heard("t5", "radio", [NOW - 100])
