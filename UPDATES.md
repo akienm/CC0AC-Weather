@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.4.13)
+# How CC0AC-Weather installs and keeps itself up to date (1.4.14)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -337,6 +337,25 @@ they are installed (copy the script from the migration and add the rule with
 `sudo visudo -f /etc/sudoers.d/cc0ac-weather-radio`). A real power cut is not
 offered: a Pi 4 or 400 switches the power of all its USB ports together, and a Pi
 that boots from a USB disk would cut its own disk.
+
+## When a network profile is lost
+
+A power cut at the wrong moment can leave a file empty. On 2026-10-23 two power
+drops at the author's Pi left both its network profiles, the Wi-Fi and the hub's
+cable, at 0 bytes: no Wi-Fi, the hub cut off, and nothing the station could do
+until someone came to the keyboard.
+
+Migration `0010` (Pi and Debian) adds a small root script,
+`/usr/local/libexec/cc0ac-weather/keep-network`, run every minute by
+`cc0ac-keep-network.timer`. It copies each whole profile (NetworkManager's in
+`/etc/NetworkManager/system-connections`, and the netplan files newer Pi OS keeps
+them in) to `/var/lib/cc0ac-weather/network-profiles`, readable only by root,
+since a Wi-Fi profile holds its password. A profile found empty or cut short is
+put back from its copy and NetworkManager reads it again; the log says so
+(`journalctl -u cc0ac-keep-network`). A profile that is gone is left gone:
+deleting one is something you do on purpose. A copy can only be put back once it
+was taken, so a profile lost before the update has no copy (set it up again
+once, by hand; from then on it is kept).
 
 ## Looking after the computer: disks and a backup
 

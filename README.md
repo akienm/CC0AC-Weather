@@ -1585,6 +1585,13 @@ it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
 
+**1.4.14** · Nov 11, 2026
+- **A network profile found empty is put back**: every minute the station keeps a
+  copy of each whole Wi-Fi and cable profile, readable only by root, and restores
+  one a power cut left empty or broken (as two did to the author's Pi on Oct 23).
+  Tested on the author's Pi: the hub's profile emptied by hand was back within a
+  minute and the hub was heard again.
+
 **1.4.13** · Nov 11, 2026
 - **How far back reception counts is a setting**: `[station] reception_minutes`
   (60 unset, at least 5) for the "radio 98%" on each card; the hover says the span
