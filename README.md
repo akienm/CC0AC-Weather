@@ -1585,6 +1585,37 @@ it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
 
+**1.4.12** · Nov 11, 2026
+- **Air quality**: with `[air] enabled = true`, an Air quality pane on the
+  dashboard (`?panes=air`): the US AQI in its EPA colour, the pollutant behind it,
+  PM2.5, PM10, ozone, UV, and the highest AQI today and tomorrow, from Open-Meteo
+  (free, no key, worldwide). Running on the author's station.
+- **Pollen**: today and tomorrow, with the plants behind it, from Google's Pollen
+  API if `[air] google_api_key` is set, otherwise pollen.com for `[air]
+  pollen_zip` (US). Both are private settings, kept in `secrets.env`. **\***
+- **A receiver that goes quiet is told**: if the radio, the hub or the console
+  hears nothing for 5 minutes (`[alerts] receiver_quiet_minutes`), one message
+  says so, with a link to the status page, and one more when it's back, even
+  while another receiver still hears the sensors. Born of a radio that was silent
+  for two days while the hub carried on.
+- **The checks run every minute**, from the boot loader, or from the station
+  itself where it runs without one.
+- **The radio gets itself going again**: when `rtl_433` keeps stopping, the
+  station tries again, then resets the dongle, then unplugs and replugs it in
+  software, then restarts itself, at most once an hour; see
+  [UPDATES.md](UPDATES.md#when-the-radio-wont-start). The replug is installed by a
+  new update step on a Pi or Debian (a root script and a one-line sudoers rule).
+  Tested on the author's Pi 400 with its dongle.
+- **The hub's network comes back**: on a station that is also the hub's network,
+  `dnsmasq` is restarted whenever it stops (it could lose a race with the network
+  port at boot and stay down, as it did for three hours). **\***
+- **Lightning: one alert per storm**: a far strike after a close one no longer
+  ends the lightning alert a minute later (the sensor sends only its latest
+  strike's distance); the all-clear waits for `lightning_minutes` after the last
+  close strike. Tested with a made-up storm, not yet a real one. **\***
+- **Status page**: a receiver whose log has entries no longer says "last heard:
+  never".
+
 **Android app 2.2** · Nov 10, 2026
 - **Its own icon**: a sun behind a cloud, in place of Android's plain default. On
   Android 8 and later it takes the shape your launcher gives icons. Checked on the
