@@ -1585,6 +1585,15 @@ it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
 
+**1.4.13** · Nov 11, 2026
+- **How far back reception counts is a setting**: `[station] reception_minutes`
+  (60 unset, at least 5) for the "radio 98%" on each card; the hover says the span
+  (Anthony's request).
+- **A backlog is not a weak signal**: a receiver back from an outage sends what it
+  missed in a burst, and the card took the burst's few seconds for the receiver's
+  rhythm ("hub 7%" for an hour after). Checked against the author's hub after its
+  three-hour outage: 100%.
+
 **1.4.12** · Nov 11, 2026
 - **Air quality**: with `[air] enabled = true`, an Air quality pane on the
   dashboard (`?panes=air`): the US AQI in its EPA colour, the pollutant behind it,
