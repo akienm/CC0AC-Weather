@@ -23,7 +23,7 @@ sys.path.insert(0, str(REPO / "updates"))
 import bootloader as bl   # noqa: E402
 
 FAKE_STATION = r'''
-import argparse, configparser, http.server, json, sys, threading, time
+import argparse, configparser, http.server, json, os, sys, threading, time
 from datetime import datetime, timezone
 from pathlib import Path
 here = Path(__file__).resolve().parent
@@ -43,7 +43,10 @@ class H(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a): pass
 http.server.ThreadingHTTPServer.allow_reuse_address = True
 threading.Thread(target=http.server.ThreadingHTTPServer(("127.0.0.1", port), H).serve_forever, daemon=True).start()
+parent = os.getppid()
 while True:
+    if os.getppid() != parent:   # the test run died before tearDown: never outlive it
+        sys.exit(0)
     if behavior == "good":
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         (out / "current.json").write_text(json.dumps({"sensors": [{"sensor_id": "s1", "updated": now}]}))
