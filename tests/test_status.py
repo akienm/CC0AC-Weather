@@ -8,6 +8,7 @@ file goes in a folder of its own that is thrown away afterwards.
 import configparser
 import io
 import json
+import os
 import sys
 import tarfile
 import tempfile
@@ -148,6 +149,29 @@ class StatusData(Station):
         self.assertEqual(s["sends"][0]["logs"], [f"sent/windy/{TODAY}.log"])
         self.assertGreaterEqual(s["uptime_s"], 0)
 
+
+    def _hub_gone_from_current(self, cfg):
+        current = json.loads((self.home / "out" / "current.json").read_text())
+        for s in current["sensors"]:
+            del s["reception"]["hub"]
+        (self.home / "out" / "current.json").write_text(json.dumps(current))
+
+    def _hub(self, cfg):
+        return next(r for r in status.system_status(cfg, self.home / "out")["sources"] if r["name"] == "hub")
+
+    def test_a_receiver_gone_quiet_is_last_heard_when_its_log_was_written(self):
+        # 2026-11-11 on the Pi: the hub dropped out of current.json, its logs stood beside
+        # it, and the page said "last heard: never".
+        cfg = self.station()
+        self._hub_gone_from_current(cfg)
+        os.utime(self.home / "hub-raw" / f"{TODAY}.log", (1794431547, 1794431547))
+        self.assertEqual(self._hub(cfg)["last"], "2026-11-11T21:12:27Z")
+
+    def test_an_empty_log_is_not_a_hearing(self):
+        cfg = self.station()
+        self._hub_gone_from_current(cfg)
+        (self.home / "hub-raw" / f"{TODAY}.log").write_text("")
+        self.assertIsNone(self._hub(cfg)["last"])
 
 class StatusPages(Station):
     def setUp(self):

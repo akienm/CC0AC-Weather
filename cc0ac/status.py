@@ -120,7 +120,13 @@ def system_status(cfg: configparser.ConfigParser, write_path: Path, now: float |
     for who, folder in raw.items():
         days = _log_days(folder)
         if days or who in receivers:
-            sources.append({"name": who, "last": receivers.get(who),
+            # A receiver drops out of current.json's reception once it goes quiet, but its log
+            # was written when it last heard something: a log with lines in it is never "never".
+            last = receivers.get(who)
+            newest = folder / days[0] if days else None
+            if newest is not None and newest.stat().st_size:
+                last = max(last or "", epoch_to_iso(newest.stat().st_mtime))
+            sources.append({"name": who, "last": last,
                             "logs": [f"{who}-raw/{d}" for d in days]})
     if "online" in receivers:
         sources.append({"name": "online", "last": receivers["online"], "logs": []})

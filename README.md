@@ -420,7 +420,9 @@ with yours; any private range works.
    # DHCP and DNS for the hub, on the cable port only.
    interface=eth0
    except-interface=lo
-   bind-interfaces
+   # bind-dynamic, not bind-interfaces: at boot dnsmasq can start before the cable
+   # port exists, and bind-interfaces then quits for good (the hub goes dark).
+   bind-dynamic
    dhcp-range=192.168.77.50,192.168.77.99,12h
    dhcp-option=option:router,192.168.77.1
    dhcp-option=option:dns-server,192.168.77.1
