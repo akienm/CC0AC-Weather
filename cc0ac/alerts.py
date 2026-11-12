@@ -200,7 +200,7 @@ def _setting(cfg: configparser.ConfigParser, key: str, default: float) -> float:
 
 
 def weather_conditions(cfg: configparser.ConfigParser, snapshot: dict, now: float,
-                       was: dict | None = None) -> dict[str, str | None]:
+                       was: dict | None = None, close_strike: dict | None = None) -> dict[str, str | None]:
     """Each weather alert switched on → what is happening now, or None if it isn't.
     was: which were on at the last check (they end a little past the threshold)."""
     was = was or {}
@@ -237,6 +237,10 @@ def weather_conditions(cfg: configparser.ConfigParser, snapshot: dict, now: floa
         # A strike the station heard (its count rose: last_strike_heard) within
         # lightning_mi, in the last lightning_minutes; over once that long passes
         # with none so close. Any sensor with a lightning detector, room or outdoor.
+        # A sensor sends the distance of its latest strike only, so the closest one
+        # heard is kept in close_strike (the caller keeps it between checks): a far
+        # strike after a close one must not end the alert while the close one is
+        # still within the window (Anthony's 11-06 storm, alerts inside the bursts).
         near, window = _setting(cfg, "lightning_mi", 10), _setting(cfg, "lightning_minutes", 30) * 60
         close = []
         for s in snapshot.get("sensors", []):
@@ -246,9 +250,18 @@ def weather_conditions(cfg: configparser.ConfigParser, snapshot: dict, now: floa
             except (KeyError, AttributeError, ValueError):
                 continue
             if isinstance(f.get("last_strike_mi"), (int, float)) and f["last_strike_mi"] <= near and now - heard <= window:
-                close.append((f["last_strike_mi"], s.get("name", ""), f.get("strikes_today")))
+                close.append((f["last_strike_mi"], s.get("name", ""), f.get("strikes_today"), heard))
+        if close_strike is not None:
+            if close and max(c[3] for c in close) >= close_strike.get("at", 0):
+                mi, name, _, heard = max(close, key=lambda c: c[3])     # the newest close strike
+                close_strike.clear()
+                close_strike.update(at=heard, mi=mi, name=name)
+            elif close_strike.get("at") and now - close_strike["at"] <= window:
+                today = next((f.get("strikes_today") for f in (s.get("fields") or {} for s in snapshot.get("sensors", []))
+                              if isinstance(f.get("strikes_today"), int)), None)
+                close.append((close_strike["mi"], close_strike.get("name", ""), today, close_strike["at"]))
         if close:
-            mi, name, today = min(close, key=lambda c: c[0])
+            mi, name, today, _ = min(close, key=lambda c: c[0])
             out["lightning"] = (f"Lightning: a strike {units.show('distance', mi, shown_in)} away, heard at {name}"
                                 + (f" ({today} today)." if isinstance(today, int) else "."))
         else:
@@ -280,7 +293,8 @@ def check_weather(cfg: configparser.ConfigParser, write_path: Path, now: float |
     name = cfg.get("station", "name", fallback="").strip() or "Weather station"
     sent = dict(state.get("weather") or {})
     did = []
-    for kind, now_says in weather_conditions(cfg, snapshot, now, sent).items():
+    close_strike = dict(state.get("lightning_close") or {})
+    for kind, now_says in weather_conditions(cfg, snapshot, now, sent, close_strike).items():
         if now_says and not sent.get(kind):
             message, title = now_says, f"{name}: {now_says.split(':')[0].lower()}"
         elif not now_says and sent.get(kind):
@@ -296,7 +310,7 @@ def check_weather(cfg: configparser.ConfigParser, write_path: Path, now: float |
             continue
         sent[kind] = bool(now_says)
         did.append(f"{kind} {'alerted' if now_says else 'over'}")
-    state = {**_load_state(state_path), "weather": sent}
+    state = {**_load_state(state_path), "weather": sent, "lightning_close": close_strike}
     state_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = state_path.with_name(state_path.name + ".tmp")
     tmp.write_text(json.dumps(state))

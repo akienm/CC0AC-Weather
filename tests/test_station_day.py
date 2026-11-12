@@ -234,8 +234,11 @@ class LightningAlert(unittest.TestCase):
     def test_a_close_strike_alerts_once_then_over_after_the_quiet(self):
         self.assertEqual(self.look(6, 2), "weather: lightning alerted")
         self.assertEqual(self.sent[-1], ("Home: lightning", "Lightning: a strike 6 mi away, heard at Yard (3 today)."))
-        self.assertEqual(self.look(4, 20, today=5), "weather: nothing new")
-        self.assertEqual(self.look(4, 31, today=5), "weather: lightning over")
+        # A second close strike 10 minutes on, then the clock runs on with no more.
+        # (minutes_ago counts from NOW: -10 is heard at NOW + 10 minutes.)
+        self.assertEqual(self.look(4, -10, today=5, now=self.NOW + 10 * 60), "weather: nothing new")
+        self.assertEqual(self.look(4, -10, today=5, now=self.NOW + 40 * 60), "weather: nothing new")
+        self.assertEqual(self.look(4, -10, today=5, now=self.NOW + 41 * 60), "weather: lightning over")
         self.assertEqual(self.sent[-1], ("Home: lightning over", "No lightning within 10 mi for 30 minutes."))
         self.assertEqual(len(self.sent), 2)
 

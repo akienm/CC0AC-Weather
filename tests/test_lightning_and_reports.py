@@ -165,6 +165,61 @@ class FarStrikesNotCounted(unittest.TestCase):
             st.close()
 
 
+class LightningAlertThroughABurst(unittest.TestCase):
+    """A sensor sends only its latest strike's distance. In a storm of close and far strikes
+    mixed, a far one used to end the alert a minute after a close one ("No lightning within
+    10 mi for 30 minutes"), and the next close one started it again: alerts inside the
+    bursts, as in Anthony's 11-06 storm. One alert per storm, one all-clear."""
+
+    def setUp(self):
+        from cc0ac import alerts
+        self.alerts = alerts
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.sent, self._send = [], alerts.send
+        alerts.send = lambda c, title, message: self.sent.append((title, message)) or []
+        self.c = configparser.ConfigParser()
+        self.c.read_dict({"alerts": {"enabled": "true", "weather": "lightning"}, "station": {"name": "Home"}})
+
+    def tearDown(self):
+        self.alerts.send = self._send
+        self.tmp.cleanup()
+
+    def storm(self, strikes, minutes):
+        """strikes: {minute: miles}; the station checks once a minute."""
+        t0 = datetime(2026, 11, 6, 6, 0).timestamp()
+        count = 256
+        for m in range(minutes):
+            latest = max((s for s in strikes if s <= m), default=None)
+            fields = {}
+            if latest is not None:
+                count = 256 + sum(1 for s in strikes if s <= m)
+                fields = {"last_strike_mi": strikes[latest], "strikes_today": count - 256,
+                          "last_strike_heard": store.epoch_to_iso(t0 + latest * 60)}
+            (self.root / "current.json").write_text(json.dumps(
+                {"sensors": [{"sensor_id": "6045", "name": "Lightning", "fields": fields}]}))
+            self.alerts.check_weather(self.c, self.root, t0 + m * 60, self.root / "state.json")
+        return [title for title, _ in self.sent]
+
+    def test_far_strikes_between_close_ones_do_not_end_it(self):
+        said = self.storm({0: 4, 2: 18, 5: 6, 7: 22, 9: 3, 12: 25}, 60)
+        self.assertEqual(said, ["Home: lightning", "Home: lightning over"])
+        self.assertIn("for 30 minutes", self.sent[1][1])
+
+    def test_the_all_clear_counts_from_the_last_close_strike(self):
+        self.storm({0: 4, 9: 3, 12: 25}, 39)
+        self.assertEqual(len(self.sent), 1)           # 9 + 30: still within the window
+        self.storm({0: 4, 9: 3, 12: 25}, 41)
+        self.assertEqual(len(self.sent), 2)
+
+    def test_only_far_strikes_never_alert(self):
+        self.assertEqual(self.storm({0: 18, 3: 25}, 20), [])
+
+    def test_a_close_strike_after_the_all_clear_is_a_new_storm(self):
+        self.assertEqual(self.storm({0: 4, 50: 5}, 90),
+                         ["Home: lightning", "Home: lightning over", "Home: lightning", "Home: lightning over"])
+
+
 class LastStrikeShowsWhen(unittest.TestCase):
     """The card's last strike says when, then how far (Anthony, 2026-11-10). Checked in a
     browser against his snapshot: the hub's 2026-11-06T12:45:34 (UTC, no zone) showed as
