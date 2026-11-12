@@ -60,8 +60,10 @@ def _interval(times: list[float]) -> float | None:
 
 
 class Reception(TypedDict, total=False):
-    """How one receiver heard one sensor over the last hour. every_s, expected and
-    percent need two or more messages; snr_db needs a radio that reports it."""
+    """How one receiver heard one sensor over the last window_s seconds (an hour unless
+    [station] reception_minutes says). every_s, expected and percent need two or more
+    messages; snr_db needs a radio that reports it."""
+    window_s: float
     heard: int
     last: str
     every_s: float
@@ -76,7 +78,7 @@ class Recorder:
     pressure trend and the open database. One lives for the whole run (run_daemon makes
     it); a test makes its own, so nothing carries over from one to the next."""
 
-    def __init__(self, ignore_beyond_mi: float | None = None) -> None:
+    def __init__(self, ignore_beyond_mi: float | None = None, heard_window_s: float = HEARD_WINDOW_S) -> None:
         self._current: dict[str, dict] = {}
         self.lock = threading.Lock()   # guards everything below
 
@@ -93,6 +95,7 @@ class Recorder:
         # uploads every 5 min), so the interval is read from the gaps themselves: the
         # shortest common gap, refined over the gaps that are a few intervals long.
         self._heard: dict[str, dict[str, dict]] = {}   # sensor_id → receiver → {"at": deque, "snr": [..]}
+        self.heard_window_s = heard_window_s           # [station] reception_minutes; an hour unset
 
         # Lightning: a sensor keeps a running count of the strikes it has heard, which
         # goes on from wherever it was (and starts again when its batteries come out), so
@@ -122,7 +125,7 @@ class Recorder:
         hours are read: a sensor heard before the hour began is not a new one."""
         if db_path is None or not db_path.exists():
             return
-        since = datetime.fromtimestamp(now - 2 * HEARD_WINDOW_S, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        since = datetime.fromtimestamp(now - 2 * self.heard_window_s, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         try:
             con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
             rows = con.execute("SELECT sensor_id, hub_id, received_utc FROM readings WHERE received_utc >= ?"
@@ -138,20 +141,20 @@ class Recorder:
         """{receiver: Reception} for the last hour."""
         out: dict[str, Reception] = {}
         for who, h in self._heard.get(sensor_id, {}).items():
-            while h["at"] and h["at"][0] < now - HEARD_WINDOW_S:
+            while h["at"] and h["at"][0] < now - self.heard_window_s:
                 h["at"].popleft()
-            while h["snr"] and h["snr"][0][0] < now - HEARD_WINDOW_S:
+            while h["snr"] and h["snr"][0][0] < now - self.heard_window_s:
                 h["snr"].popleft()
             if not h["at"]:
                 continue
             times = list(h["at"])
             every = _interval(times)
-            r: Reception = {"heard": len(times), "last": datetime.fromtimestamp(times[-1], timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+            r: Reception = {"window_s": self.heard_window_s, "heard": len(times), "last": datetime.fromtimestamp(times[-1], timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
             if every:
                 # A sensor first heard less than an hour ago is expected only since then,
                 # and that first reading is one more than the gaps after it.
-                new = h["since"] > now - HEARD_WINDOW_S
-                span = now - h["since"] if new else HEARD_WINDOW_S
+                new = h["since"] > now - self.heard_window_s
+                span = now - h["since"] if new else self.heard_window_s
                 r["every_s"] = round(every, 1)
                 r["expected"] = max(1, round(span / every) + (1 if new else 0))
                 r["percent"] = min(100, round(100 * len(times) / r["expected"]))

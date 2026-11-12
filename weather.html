@@ -437,7 +437,7 @@ function battery(f) {
 
 // The line under each card: the sensor's channel switch, its battery (a sensor
 // sends only ok or low, never a level), and for each receiver how many of the
-// last hour's readings arrived. The hub also sends its own signal bars (0 to 4);
+// last hour's readings arrived ([station] reception_minutes changes the hour). The hub also sends its own signal bars (0 to 4);
 // the radio measures signal over noise in dB.
 const RECEIVER_ORDER = ['radio', 'hub', 'console'];
 function sensorFoot(s) {
@@ -450,8 +450,10 @@ function sensorFoot(s) {
     let text = r.percent == null ? `${who} ${r.heard}` : `${who} ${r.percent}%`;
     if (who === 'radio' && r.snr_db != null) text += ` · ${num(r.snr_db, 0)} dB`;
     if (who === 'hub' && f.signal != null) text += ` · ${f.signal}/4`;
-    const title = r.expected == null ? `${r.heard} readings in the last hour`
-      : `${r.heard} of ${r.expected} readings in the last hour (one every ${r.every_s} s)`;
+    const span = !r.window_s || r.window_s === 3600 ? 'hour'
+      : r.window_s % 3600 === 0 ? `${r.window_s / 3600} hours` : `${Math.round(r.window_s / 60)} minutes`;
+    const title = r.expected == null ? `${r.heard} readings in the last ${span}`
+      : `${r.heard} of ${r.expected} readings in the last ${span} (one every ${r.every_s} s)`;
     const weak = r.percent != null && r.percent < 90;
     parts.push(`<span title="${title}"${weak ? ' class="low"' : ''}>📡 ${text}</span>`);
   }

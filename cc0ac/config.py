@@ -115,6 +115,21 @@ def database_path(cfg: configparser.ConfigParser) -> Path:
     return Path(cfg.get("storage", "database", fallback=str(write_path / "weather.db"))).expanduser()
 
 
+def reception_window_s(cfg: configparser.ConfigParser) -> float:
+    """[station] reception_minutes: how far back each card's "radio 98%" counts the
+    readings that arrived, against those the sensor sent. Unset or not a number, an hour."""
+    text = cfg.get("station", "reception_minutes", fallback="").strip()
+    try:
+        minutes = float(text) if text else 60
+    except ValueError:
+        log.warning("[station] reception_minutes = %s isn't a number; counting the last hour", text)
+        return 3600
+    if minutes < 5:
+        log.warning("[station] reception_minutes = %s is under 5; counting the last 5 minutes", text)
+        minutes = 5
+    return minutes * 60
+
+
 def strike_limit(cfg: configparser.ConfigParser) -> float | None:
     """[lightning] ignore_beyond_mi: strikes farther than this many miles are not
     counted, charted, reported or alerted on. None (the default): every strike is."""

@@ -238,6 +238,11 @@ button3 =
 ; computer's own clock decides, and a Docker container's is UTC. The setup page
 ; fills it in from the browser.
 ; timezone = America/Denver
+;
+; Each card's line says, for each receiver, how many of the readings the sensor
+; sent arrived ("radio 98%"), counted over the last reception_minutes (at least
+; 5). Longer evens out a bad few minutes; shorter shows a change sooner.
+; reception_minutes = 60
 
 [weather_underground]
 ; Station ID and key: only for uploading from this program (below).

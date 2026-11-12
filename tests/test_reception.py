@@ -62,7 +62,7 @@ class Reception(unittest.TestCase):
         r = rec.reception("t5", NOW)
         self.assertEqual(r["hub"]["heard"], 13)
         self.assertEqual((r["hub"]["expected"], r["hub"]["percent"]), (12, 100))
-        self.assertEqual(r["radio"], {"heard": 1, "last": r["radio"]["last"]})
+        self.assertEqual(r["radio"], {"window_s": 3600, "heard": 1, "last": r["radio"]["last"]})
 
     def test_seeded_from_the_store_after_a_restart(self):
         import tempfile
@@ -85,6 +85,53 @@ class Reception(unittest.TestCase):
         self.assertEqual(recorder._receiver_of("", "24C86E000000"), "hub")
         self.assertEqual(recorder._receiver_of("", "api.weather.gov"), "online")
         self.assertEqual(recorder._receiver_of("acurite-access"), "hub")
+
+class ReceptionWindow(unittest.TestCase):
+    """[station] reception_minutes (Anthony, 11-11): how far back "radio 98%" counts."""
+
+    def window(self, text):
+        import configparser
+        from cc0ac.config import reception_window_s
+        c = configparser.ConfigParser()
+        c.read_dict({"station": {"reception_minutes": text}} if text is not None else {})
+        return reception_window_s(c)
+
+    def test_unset_is_an_hour_and_odd_values_are_tamed(self):
+        self.assertEqual(self.window(None), 3600)
+        self.assertEqual(self.window(""), 3600)
+        self.assertEqual(self.window("180"), 10800)
+        with self.assertLogs("acurite", "WARNING"):
+            self.assertEqual(self.window("lots"), 3600)
+        with self.assertLogs("acurite", "WARNING"):
+            self.assertEqual(self.window("1"), 300)
+
+    def test_three_hours_count_the_three_hours(self):
+        global rec
+        rec = recorder.Recorder(heard_window_s=10800)
+        # The hub's uploads for three hours, but none in the last hour: an hour's
+        # window would say nothing at all; three hours say two thirds arrived.
+        heard("t7", "hub", [NOW - 10850 + i * 300 for i in range(37) if NOW - 10850 + i * 300 < NOW - 3600])
+        r = rec.reception("t7", NOW)["hub"]
+        self.assertEqual((r["window_s"], r["heard"], r["expected"]), (10800, 24, 36))
+        self.assertEqual(r["percent"], 67)
+
+    def test_seeding_reads_back_twice_the_window(self):
+        import tempfile
+        global rec
+        rec = recorder.Recorder(heard_window_s=10800)
+        with tempfile.TemporaryDirectory() as d:
+            db = Path(d) / "weather.db"
+            con = store.open_db(db)
+            for i in range(60):          # 5 hours of 5-minute uploads
+                at = datetime.fromtimestamp(NOW - 17990 + i * 300, timezone.utc)
+                con.execute("INSERT INTO readings (received_utc, hub_id, sensor_id, query) VALUES (?, ?, ?, ?)",
+                            (at.strftime("%Y-%m-%dT%H:%M:%SZ"), "24C86E000000", "t8", f"q{i}"))
+            con.commit()
+            con.close()
+            rec.seed_heard(db, NOW)
+        r = rec.reception("t8", NOW)["hub"]
+        self.assertEqual((r["heard"], r["expected"], r["percent"]), (36, 36, 100))   # not a new sensor
+
 
 class RadioLine(unittest.TestCase):
     LINE = {"time": "2026-10-09 16:20:00", "model": "Acurite-Tower", "id": 1234, "channel": "C",
