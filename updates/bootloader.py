@@ -324,20 +324,30 @@ def steps(version_dir: Path, kind: str = "migrations") -> list[Path]:
 
 def run_migrations(boot: Boot, version_dir: Path, image: bool = False) -> list[str]:
     """Run the release's migrations this install hasn't run yet, in number order. Each is
-    safe to run twice and says which platforms it is for. Returns the names it ran."""
+    safe to run twice and says which platforms it is for. Returns the names it ran.
+
+    A migration that depends on install settings names them in RERUN_WHEN, and runs again
+    whenever they differ from the ones it last ran with: installing again with a new
+    --hub-network PORT sets up that port, though 0003 ran once before without a hub."""
     ran = []
+    last_inputs = boot.state.setdefault("migration_inputs", {})
     for path in steps(version_dir):
         name = path.stem
-        if name in boot.state["migrations"]:
-            continue
         module = _load(path)
+        keys = getattr(module, "RERUN_WHEN", ())
+        inputs = {k: boot.settings.get(k) for k in keys}
+        if name in boot.state["migrations"] and (not keys or last_inputs.get(name) == inputs):
+            continue
         if boot.platform in getattr(module, "PLATFORMS", PLATFORMS):
             log.info("Migration %s", name)
             module.apply(boot.ctx(version_dir, image))
             ran.append(name)
             if getattr(module, "NO_ROLLBACK", False):
                 boot.state.setdefault("no_rollback", []).append(name)
-        boot.state["migrations"].append(name)
+        if name not in boot.state["migrations"]:
+            boot.state["migrations"].append(name)
+        if keys:
+            last_inputs[name] = inputs
         boot.save()
     return ran
 

@@ -86,6 +86,13 @@ def apply(ctx):
 '''
 
 
+HUB_MARKER = '''PLATFORMS = ("docker",)
+RERUN_WHEN = ("hub_network", "hub_interface")
+def apply(ctx):
+    (ctx.home / "hub").write_text(ctx.hub_interface)
+'''
+
+
 class Install(unittest.TestCase):
     def setUp(self):
         bl.HEALTH_POLL_S = 0.3
@@ -101,13 +108,13 @@ class Install(unittest.TestCase):
             self.station.stop()
         shutil.rmtree(self.tmp, ignore_errors=True)
 
-    def install(self, tag="v1.2.0"):
+    def install(self, tag="v1.2.0", hub_interface="enp2s0"):
         args = SimpleNamespace(platform="docker", root=str(self.root), config=str(self.home / "config.ini"),
                                home=str(self.home), user=None, python=sys.executable, source=None, tag=tag,
                                releases=str(self.releases), hub_network=False, image=False,
-                               hub_interface="enp2s0")
+                               hub_interface=hub_interface)
         boot = bl.install(args)
-        self.assertEqual(json.loads((self.root / "bootloader.json").read_text())["hub_interface"], "enp2s0")
+        self.assertEqual(json.loads((self.root / "bootloader.json").read_text())["hub_interface"], hub_interface)
         text = (self.home / "config.ini").read_text()
         sys.path.insert(0, str(REPO))
         from cc0ac import wizard
@@ -144,6 +151,33 @@ class Install(unittest.TestCase):
         self.assertEqual((again.state["weekday"], again.state["jitter_min"]),
                          (first.state["weekday"], first.state["jitter_min"]))
         self.assertFalse((self.home / "m2").exists())
+
+    def test_installing_again_with_a_new_hub_port_runs_the_hub_steps_again(self):
+        # 2026-11-16: akientiny was installed without a hub, then again with --hub-network
+        # enx40ae306d0c58, and 0003 was skipped as already run: the hub got no network.
+        release(self.releases, "v1.2.0", "1.2.0/1", migrations={"0002_hub.py": HUB_MARKER})
+        self.install()
+        self.assertEqual((self.home / "hub").read_text(), "enp2s0")
+        (self.home / "hub").unlink()
+        self.install(tag=None)                                  # same settings: not again
+        self.assertFalse((self.home / "hub").exists())
+        again = self.install(tag=None, hub_interface="enx40ae306d0c58")
+        self.assertEqual((self.home / "hub").read_text(), "enx40ae306d0c58")
+        self.assertEqual(again.state["migrations"], ["0001_settings", "0002_hub"])   # listed once
+
+    def test_a_hub_step_recorded_before_its_settings_were_kept_runs_once_more(self):
+        release(self.releases, "v1.2.0", "1.2.0/1", migrations={"0002_hub.py": HUB_MARKER})
+        self.install()
+        state = json.loads((self.root / "state.json").read_text())
+        del state["migration_inputs"]                            # a 1.4.15 install's state.json
+        (self.root / "state.json").write_text(json.dumps(state))
+        (self.home / "hub").unlink()
+        self.install(tag=None)
+        self.assertEqual((self.home / "hub").read_text(), "enp2s0")
+        (self.home / "hub").unlink()
+        again = self.install(tag=None)                           # the settings are kept now
+        self.assertFalse((self.home / "hub").exists())
+        self.assertEqual(again.state["migrations"], ["0001_settings", "0002_hub"])
 
     def test_a_healthy_update_runs_only_the_new_migrations_and_keeps_the_old_version(self):
         release(self.releases, "v1.2.0", "1.2.0/1")

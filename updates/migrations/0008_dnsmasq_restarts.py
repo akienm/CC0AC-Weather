@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 
 PLATFORMS = ("pi", "debian")
+RERUN_WHEN = ("hub_network", "hub_interface")   # a new hub port is set up again
 DNSMASQ_FILE = Path("/etc/dnsmasq.d/cc0ac-hub.conf")
 DROP_IN = Path("/etc/systemd/system/dnsmasq.service.d/cc0ac-restart.conf")
 TEXT = "[Unit]\nStartLimitIntervalSec=0\n\n[Service]\nRestart=always\nRestartSec=5\n"

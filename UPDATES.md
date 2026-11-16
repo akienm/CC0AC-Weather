@@ -1,4 +1,4 @@
-# How CC0AC-Weather installs and keeps itself up to date (1.4.15)
+# How CC0AC-Weather installs and keeps itself up to date (1.4.16)
 
 This station is an appliance, like a fridge: once it works it should just keep
 working without anyone looking after it. This page describes the small program
@@ -241,8 +241,9 @@ this:
 2. It runs that release's **migrations**: numbered steps in `updates/migrations/`,
    such as writing the service file, setting up the hub's network port, or
    hardening the Pi's firewall. A fresh install runs them all, starting from
-   `0001`. An update runs only the ones it hasn't run before. Each step is safe
-   to run twice, and each one says which platforms it is for (`pi`, `debian`,
+   `0001`. An update runs only the ones it hasn't run before, and a step that
+   depends on an install setting (the hub's port) runs again when that setting
+   changes. Each step is safe to run twice, and each one says which platforms it is for (`pi`, `debian`,
    `docker`, `windows`, `macos`), so a step for the Pi never runs on Windows.
 3. It starts the station program from the chosen version, and restarts it if it
    stops.

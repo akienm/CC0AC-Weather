@@ -242,5 +242,16 @@ All set. Open the setup page from a computer or phone on your network:
 Status:   $STATUS
 How updates work: https://github.com/akienm/CC0AC-Weather/blob/main/UPDATES.md
 EOF
-[ "$HUB" = yes ] && echo "Plug the hub's network cable into $HUB_IF if it isn't already."
+if [ "$HUB" = yes ]; then
+    echo "Plug the hub's network cable into $HUB_IF if it isn't already."
+    # Say so if the hub's network isn't there, rather than "All set" alone (2026-11-16: a
+    # second install with --hub-network once left the port bare and nothing said so).
+    if command -v ip >/dev/null && ! ip -4 -o addr show dev "$HUB_IF" 2>/dev/null | grep -q "inet 192\.168\.77\.1/"; then
+        echo "Note: $HUB_IF doesn't have the hub's address, 192.168.77.1, yet. It comes up when the" >&2
+        echo "      hub's cable is plugged in; if it still hasn't, see: nmcli connection show cc0ac-hub" >&2
+    fi
+    if command -v systemctl >/dev/null && ! systemctl is-active --quiet dnsmasq; then
+        echo "Note: dnsmasq, which gives the hub its address, isn't running: systemctl status dnsmasq" >&2
+    fi
+fi
 true

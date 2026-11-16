@@ -1585,6 +1585,15 @@ it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
 
+**1.4.16** · Nov 16, 2026
+- **Installing again with a new hub port sets the port up**: the hub's network
+  steps now run again whenever `--hub-network PORT` (or `--no-hub-network`) differs
+  from the last time they ran. Before, a station installed without a hub and later
+  re-installed with `--hub-network` skipped them as already done, and the hub got no
+  network. Found moving the author's station to a new machine.
+- The installer now says so after "All set" if the hub's port hasn't got 192.168.77.1
+  or dnsmasq isn't running, instead of finishing quietly.
+
 **1.4.15** · Nov 15, 2026
 - **Air quality and pollen are kept, and charted over time**: with `[air] enabled =
   true` the station now stores Open-Meteo's hourly air quality (US AQI, PM2.5, PM10,

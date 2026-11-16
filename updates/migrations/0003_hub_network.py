@@ -15,6 +15,7 @@ import subprocess
 from pathlib import Path
 
 PLATFORMS = ("pi", "debian")
+RERUN_WHEN = ("hub_network", "hub_interface")   # a new hub port is set up again
 HUB_NET = "192.168.77"
 NM_FILE = Path("/etc/NetworkManager/system-connections/cc0ac-hub.nmconnection")
 DNSMASQ_FILE = Path("/etc/dnsmasq.d/cc0ac-hub.conf")
