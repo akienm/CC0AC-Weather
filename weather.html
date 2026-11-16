@@ -841,6 +841,7 @@ function airCard(a) {
       ${pollen}
     </div>
     <div class="ts" style="margin-top:8px">${esc(a.source || '')} · an estimate for this spot, not a monitor${a.pollen_forecast ? ` · pollen: ${esc(a.pollen_forecast.source)}` : ''}</div>
+    <div class="ts" style="margin-top:4px">📈 over time: <a style="color:var(--accent)" href="/charts.html?chart=air#week">7 days</a> · <a style="color:var(--accent)" href="/charts.html?chart=air#month">30 days</a> · <a style="color:var(--accent)" href="/charts.html?chart=pollen#year">pollen this year</a></div>
   </div>`;
 }
 

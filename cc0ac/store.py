@@ -300,11 +300,13 @@ def history(db_path: Path, sensors: SensorNames, q: Query, ignore_beyond_mi: flo
         off = int((now.utcoffset() or timedelta(0)).total_seconds())
         first = con.execute("SELECT min(received_utc) FROM readings").fetchone()[0]
         first = iso_to_epoch(first) if first else now.timestamp()
+        if _has_table(con, "air_hours"):     # air's backfill reaches back before the station's first reading
+            first = min(first, con.execute("SELECT min(hour_utc) FROM air_hours").fetchone()[0] or first)
         lo, hi, period = _history_bounds(q, first, now)
         lo = max(lo, first) if period != "today" else lo
         step = next((s for s in HISTORY_STEPS if (hi - lo) / s <= HISTORY_POINTS), HISTORY_STEPS[-1])
         bucket = "(CAST(strftime('%s', received_utc) AS INTEGER) + :off) / :step * :step - :off"
-        span = {"off": off, "step": step, "lo": epoch_to_iso(lo), "hi": epoch_to_iso(hi)}
+        span = {"off": off, "step": step, "lo": epoch_to_iso(lo), "hi": epoch_to_iso(hi), "lo_e": lo, "hi_e": hi}
         t = list(range(int((lo + off) // step * step - off), int(hi) + 1, step))
         index = {b: i for i, b in enumerate(t)}
 
@@ -356,10 +358,95 @@ def history(db_path: Path, sensors: SensorNames, q: Query, ignore_beyond_mi: flo
                 "rooms": rooms,
                 "rain": _rain_buckets(con, lo, hi, step, off),
                 "strikes": {**strikes(con, lo, hi, ignore_beyond_mi), "ignore_beyond_mi": ignore_beyond_mi},
-                "rain_totals": _rain_totals(con, now)}
+                "rain_totals": _rain_totals(con, now),
+                "air": _air_buckets(con, span, index, len(t)),
+                "pollen": _pollen_history(con, lo, hi)}
     finally:
         con.close()
 
+
+
+#
+# Air quality and pollen history (air.py writes, the charts read). Two tables of
+# their own beside readings, so a database from before them loses nothing and
+# readings' columns never change:
+#   air_hours    one row an hour: Open-Meteo's modelled AQI and pollutants
+#   pollen_days  one row a day per pollen source: its index and the plants behind it
+
+AIR_COLUMNS = ["aqi", "pm2_5", "pm10", "ozone", "nitrogen_dioxide", "dust", "uv_index", "aod"]
+
+
+def open_air(con: sqlite3.Connection) -> None:
+    con.execute(f"""CREATE TABLE IF NOT EXISTS air_hours (hour_utc INTEGER PRIMARY KEY,
+        {", ".join(f"{c} REAL" for c in AIR_COLUMNS)})""")
+    con.execute("""CREATE TABLE IF NOT EXISTS pollen_days (day TEXT NOT NULL, source TEXT NOT NULL,
+        idx REAL, scale REAL, types TEXT, PRIMARY KEY (day, source))""")
+    con.commit()
+
+
+def store_air_hours(con: sqlite3.Connection, hours: list[dict]) -> int:
+    """Each {"hour_utc": epoch, <AIR_COLUMNS>...}; an hour already stored is replaced
+    (the model's later answer for an hour is its better one). Returns rows written."""
+    cols = ["hour_utc", *AIR_COLUMNS]
+    con.executemany(f"INSERT OR REPLACE INTO air_hours ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
+                    [[h.get(c) for c in cols] for h in hours])
+    con.commit()
+    return len(hours)
+
+
+def last_air_hour(con: sqlite3.Connection) -> int | None:
+    return con.execute("SELECT max(hour_utc) FROM air_hours").fetchone()[0]
+
+
+def store_pollen_days(con: sqlite3.Connection, source: str, scale: float, days: list[dict],
+                      replace: bool = True) -> int:
+    """Each {"day", "index", "types"}. replace=False keeps a day already stored: a
+    backfill (index alone) never overwrites a forecast that named its plants."""
+    verb = "INSERT OR REPLACE" if replace else "INSERT OR IGNORE"
+    rows = [[d["day"], source, d.get("index"), scale, json.dumps(d.get("types") or [])] for d in days if d.get("day")]
+    con.executemany(f"{verb} INTO pollen_days (day, source, idx, scale, types) VALUES (?, ?, ?, ?, ?)", rows)
+    con.commit()
+    return len(rows)
+
+
+def _has_table(con: sqlite3.Connection, name: str) -> bool:
+    return con.execute("SELECT 1 FROM main.sqlite_master WHERE type = 'table' AND name = ?", [name]).fetchone() is not None
+
+
+def _air_buckets(con: sqlite3.Connection, span: dict, index: dict, n: int) -> dict:
+    """The hourly air rows in the charts' buckets: averages, and the worst hour of PM2.5 and AQI."""
+    names = ["aqi", "aqi_max", "pm2_5", "pm2_5_max", "pm10", "ozone", "dust", "aod"]
+    out: dict[str, list] = {k: [None] * n for k in names}
+    if not _has_table(con, "air_hours"):
+        return out
+    rows = con.execute("""SELECT (hour_utc + :off) / :step * :step - :off AS b, avg(aqi), max(aqi), avg(pm2_5),
+            max(pm2_5), avg(pm10), avg(ozone), avg(dust), avg(aod)
+        FROM air_hours WHERE hour_utc >= :lo_e AND hour_utc < :hi_e GROUP BY b""", span).fetchall()
+    for b, *vals in rows:
+        i = index.get(b)
+        if i is None:
+            continue
+        for k, v in zip(names, vals):
+            out[k][i] = None if v is None else round(v, 2)
+    return out
+
+
+def _pollen_history(con: sqlite3.Connection, lo: float, hi: float) -> list[dict]:
+    """[{"day", "source", "index", "scale", "types"}] for the local days lo..hi touches."""
+    if not _has_table(con, "pollen_days"):
+        return []
+    first = datetime.fromtimestamp(lo).astimezone().date().isoformat()
+    last = datetime.fromtimestamp(hi).astimezone().date().isoformat()
+    out = []
+    for day, source, idx, scale, types in con.execute(
+            "SELECT day, source, idx, scale, types FROM pollen_days WHERE day >= ? AND day <= ? ORDER BY day, source",
+            [first, last]):
+        try:
+            types = json.loads(types or "[]")
+        except ValueError:
+            types = []
+        out.append({"day": day, "source": source, "index": idx, "scale": scale, "types": types})
+    return out
 
 #
 # One row per sensor per local day in the `daily` table: lows, highs, averages

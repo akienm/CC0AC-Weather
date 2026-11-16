@@ -317,7 +317,7 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
         if at:
             contact = cfg.get("forecast", "contact", fallback="").strip() or "github.com/akienm/CC0AC-Weather"
             pollen = {"google_key": cfg.get("air", "google_api_key", fallback="").strip(),
-                      "zip_code": cfg.get("air", "pollen_zip", fallback="").strip()}
+                      "zip_code": cfg.get("air", "pollen_zip", fallback="").strip(), "db_path": db_path}
             threading.Thread(target=air.run, args=(at["latitude"], at["longitude"], contact, write_path), kwargs=pollen,
                              daemon=True, name="air").start()
         else:

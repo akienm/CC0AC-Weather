@@ -45,6 +45,12 @@
   .u-legend { color: var(--text); font-size: 12px; }
   .u-legend .u-marker { width: 10px; height: 10px; }
   .u-select { background: rgba(68, 170, 255, 0.15); }
+  .pollen-cal { position: relative; }
+  .pollen-cal canvas { display: block; }
+  .pollen-tip { position: absolute; pointer-events: none; background: var(--bg); border: 1px solid var(--border);
+                padding: 4px 8px; font-size: 12px; white-space: nowrap; display: none; z-index: 5; }
+  .pollen-key { display: flex; flex-wrap: wrap; gap: 14px; color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .pollen-key i { display: inline-block; width: 10px; height: 10px; margin-right: 4px; vertical-align: -1px; }
 </style>
 <link rel="stylesheet" href="theme.css">
 </head>
@@ -232,9 +238,193 @@ function scrollToChart() {
   if (c) c.scrollIntoView({ block: "start" });
 }
 
+// ── Air quality and pollen (air.py → air_hours, pollen_days) ────────────────
+
+// The EPA's AQI bands, faint behind the AQI line: (top, colour).
+const AQI_BANDS = [[50, "#00e400"], [100, "#ffff00"], [150, "#ff7e00"], [200, "#ff0000"], [300, "#8f3f97"], [500, "#7e0023"]];
+function drawAqiBands(u) {
+  const ctx = u.ctx, b = u.bbox;
+  ctx.save();
+  ctx.globalAlpha = 0.08;
+  let lo = 0;
+  for (const [top, colour] of AQI_BANDS) {
+    const y1 = u.valToPos(Math.min(top, u.scales.y.max), "y", true), y0 = u.valToPos(lo, "y", true);
+    if (lo < u.scales.y.max) { ctx.fillStyle = colour; ctx.fillRect(b.left, y1, b.width, y0 - y1); }
+    lo = top;
+  }
+  ctx.restore();
+}
+
+function airCharts(d) {
+  const a = d.air;
+  if (!a || !a.aqi.some(v => v != null)) return;
+  const note = document.createElement("div");
+  note.className = "ts";
+  note.textContent = "Open-Meteo's CAMS model for this spot, hourly: an estimate, not a monitor. "
+    + "Wildfire smoke shows as PM2.5 climbing while dust stays low; dust storms lift PM10 and dust together.";
+  const gap = { spanGaps: true };
+  plot("Smoke and air quality: US AQI, and particles µg/m³", {
+    axes: axes("AQI", "µg/m³"),
+    series: [{}, line("AQI", C.outdoor, gap), line("Worst hour AQI", C.outdoor, { ...gap, width: 1, dash: [3, 3] }),
+             line("PM2.5", COLORS[7], { ...gap, scale: "r" }), line("PM10", COLORS[1], { ...gap, scale: "r", width: 1 }),
+             line("Dust", COLORS[4], { ...gap, scale: "r", width: 1, dash: [4, 4] })],
+    scales: { y: { range: (u, min, max) => [0, Math.max(100, max * 1.1)] },
+              r: { range: (u, min, max) => [0, Math.max(20, max * 1.1)] } },
+    hooks: { drawClear: [drawAqiBands] },
+  }, [d.t, a.aqi, a.aqi_max, a.pm2_5, a.pm10, a.dust], note).dataset.chart = "air";
+  plot("Ozone µg/m³ and haze (aerosol optical depth)", {
+    axes: axes("µg/m³", "AOD"),
+    series: [{}, line("Ozone", COLORS[0], gap), line("AOD", COLORS[5], { ...gap, scale: "r" })],
+    scales: { y: { range: (u, min, max) => [0, Math.max(100, max * 1.1)] },
+              r: { range: (u, min, max) => [0, Math.max(0.3, max * 1.1)] } },
+  }, [d.t, a.ozone, a.aod]).dataset.chart = "ozone";
+}
+
+// Which plant family a pollen name belongs to, for its colour.
+const FAMILIES = {
+  tree: ["tree", "juniper", "cedar", "cypress", "elm", "ash", "maple", "box elder", "oak", "birch", "alder", "hazel",
+         "cottonwood", "poplar", "aspen", "willow", "mulberry", "pine", "sycamore", "walnut", "hickory", "pecan",
+         "olive", "mesquite", "acacia", "privet", "palm", "eucalyptus", "sweetgum", "sweet gum", "beech", "linden",
+         "hackberry", "tree of heaven", "locust", "catalpa", "chestnut", "fir", "spruce", "hemlock", "redwood"],
+  grass: ["grass", "bermuda", "timothy", "johnson", "bahia", "rye", "orchard", "fescue", "bluegrass", "brome",
+          "redtop", "sweet vernal", "sedge"],
+  weed: ["weed", "ragweed", "sagebrush", "sage", "mugwort", "chenopod", "pigweed", "amaranth", "lamb", "thistle",
+         "tumbleweed", "kochia", "nettle", "plantain", "dock", "sorrel", "goosefoot", "saltbush", "marsh elder",
+         "cocklebur", "burweed", "wormwood", "goldenrod", "mustard"],
+};
+const FAMILY_COLOURS = { tree: ["#3fa34d", "#7cc46b", "#2e8b74", "#a6d96a", "#1d6b3a", "#5bb08a", "#8fbf3a"],
+                         grass: ["#e6c229", "#c9a227", "#f0dc6a", "#d6b04a"],
+                         weed: ["#d9682b", "#b8523b", "#c98a4a", "#a8456b", "#e0905f", "#8f5a3a"],
+                         other: ["#999", "#bbb", "#777"] };
+function family(name) {
+  const n = name.toLowerCase();
+  // A grass named after a tree (rye, orchard) or a weed after a sage: the longest match wins.
+  let best = "other", len = 0;
+  for (const [f, words] of Object.entries(FAMILIES))
+    for (const w of words) if (n.includes(w) && w.length > len) { best = f; len = w.length; }
+  return best;
+}
+// pollen.com's five levels, by the share of its scale (the same edges as its page).
+const POLLEN_LEVELS = [[0.2, "#78b33c", "Low"], [0.4, "#c8d22d", "Low-medium"], [0.6, "#f5d10e", "Medium"],
+                       [0.8, "#f39221", "Medium-high"], [1.01, "#d8342e", "High"]];
+const pollenLevel = share => POLLEN_LEVELS.find(([top]) => share <= top) || POLLEN_LEVELS[4];
+const dayOf = ms => localTime(new Date(ms)).slice(0, 10);
+
+// The pollen calendar: a lane for each plant, ordered by the day it first turns up,
+// so the season reads as a staircase from the top left down to the bottom right:
+// trees (greens) hand over to grasses (golds) and grasses to weeds (rusts). A cell's
+// strength is how much that plant counted that day (Google: its index; pollen.com:
+// first, second or third named). Above the lanes, the day's index as a bar.
+function pollenCalendar(d) {
+  const rows = d.pollen || [];
+  if (!rows.length) return;
+  // One record a day: the source that named its plants, else the first.
+  const byDay = new Map();
+  for (const r of rows) {
+    const had = byDay.get(r.day);
+    if (!had || (!had.types.length && r.types.length)) byDay.set(r.day, r);
+  }
+  const days = [];
+  for (let ms = d.from * 1000; dayOf(ms) <= dayOf(d.to * 1000); ms += 86400e3) {
+    const k = dayOf(ms);
+    if (days[days.length - 1] !== k) days.push(k);
+  }
+  const lanes = [], seen = new Map();
+  for (const k of days) {
+    for (const [rank, t] of ((byDay.get(k) || {}).types || []).entries()) {
+      if (!seen.has(t.name)) { seen.set(t.name, lanes.length); lanes.push({ name: t.name, family: family(t.name), cells: {} }); }
+      lanes[seen.get(t.name)].cells[k] = t.index != null ? 0.25 + 0.75 * Math.min(1, t.index / 5)
+                                                         : [1, 0.65, 0.4][rank] || 0.3;
+    }
+  }
+  const used = { tree: 0, grass: 0, weed: 0, other: 0 };
+  for (const l of lanes) { const set = FAMILY_COLOURS[l.family]; l.colour = set[used[l.family]++ % set.length]; }
+
+  const named = days.filter(k => (byDay.get(k) || {}).types?.length);
+  const note = document.createElement("div");
+  note.className = "ts";
+  const src = [...new Set(rows.map(r => r.source))].join(", ");
+  note.textContent = `Pollen from ${src}, a day at a time. `
+    + (lanes.length ? `Each plant gets a lane from the day it first turns up, so the season steps down the chart.`
+                    : `No plants named in these days yet.`)
+    + (named.length && named[0] > days.find(k => byDay.has(k)) ? ` Plants are named from ${named[0]} on; the days before carry the index alone.` : "");
+  const c = card("Pollen: the day's index, and which plants", note);
+  c.dataset.chart = "pollen";
+  const holder = document.createElement("div");
+  holder.className = "pollen-cal";
+  const cv = document.createElement("canvas"), tip = document.createElement("div");
+  tip.className = "pollen-tip";
+  holder.append(cv, tip);
+  c.appendChild(holder);
+  const key = document.createElement("div");
+  key.className = "pollen-key";
+  key.innerHTML = [["tree", "Trees"], ["grass", "Grasses"], ["weed", "Weeds"]]
+    .map(([f, label]) => `<span><i style="background:${FAMILY_COLOURS[f][0]}"></i>${label}</span>`).join("")
+    + POLLEN_LEVELS.map(([, colour, name]) => `<span><i style="background:${colour}"></i>${name}</span>`).join("");
+  c.appendChild(key);
+
+  const GUTTER = 120, BAR = 46, LANE = 15, AXIS = 20;
+  const paint = () => {
+    const w = width(), h = BAR + 8 + lanes.length * LANE + AXIS, r = devicePixelRatio || 1;
+    cv.width = w * r; cv.height = h * r; cv.style.width = `${w}px`; cv.style.height = `${h}px`;
+    const ctx = cv.getContext("2d");
+    ctx.scale(r, r);
+    ctx.font = `11px ${css.getPropertyValue("--font") || "sans-serif"}`;
+    const cw = (w - GUTTER) / days.length;
+    ctx.fillStyle = C.axis;
+    ctx.textBaseline = "middle";
+    ctx.fillText("index", 4, BAR / 2);
+    days.forEach((k, i) => {
+      const x = GUTTER + i * cw, rec = byDay.get(k);
+      if (rec && rec.index != null && rec.scale) {
+        const share = Math.min(1, rec.index / rec.scale), bh = Math.max(1, share * BAR);
+        ctx.fillStyle = pollenLevel(share)[1];
+        ctx.fillRect(x + 0.5, BAR - bh, Math.max(1, cw - 1), bh);
+      }
+      // Month starts: a faint rule down the whole chart and the month's name.
+      if (k.endsWith("-01") || i === 0) {
+        ctx.fillStyle = C.grid;
+        ctx.fillRect(x, 0, 1, h - AXIS);
+        ctx.fillStyle = C.axis;
+        ctx.fillText(new Date(k + "T12:00").toLocaleDateString([], { month: "short", year: k.slice(5, 7) === "01" || i === 0 ? "numeric" : undefined }),
+                     x + 3, h - AXIS / 2);
+      }
+    });
+    lanes.forEach((l, j) => {
+      const y = BAR + 8 + j * LANE;
+      ctx.fillStyle = l.colour;
+      ctx.globalAlpha = 1;
+      ctx.fillText(l.name.length > 17 ? l.name.slice(0, 16) + "…" : l.name, 4, y + LANE / 2);
+      days.forEach((k, i) => {
+        const v = l.cells[k];
+        if (v == null) return;
+        ctx.globalAlpha = v;
+        ctx.fillRect(GUTTER + i * cw + 0.5, y + 1, Math.max(1, cw - 1), LANE - 2);
+      });
+      ctx.globalAlpha = 1;
+    });
+    cv.onmousemove = e => {
+      const i = Math.floor((e.offsetX - GUTTER) / cw), k = days[i];
+      if (i < 0 || !k) { tip.style.display = "none"; return; }
+      const rec = byDay.get(k);
+      const when = new Date(k + "T12:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+      tip.textContent = rec ? `${when}: ${rec.index == null ? "—" : `${Math.round(rec.index * 10) / 10} of ${rec.scale}`}`
+        + (rec.types.length ? ` · ${rec.types.map(t => t.name).join(", ")}` : "") : `${when}: no pollen record`;
+      tip.style.display = "block";
+      tip.style.left = `${Math.min(e.offsetX + 12, w - tip.offsetWidth - 4)}px`;
+      tip.style.top = `${e.offsetY + 12}px`;
+    };
+    cv.onmouseleave = () => { tip.style.display = "none"; };
+  };
+  paint();
+  repaints.push(paint);
+}
+const repaints = [];
+
 function draw(d) {
   for (const p of plots) p.destroy();
   plots.length = 0;
+  repaints.length = 0;
   document.getElementById("charts").innerHTML = "";
   const span = d.to - d.from;
   const fmt = new Intl.DateTimeFormat(undefined, { dateStyle: "medium",
@@ -298,6 +488,9 @@ function draw(d) {
     scales: { y: { range: (u, min, max) => [0, Math.max(11, max)] }, r: { range: (u, min, max) => [0, Math.max(1000, max)] } },
   }, [t, o.uv_index, o.light_lux], [["UV", h.uv_index, COLORS[3], [o.uv_index, [0, 11]]]])).dataset.chart = "light";
 
+  airCharts(d);
+  pollenCalendar(d);
+
   // Lightning, with a lightning sensor: a dot for each strike, at its time and distance.
   // The older a dot, the fainter. Strikes the sensor heard between two readings share
   // a distance (it sends only the last one), so they are one bigger dot.
@@ -340,7 +533,7 @@ function draw(d) {
 let resizeTimer;
 window.addEventListener("resize", () => {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => plots.forEach(p => p.setSize({ width: width(), height: 260 })), 150);
+  resizeTimer = setTimeout(() => { plots.forEach(p => p.setSize({ width: width(), height: 260 })); repaints.forEach(f => f()); }, 150);
 });
 setInterval(() => { if (hashPeriod().period !== "range") load(); }, REFRESH_MS);
 load();

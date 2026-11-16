@@ -820,8 +820,8 @@ phase) or `moon` (the moon in its phase). An outdoor card shows `sky` unless you
 say otherwise, and `[sun_moon] icon` sets the Sun & moon card's, `moon` unless you
 say otherwise. Tap a card and it opens its chart: an outdoor card the outdoor
 temperature, the rest the indoor temperature with that sensor's line picked out.
-`link =` chooses another (`outdoor`, `wind`, `pressure`, `rain`, `light`, `lightning`,
-`indoor`, `humidity`) or `none`. A sensor's corrections can go here too, as
+`link =` chooses another (`outdoor`, `wind`, `pressure`, `rain`, `light`, `air`,
+`ozone`, `pollen`, `lightning`, `indoor`, `humidity`) or `none`. A sensor's corrections can go here too, as
 `calibration =` (see [Calibration](#calibration)).
 
 The cards show in the order the sections come in; move a section to move its
@@ -1584,6 +1584,24 @@ Each line says the version (or, before version numbers, the date) that added
 it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
+
+**1.4.15** · Nov 15, 2026
+- **Air quality and pollen are kept, and charted over time**: with `[air] enabled =
+  true` the station now stores Open-Meteo's hourly air quality (US AQI, PM2.5, PM10,
+  ozone, nitrogen dioxide, dust, UV, haze) beside its own readings, and the first
+  start backfills the last 92 days. Two new charts show it on every period: **Smoke
+  and air quality** (AQI in its EPA bands, the worst hour dashed, and the particles;
+  wildfire smoke reads as PM2.5 climbing while dust stays low) and **Ozone and
+  haze**. Hourly model data, so Today and 24 hours have a point an hour. Tested on
+  the author's station: 2,212 hours backfilled in 2.5 seconds.
+- **A pollen calendar**: each day's pollen index as a coloured bar, and below it a
+  lane per plant from the day it first turns up, coloured by family (trees green,
+  grasses gold, weeds rust), so the season reads as a staircase: watch Year or All
+  time to see trees give way to grasses and then weeds. pollen.com's last 30 days
+  are backfilled as the index alone; the plants are named from the day you update
+  on, since only the forecast names them. **\***
+- The Air quality pane links to the charts (7 days, 30 days, pollen this year), and
+  a sensor card can open them too: `link = air`, `ozone` or `pollen`.
 
 **1.4.14** · Nov 11, 2026
 - **A network profile found empty is put back**: every minute the station keeps a

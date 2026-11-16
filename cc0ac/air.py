@@ -20,12 +20,20 @@ pollen out.
 One thread fetches every hour (the model's steps are hourly) and keeps the last
 good copy when a fetch fails, so the page shows an old reading with its age and
 the error rather than nothing.
+
+History, for the charts (given the database): every hour's AQI and pollutants go
+to the air_hours table, and each day's pollen index and plants to pollen_days
+(store.py). On a first start, or after time off, it backfills: Open-Meteo answers
+up to 92 days back (BACKFILL_DAYS), and pollen.com's own page keeps 30 days of
+its index (without the plants). A backfilled hour is the same model's answer for
+that hour, so it charts alongside the rest as one series.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 import time
 import urllib.parse
 import urllib.request
@@ -33,7 +41,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from cc0ac import iolog
+from cc0ac import iolog, store
 from cc0ac.fsutil import write_atomic
 
 log = logging.getLogger("acurite")
@@ -64,6 +72,54 @@ def band(aqi: float | None) -> dict | None:
         if aqi <= top:
             return {"name": name, "colour": colour}
     return None   # unreachable: the last band has no top
+
+
+# The hourly series kept in air_hours: Open-Meteo's name → the column's.
+HISTORY = {"us_aqi": "aqi", "pm2_5": "pm2_5", "pm10": "pm10", "ozone": "ozone",
+           "nitrogen_dioxide": "nitrogen_dioxide", "dust": "dust", "uv_index": "uv_index",
+           "aerosol_optical_depth": "aod"}
+BACKFILL_DAYS = 92          # as far back as Open-Meteo's past_days goes
+POLLEN_BACKFILL_S = 86400   # pollen.com's past 30 days, fetched again once a day
+
+
+def history_url(lat: float, lon: float, past_days: int) -> str:
+    q = {"latitude": f"{lat:.4f}", "longitude": f"{lon:.4f}", "timezone": "GMT", "forecast_days": "1",
+         "past_days": str(max(1, min(BACKFILL_DAYS, past_days))), "hourly": ",".join(HISTORY)}
+    return AIR_API + "?" + urllib.parse.urlencode(q, safe=",")
+
+
+def parse_history(doc: dict, now: float) -> list[dict]:
+    """Open-Meteo's hourly answer (in GMT) → air_hours rows, the hours not yet come left out."""
+    hourly = doc.get("hourly") or {}
+    out = []
+    for i, t in enumerate(hourly.get("time") or []):
+        try:
+            at = int(datetime.fromisoformat(t).replace(tzinfo=timezone.utc).timestamp())
+        except ValueError:
+            continue
+        if at > now:
+            break
+        row = {"hour_utc": at}
+        for k, col in HISTORY.items():
+            vals = hourly.get(k) or []
+            row[col] = vals[i] if i < len(vals) else None
+        if any(row[c] is not None for c in HISTORY.values()):
+            out.append(row)
+    return out
+
+
+def days_to_fetch(last_hour: int | None, now: float) -> int:
+    """How many past days the next history fetch asks for: all of them on a first
+    start, otherwise back to the last stored hour (and a day more)."""
+    if last_hour is None:
+        return BACKFILL_DAYS
+    return max(1, min(BACKFILL_DAYS, int((now - last_hour) // 86400) + 1))
+
+
+def fetch_history(lat: float, lon: float, contact: str, past_days: int, now: float) -> list[dict]:
+    req = urllib.request.Request(history_url(lat, lon, past_days), headers={"User-Agent": f"CC0AC-Weather ({contact})"})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        return parse_history(json.loads(resp.read()), now)
 
 
 def url(lat: float, lon: float) -> str:
@@ -168,6 +224,25 @@ def parse_pollen_com(doc: dict) -> dict:
     return {"source": "pollen.com", "scale": 12, "days": days}
 
 
+def parse_pollen_com_history(doc: dict) -> list[dict]:
+    """pollen.com's past 30 days → [{"day", "index", "types": []}]: an index a day, no plants."""
+    out = []
+    for p in (doc.get("Location") or {}).get("periods") or []:
+        day = str(p.get("Period") or "")[:10]
+        if len(day) == 10 and p.get("Index") is not None:
+            out.append({"day": day, "index": p["Index"], "types": []})
+    return out
+
+
+def fetch_pollen_com_history(zip_code: str) -> list[dict]:
+    page = f"https://www.pollen.com/forecast/historic/pollen/{zip_code}"
+    req = urllib.request.Request("https://www.pollen.com/api/forecast/historic/pollen/" + urllib.parse.quote(zip_code),
+                                 headers={"Referer": page, "User-Agent": "Mozilla/5.0 (CC0AC-Weather)",
+                                          "Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return parse_pollen_com_history(json.loads(resp.read()))
+
+
 def fetch_google_pollen(lat: float, lon: float, key: str) -> dict:
     q = {"key": key, "location.latitude": f"{lat:.4f}", "location.longitude": f"{lon:.4f}", "days": "2",
          "plantsDescription": "false"}
@@ -211,12 +286,61 @@ def write(write_path: Path, doc: dict) -> None:
     write_atomic(write_path / "air.js", f"window.ACURITE_AIR = {body};\n")
 
 
-def run(lat: float, lon: float, contact: str, write_path: Path, google_key: str = "", zip_code: str = "") -> None:
-    """Forever: air.json every hour, the last good copy of each part kept through a failed fetch."""
+def keep_history(db_path: Path | None, lat: float, lon: float, contact: str, zip_code: str,
+                 pollen_due: float, now: float) -> float:
+    """One round of history: the air hours missing since the last stored one, and
+    (when due) pollen.com's past 30 days. Returns when pollen's backfill is next due.
+    A failure is logged and named to iolog; it never stops air.json."""
+    if db_path is None:
+        return pollen_due
+    con = sqlite3.connect(db_path, timeout=30)
+    try:
+        store.open_air(con)
+        try:
+            past = days_to_fetch(store.last_air_hour(con), now)
+            n = store.store_air_hours(con, fetch_history(lat, lon, contact, past, now))
+            log.info("Air history: %d hours stored (%d days asked for)", n, past)
+            iolog.report("open-meteo-air-history", True, f"{n} hours")
+        except Exception as exc:
+            log.warning("Air history fetch failed: %s", exc)
+            iolog.report("open-meteo-air-history", False, f"air history: {exc}")
+        if zip_code and now >= pollen_due:
+            try:
+                n = store.store_pollen_days(con, "pollen.com", 12, fetch_pollen_com_history(zip_code), replace=False)
+                log.info("Pollen history: %d days from pollen.com", n)
+                iolog.report("pollen-com-history", True, f"{n} days")
+                pollen_due = now + POLLEN_BACKFILL_S
+            except Exception as exc:
+                log.warning("Pollen history from pollen.com failed: %s", exc)
+                iolog.report("pollen-com-history", False, f"pollen history: {exc}")
+                pollen_due = now + RETRY_S
+    finally:
+        con.close()
+    return pollen_due
+
+
+def keep_pollen(db_path: Path | None, forecast: dict) -> None:
+    """Each day of a pollen forecast into pollen_days, the newest answer for a day kept."""
+    if db_path is None:
+        return
+    con = sqlite3.connect(db_path, timeout=30)
+    try:
+        store.open_air(con)
+        store.store_pollen_days(con, forecast["source"], forecast["scale"], forecast["days"])
+    finally:
+        con.close()
+
+
+def run(lat: float, lon: float, contact: str, write_path: Path, google_key: str = "", zip_code: str = "",
+        db_path: Path | None = None) -> None:
+    """Forever: air.json every hour, the last good copy of each part kept through a failed fetch,
+    and (given db_path) the history the charts draw from."""
     out: dict[str, Any] = {"source": "Open-Meteo (CAMS model)", "errors": {}}
     sources = pollen_sources(lat, lon, google_key, zip_code)
+    pollen_due = 0.0
     while True:
         wait = EVERY_S
+        pollen_due = keep_history(db_path, lat, lon, contact, zip_code, pollen_due, time.time())
         try:
             out.update(fetch(lat, lon, contact))
             out["updated"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -236,6 +360,10 @@ def run(lat: float, lon: float, contact: str, write_path: Path, google_key: str 
                     if not forecast["days"]:
                         raise ValueError("no days in its answer")
                     out["pollen_forecast"] = {**forecast, "updated": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+                    try:
+                        keep_pollen(db_path, forecast)
+                    except Exception as exc:     # the card still shows it; only the history missed a day
+                        log.warning("Pollen history not stored: %s", exc)
                     iolog.report(name, True, "pollen fetched")
                     break
                 except Exception as exc:

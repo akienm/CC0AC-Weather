@@ -52,7 +52,8 @@ LIVE_ICONS = {
 
 # link = <one of these>: the chart a card opens. Unset, the outdoor cards open
 # "outdoor" and the rest "indoor"; "none" opens nothing.
-LINKS = ("outdoor", "wind", "pressure", "rain", "light", "lightning", "indoor", "humidity", "none")
+LINKS = ("outdoor", "wind", "pressure", "rain", "light", "air", "ozone", "pollen", "lightning", "indoor", "humidity",
+         "none")
 
 # What a sensor's readings are used for, each doing less than the one before (the docstring above).
 DISPOSITIONS = ("all", "hide", "record_only", "ignore")

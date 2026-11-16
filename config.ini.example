@@ -33,8 +33,8 @@ write_path = ~/AcuRite
 ;     sky   the sun while it's up, else the moon in its phase (the outdoor cards' own)
 ;     moon  the moon in its phase
 ;   Unset, an outdoor card shows sky and the rest none.
-; link: the chart its card opens: outdoor, wind, pressure, rain, light, indoor,
-;   humidity, or none. Unset, an outdoor card opens outdoor and the rest indoor,
+; link: the chart its card opens: outdoor, wind, pressure, rain, light, air,
+;   ozone, pollen, lightning, indoor, humidity, or none. Unset, an outdoor card opens outdoor and the rest indoor,
 ;   with that sensor's line picked out.
 ; calibration: see [calibration].
 ; disposition: what its readings are used for:
