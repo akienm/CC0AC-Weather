@@ -200,10 +200,15 @@ time = 06:00
 ; Windows share: \\server\share\folder. On Linux and macOS a share is reached
 ; with smbclient using user and password (user may be DOMAIN\name; blank user:
 ; no password). On Windows the share is used directly, as you are logged in.
+; Or another computer over SFTP (SSH): sftp://user@server/folder (sftp://user@server:2222/folder
+; for another port; /~/folder is a folder in the login's home). It logs in with a key in
+; ~/.ssh, or the one key_file names, or with password (Linux and macOS). The server's
+; key is learned the first time and must stay the same after.
 ; The disks' health is checked every day whether or not this is set.
 path =
 user =
 password =
+; key_file = /home/me/.ssh/id_ed25519
 keep = 8
 
 [buttons]

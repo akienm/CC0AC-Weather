@@ -11,6 +11,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+import unittest.mock
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -101,6 +102,135 @@ class Backup(unittest.TestCase):
         cfg = configparser.ConfigParser()
         cfg.read_string("[device]\nwrite_path = /nonexistent\n")
         self.assertIsNone(upkeep.backup(cfg, self.config)["ok"])
+
+
+# A stand-in for the sftp program: it runs the batch file (-b) against a folder,
+# FAKE_SFTP_ROOT, as the server's disk, and keeps its arguments and what it was
+# handed in FAKE_SFTP_LOG. A '-' before a command lets it fail, as sftp does.
+FAKE_SFTP = r'''#!/usr/bin/env python3
+import json, os, shlex, shutil, sys
+from pathlib import Path
+root = Path(os.environ["FAKE_SFTP_ROOT"])
+args = sys.argv[1:]
+batch = args[args.index("-b") + 1]
+askpass = os.environ.get("SSH_ASKPASS")
+with open(os.environ["FAKE_SFTP_LOG"], "a") as log:
+    log.write(json.dumps({"argv": args, "password": os.popen(askpass).read().strip() if askpass else None}) + "\n")
+cwd = root
+def at(p):
+    return root / p.lstrip("/") if p.startswith("/") else cwd / p
+for line in Path(batch).read_text().splitlines():
+    may_fail = line.startswith("-")
+    cmd, *rest = shlex.split(line.lstrip("-"))
+    try:
+        if cmd == "mkdir": at(rest[0]).mkdir()
+        elif cmd == "cd": cwd = at(rest[0]); assert cwd.is_dir(), rest[0]
+        elif cmd == "put": shutil.copyfile(rest[0], at(rest[1]))
+        elif cmd == "rm": at(rest[0]).unlink()
+        elif cmd == "rename": at(rest[0]).rename(at(rest[1]))
+        elif cmd == "ls": print("sftp> ls -1"); [print(p.name) for p in sorted(cwd.iterdir())]
+        else: raise SystemExit(f"fake sftp: no {cmd}")
+    except (OSError, AssertionError) as e:
+        if not may_fail:
+            print(f"{line}: {e}", file=sys.stderr); print("Connection closed", file=sys.stderr); sys.exit(1)
+'''
+
+
+class SftpBackup(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.d = Path(self.tmp.name)
+        readings = self.d / "readings"
+        readings.mkdir()
+        (readings / "history.csv").write_text("time,temp\n")
+        bindir = self.d / "bin"
+        bindir.mkdir()
+        (bindir / "sftp").write_text(FAKE_SFTP)
+        os.chmod(bindir / "sftp", 0o755)
+        self.server = self.d / "server"
+        self.server.mkdir()
+        self.log = self.d / "sftp.log"
+        self.env = {"PATH": f"{bindir}{os.pathsep}{os.environ['PATH']}", "FAKE_SFTP_ROOT": str(self.server),
+                    "FAKE_SFTP_LOG": str(self.log), "HOME": str(self.d / "home"),
+                    "SSH_ASKPASS": "/bin/false-the-desktops-own"}
+        self.readings = readings
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_backup(self, backup_section: str) -> dict:
+        config = self.d / "config.ini"
+        config.write_text(f"[device]\nwrite_path = {self.readings}\n[backup]\n{backup_section}")
+        cfg = configparser.ConfigParser(interpolation=None)
+        cfg.read(config)
+        with unittest.mock.patch.dict(os.environ, self.env):
+            return upkeep.backup(cfg, config)
+
+    def calls(self) -> list[dict]:
+        return [json.loads(ln) for ln in self.log.read_text().splitlines()]
+
+    def test_split_sftp(self):
+        self.assertEqual(upkeep.split_sftp("sftp://ann@nas:2222/backups/weather"), ("ann", "nas", 2222, "/backups/weather"))
+        self.assertEqual(upkeep.split_sftp("sftp://nas/~/weather/", "bob"), ("bob", "nas", 22, "weather"))
+        self.assertEqual(upkeep.split_sftp("SFTP://nas"), ("", "nas", 22, ""))
+        self.assertEqual(upkeep.split_sftp("sftp://nas/my%20backups"), ("", "nas", 22, "/my backups"))
+        for bad in ("sftp://ann:secret@nas/x", "sftp:///x", "sftp://nas:port/x"):
+            with self.assertRaises(ValueError, msg=bad):
+                upkeep.split_sftp(bad)
+
+    def test_a_backup_over_sftp_makes_the_folders_and_keeps_the_newest(self):
+        host = socket.gethostname()
+        folder = self.server / "backups" / "weather station"
+        folder.mkdir(parents=True)
+        old = [f"cc0ac-weather-{host}-2026010{n}-0600.tar.gz" for n in range(1, 4)]
+        for name in old + ["cc0ac-weather-otherpc-20260101-0600.tar.gz"]:
+            (folder / name).write_text("x")
+        result = self.run_backup("path = sftp://ann@nas:2222/backups/weather%20station/pi\nkeep = 2\n")
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(sorted(p.name for p in (folder / "pi").iterdir()), [result["file"]])   # made, then landed
+        self.assertEqual(len(list(folder.iterdir())), 5)                                      # the old ones untouched
+        argv = self.calls()[0]["argv"]
+        self.assertEqual(argv[-1], "ann@nas")
+        self.assertEqual(argv[argv.index("-P") + 1], "2222")
+        self.assertIn("PasswordAuthentication=no", argv)     # no password: keys only, never a prompt
+        self.assertNotIn("BatchMode=no", argv)
+        self.assertIsNone(self.calls()[0]["password"])       # the desktop's own askpass isn't passed on
+        with tarfile.open(folder / "pi" / result["file"]) as tar:
+            self.assertIn("cc0ac-weather-backup/history.csv", tar.getnames())
+
+    def test_keep_deletes_only_this_computers_older_copies(self):
+        host = socket.gethostname()
+        old = [f"cc0ac-weather-{host}-2026010{n}-0600.tar.gz" for n in range(1, 5)]
+        for name in old + ["cc0ac-weather-otherpc-20260101-0600.tar.gz", "notes.txt"]:
+            (self.server / name).write_text("x")
+        result = self.run_backup("path = sftp://nas/\nuser = bob\nkeep = 3\n")
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(sorted(p.name for p in self.server.iterdir()),
+                         sorted([result["file"], old[2], old[3], "cc0ac-weather-otherpc-20260101-0600.tar.gz", "notes.txt"]))
+        self.assertEqual(self.calls()[0]["argv"][-1], "bob@nas")
+
+    @unittest.skipIf(os.name == "nt", "a password login isn't offered on Windows")
+    def test_the_password_is_handed_over_but_never_on_the_command_line(self):
+        result = self.run_backup("path = sftp://nas/w\npassword = pa ss%word\n")
+        self.assertTrue(result["ok"], result)
+        for call in self.calls():
+            self.assertEqual(call["password"], "pa ss%word")
+            self.assertNotIn("pa ss%word", " ".join(call["argv"]))
+            self.assertNotIn("PasswordAuthentication=no", call["argv"])
+            self.assertLess(call["argv"].index("BatchMode=no"), call["argv"].index("-b"))
+        self.assertNotIn("pa ss%word", json.dumps(result))
+
+    def test_a_refused_login_says_why(self):
+        (self.server / "w").write_text("a file where the folder should be")
+        result = self.run_backup("path = sftp://nas/w\n")
+        self.assertFalse(result["ok"])
+        self.assertIn("sftp nas:", result["problem"])
+        self.assertNotIn("Connection closed", result["problem"])
+
+    def test_a_key_file_that_isnt_there_says_so(self):
+        result = self.run_backup(f"path = sftp://nas/w\nkey_file = {self.d / 'nokey'}\n")
+        self.assertFalse(result["ok"])
+        self.assertIn("key_file", result["problem"])
 
 
 class WhatTheStationShows(unittest.TestCase):

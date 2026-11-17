@@ -291,9 +291,9 @@ a reading was held back as impossible (see [About the station](#about-the-statio
   for the weekly check. [UPDATES.md](UPDATES.md) has the details.
 - **Disks.** Once a day it asks each disk about its own health (SMART) and
   says so on the dashboard, and by phone alert, when one is failing.
-- **Backup.** Once a week, if you name a folder or a Windows share
-  (`\\server\share\folder`) in setup, it copies the settings and every reading
-  there and keeps the newest 8.
+- **Backup.** Once a week, if you name a folder, a Windows share
+  (`\\server\share\folder`) or an SFTP server (`sftp://me@server/folder`) in
+  setup, it copies the settings and every reading there and keeps the newest 8.
 
 **Want a helper?** If you use Claude Code or another AI coding assistant on the
 Pi, point it at [SETUP-FOR-CLAUDE.md](SETUP-FOR-CLAUDE.md).
@@ -1584,6 +1584,19 @@ Each line says the version (or, before version numbers, the date) that added
 it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
+
+**1.4.17** · Nov 17, 2026
+- **Backups over SFTP**: `[backup] path = sftp://user@server/folder` (a port after
+  the server name, `/~/folder` for a folder in the login's home) copies the weekly
+  backup to another computer over SSH, using the system's own `sftp`. It logs in
+  with a key in `~/.ssh` or the one `[backup] key_file` names, or with `[backup]
+  password`\* (Linux and macOS; the password is handed over through `SSH_ASKPASS`,
+  never on a command line). The server's key is learned the first time and must
+  stay the same after. The Docker image now has `openssh-client`. Asked for by a
+  station keeper who backs up to a share now.
+- Tested with keys against a real OpenSSH server (folders made, newest kept, a wrong
+  key refused with the server's reason); a password login is tested only against a
+  stand-in `sftp`, and a refused one against a real server.
 
 **1.4.16** · Nov 16, 2026
 - **Installing again with a new hub port sets the port up**: the hub's network

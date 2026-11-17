@@ -18,7 +18,9 @@ taken while the station runs), and history.csv, in one file named
 cc0ac-weather-<computer>-<date>.tar.gz. The newest `keep` (8) are kept and older
 ones of this computer deleted. The path is a folder, or a Windows share,
 \\\\server\\share\\folder, reached with smbclient on Linux and macOS (user and
-password from [backup]) and directly on Windows.
+password from [backup]) and directly on Windows, or another computer over SFTP,
+sftp://user@server/folder, with the system's sftp program (a key in ~/.ssh, or
+the [backup] password).
 """
 
 from __future__ import annotations
@@ -35,6 +37,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -209,8 +212,115 @@ class Share:
         self._do(f'{self._cd()}; del "{name}"'.lstrip("; "))
 
 
-def destination(cfg: configparser.ConfigParser) -> Share | Folder:
+def is_sftp(path: str) -> bool:
+    return path.lower().startswith("sftp://")
+
+
+def split_sftp(path: str, user: str = "") -> tuple[str, str, int, str]:
+    """sftp://[user@]host[:port]/folder -> (user, host, port, folder). The folder is
+    absolute; /~/folder (or none) is under the login's home. [backup] user is used
+    when the address names none. A password in the address is refused: it would
+    show wherever the address does."""
+    u = urllib.parse.urlsplit(path)
+    if u.password is not None:
+        raise ValueError("put the password in [backup] password, not in the sftp:// address")
+    if not u.hostname:
+        raise ValueError(f"an sftp address looks like sftp://user@server/folder, not {path!r}")
+    try:
+        port = u.port or 22
+    except ValueError:
+        raise ValueError(f"not a port number in {path!r}") from None
+    folder = urllib.parse.unquote(u.path)
+    if folder in ("", "/", "/~", "/~/"):
+        folder = ""
+    elif folder.startswith("/~/"):
+        folder = folder[3:]
+    return urllib.parse.unquote(u.username or "") or user, u.hostname, port, folder.rstrip("/") or folder
+
+
+class Sftp:
+    """Another computer over SFTP (SSH), with the system's own sftp program: nothing
+    to install on Linux, macOS or Windows 10+. A key in ~/.ssh is used as ssh would;
+    with [backup] password set, it is handed to sftp through SSH_ASKPASS from the
+    environment, never on a command line where ps shows it. The server's key is
+    learned the first time and must not change after (backup_known_hosts).
+    [backup] key_file names a key to use instead of ~/.ssh's (a container's, say)."""
+
+    def __init__(self, path: str, user: str, password: str, key_file: str = ""):
+        if not shutil.which("sftp"):
+            raise RuntimeError("sftp isn't installed (openssh-client)")
+        self.user, self.host, self.port, self.folder = split_sftp(path, user)
+        self.password = password
+        self.key_file = str(Path(key_file).expanduser()) if key_file else ""
+        if self.key_file and not Path(self.key_file).is_file():
+            raise RuntimeError(f"[backup] key_file {self.key_file} isn't there")
+        if password and os.name == "nt":
+            raise RuntimeError("on Windows, sftp backups log in with a key (ssh-keygen), not a password")
+
+    def _do(self, commands: list[str]) -> str:
+        known = Path.home() / ".cc0ac-weather" / "backup_known_hosts"
+        known.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="cc0ac-sftp-") as tmp:
+            batch = Path(tmp) / "batch"
+            batch.write_text("\n".join(commands) + "\n")
+            cmd = ["sftp", "-o", "StrictHostKeyChecking=accept-new", "-o", f"UserKnownHostsFile={known}",
+                   "-o", "ConnectTimeout=30", "-P", str(self.port)]
+            if self.key_file:
+                cmd += ["-i", self.key_file, "-o", "IdentitiesOnly=yes"]
+            env = {k: v for k, v in os.environ.items() if k not in ("SSH_ASKPASS", "SSH_ASKPASS_REQUIRE")}
+            if self.password:
+                # BatchMode=no before -b, which would otherwise turn password logins off; the
+                # password comes from our own askpass, so nothing else can be asked or shown.
+                askpass = Path(tmp) / "askpass"
+                askpass.write_text("#!/bin/sh\nprintf '%s\\n' \"$CC0AC_SFTP_PASSWORD\"\n")
+                os.chmod(askpass, 0o700)
+                env.update(SSH_ASKPASS=str(askpass), SSH_ASKPASS_REQUIRE="force", DISPLAY=env.get("DISPLAY", ":0"),
+                           CC0AC_SFTP_PASSWORD=self.password)
+                cmd += ["-o", "BatchMode=no", "-o", "NumberOfPasswordPrompts=1"]
+            else:
+                # Keys only (-b turns BatchMode on): no prompt of any kind, so a key with a
+                # passphrase fails at once instead of waiting for someone to type it.
+                cmd += ["-o", "PasswordAuthentication=no", "-o", "KbdInteractiveAuthentication=no"]
+            cmd += ["-b", str(batch)]
+            target = f"{self.user}@{self.host}" if self.user else self.host
+            p = subprocess.run(cmd + [target], capture_output=True, text=True, timeout=600,
+                               stdin=subprocess.DEVNULL, env=env)
+        if p.returncode != 0:
+            # sftp ends with "Connection closed"; the reason is the line before it.
+            lines = [ln.strip() for ln in (p.stderr or p.stdout).splitlines() if ln.strip()
+                     and not re.match(r"(Connection closed\.?|Warning: Permanently added .*)$", ln.strip())]
+            raise RuntimeError(f"sftp {self.host}: {lines[-1] if lines else f'exit {p.returncode}'}")
+        return p.stdout
+
+    @staticmethod
+    def _q(s: str) -> str:
+        return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+    def _cd(self) -> list[str]:
+        steps, path = [], "/" if self.folder.startswith("/") else ""
+        for part in [p for p in self.folder.split("/") if p]:
+            path = f"{path}{part}" if path in ("", "/") else f"{path}/{part}"
+            steps.append(f"-mkdir {self._q(path)}")   # '-': already there is fine
+        return steps + ([f"cd {self._q(self.folder)}"] if self.folder else [])
+
+    def put(self, file: Path) -> None:
+        part = file.name + ".part"
+        self._do(self._cd() + [f"put {self._q(str(file))} {self._q(part)}", f"-rm {self._q(file.name)}",
+                               f"rename {self._q(part)} {self._q(file.name)}"])
+
+    def names(self) -> list[str]:
+        out = self._do(self._cd() + ["ls -1"])
+        return re.findall(r"^(cc0ac-weather-\S+\.tar\.gz)\s*$", out, re.M)
+
+    def delete(self, name: str) -> None:
+        self._do(self._cd() + [f"rm {self._q(name)}"])
+
+
+def destination(cfg: configparser.ConfigParser) -> Share | Folder | Sftp:
     path = cfg.get("backup", "path", fallback="").strip()
+    if is_sftp(path):
+        return Sftp(path, cfg.get("backup", "user", fallback="").strip(), private.get_raw(cfg, "backup", "password"),
+                    cfg.get("backup", "key_file", fallback="").strip())
     if is_share(path) and os.name != "nt":
         return Share(path, cfg.get("backup", "user", fallback="").strip(), private.get_raw(cfg, "backup", "password"))
     return Folder(path)
