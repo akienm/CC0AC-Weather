@@ -348,7 +348,7 @@ You also need a router that can forward port 443.
 
 0. **The hub is on by default** (1.4.2 and later, on every platform). If it was
    switched off, open the setup page, tick **"I have an AcuRite Access hub"** and
-   save. While it's off the log says "No source switched on" and nothing listens
+   save. With no hub, untick it there and save. While it's off the log says "No source switched on" and nothing listens
    on 443.
 
 1. **Give the hub a hostname that reaches this box.** The hub accepts only a
@@ -1584,6 +1584,11 @@ Each line says the version (or, before version numbers, the date) that added
 it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
+
+**1.4.19** · Nov 17, 2026
+- The setup page says the hub is switched on to start with, and that a station
+  with no hub unticks **"I have an AcuRite Access hub"** and saves. A station
+  keeper with no hub couldn't find where to switch it off.
 
 **1.4.18** · Nov 17, 2026
 - The setup page has the minutes the hub or radio may stay quiet before you're told
