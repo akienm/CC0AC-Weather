@@ -159,10 +159,10 @@
   <h2><span class="n">7</span>A copy somewhere else</h2>
   <p>Once a week, at the update time, the station can copy its settings and every reading to another computer or a
      network drive, and keep the newest few. Leave this blank for no copy.</p>
-  <label for="bk_path">Copy to (a folder, a share like <code>\\nas\backups\weather</code>, or <code>sftp://me@nas/backups/weather</code>)</label>
+  <label for="bk_path">Copy to (a folder, a share like <code>\\nas\backups\weather</code>, <code>sftp://me@nas/backups/weather</code> or <code>ftp://me@nas/backups/weather</code>)</label>
   <input type="text" id="bk_path">
   <details id="bkbox">
-    <summary>The share or SFTP server needs a login</summary>
+    <summary>The share or server needs a login</summary>
     <label for="bk_user">User (or DOMAIN\user)</label><input type="text" id="bk_user">
     <label for="bk_password">Password</label><input type="password" id="bk_password" autocomplete="new-password">
     <p class="help"><span id="bkpwset"></span></p>

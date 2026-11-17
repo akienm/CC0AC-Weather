@@ -20,18 +20,21 @@ ones of this computer deleted. The path is a folder, or a Windows share,
 \\\\server\\share\\folder, reached with smbclient on Linux and macOS (user and
 password from [backup]) and directly on Windows, or another computer over SFTP,
 sftp://user@server/folder, with the system's sftp program (a key in ~/.ssh, or
-the [backup] password).
+the [backup] password), or an FTP server, ftp://user@server/folder (encrypted
+when the server offers it).
 """
 
 from __future__ import annotations
 
 import argparse
 import configparser
+import ftplib
 import json
 import os
 import re
 import shutil
 import socket
+import ssl
 import sqlite3
 import subprocess
 import sys
@@ -216,18 +219,23 @@ def is_sftp(path: str) -> bool:
     return path.lower().startswith("sftp://")
 
 
-def split_sftp(path: str, user: str = "") -> tuple[str, str, int, str]:
-    """sftp://[user@]host[:port]/folder -> (user, host, port, folder). The folder is
-    absolute; /~/folder (or none) is under the login's home. [backup] user is used
-    when the address names none. A password in the address is refused: it would
+def is_ftp(path: str) -> bool:
+    return path.lower().startswith("ftp://")
+
+
+def split_sftp(path: str, user: str = "", default_port: int = 22) -> tuple[str, str, int, str]:
+    """sftp://[user@]host[:port]/folder (or ftp://) -> (user, host, port, folder). The
+    folder is absolute; /~/folder (or none) is under the login's home. [backup] user is
+    used when the address names none. A password in the address is refused: it would
     show wherever the address does."""
     u = urllib.parse.urlsplit(path)
+    scheme = u.scheme.lower() or "sftp"
     if u.password is not None:
-        raise ValueError("put the password in [backup] password, not in the sftp:// address")
+        raise ValueError(f"put the password in [backup] password, not in the {scheme}:// address")
     if not u.hostname:
-        raise ValueError(f"an sftp address looks like sftp://user@server/folder, not {path!r}")
+        raise ValueError(f"an {scheme} address looks like {scheme}://user@server/folder, not {path!r}")
     try:
-        port = u.port or 22
+        port = u.port or default_port
     except ValueError:
         raise ValueError(f"not a port number in {path!r}") from None
     folder = urllib.parse.unquote(u.path)
@@ -316,8 +324,114 @@ class Sftp:
         self._do(self._cd() + [f"rm {self._q(name)}"])
 
 
-def destination(cfg: configparser.ConfigParser) -> Share | Folder | Sftp:
+class _ReusingFTP_TLS(ftplib.FTP_TLS):
+    """FTP_TLS whose data connections resume the control connection's TLS session:
+    vsftpd, FileZilla Server and many NAS servers refuse them otherwise ("522 SSL
+    connection failed; session reuse required"), and ftplib doesn't on its own."""
+
+    def ntransfercmd(self, cmd, rest=None):
+        conn, size = ftplib.FTP.ntransfercmd(self, cmd, rest)
+        if self._prot_p:
+            conn = self.context.wrap_socket(conn, server_hostname=self.host, session=self.sock.session)
+        return conn, size
+
+
+class Ftp:
+    """An FTP server, with Python's own ftplib: nothing to install, in Docker too.
+    Encrypted (FTPS, AUTH TLS) when the server offers it, plain FTP when it doesn't;
+    the record says which. The server's certificate isn't checked: a NAS's is almost
+    always its own, and refusing it would mean falling back to sending the password
+    in the clear. Each step is one short login; a file arrives as <name>.part and is
+    renamed, so a copy cut off half-way never looks like a backup."""
+
+    def __init__(self, path: str, user: str, password: str):
+        self.user, self.host, self.port, self.folder = split_sftp(path, user, default_port=21)
+        self.user = self.user or "anonymous"
+        self.password = password
+        self.encrypted: bool | None = None
+
+    def _open(self) -> ftplib.FTP:
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        if self.encrypted is not False:
+            f = _ReusingFTP_TLS(context=context, timeout=60)
+            try:
+                f.connect(self.host, self.port)
+                f.auth()
+            except ftplib.error_perm:            # 5xx to AUTH TLS: the server has no TLS
+                f.close()
+                self.encrypted = False
+            except (ssl.SSLError, ftplib.Error) as exc:
+                f.close()
+                raise RuntimeError(f"ftp {self.host}: {exc}") from None
+            else:
+                f.login(self.user, self.password)
+                f.prot_p()
+                self.encrypted = True
+                return f
+        f = ftplib.FTP(timeout=60)
+        f.connect(self.host, self.port)
+        f.login(self.user, self.password)
+        return f
+
+    def _do(self, step):
+        try:
+            f = self._open()
+        except (ftplib.Error, EOFError, OSError) as exc:
+            raise RuntimeError(f"ftp {self.host}: {str(exc).strip()}") from None
+        try:
+            f.set_pasv(True)
+            self._cd(f)
+            return step(f)
+        except (ftplib.Error, EOFError) as exc:
+            raise RuntimeError(f"ftp {self.host}: {str(exc).strip()}") from None
+        finally:
+            try:
+                f.quit()
+            except (OSError, ftplib.Error, EOFError):
+                f.close()
+
+    def _cd(self, f: ftplib.FTP) -> None:
+        parts = [p for p in self.folder.split("/") if p]
+        if self.folder.startswith("/"):
+            f.cwd("/")
+        for part in parts:
+            try:
+                f.cwd(part)
+            except ftplib.error_perm:
+                f.mkd(part)
+                f.cwd(part)
+
+    def put(self, file: Path) -> None:
+        def step(f):
+            with open(file, "rb") as fh:
+                f.storbinary(f"STOR {file.name}.part", fh)
+            try:
+                f.delete(file.name)
+            except ftplib.error_perm:
+                pass
+            f.rename(f"{file.name}.part", file.name)
+        self._do(step)
+
+    def names(self) -> list[str]:
+        def step(f):
+            try:
+                return [n.rsplit("/", 1)[-1] for n in f.nlst()]
+            except ftplib.error_perm as exc:   # some servers answer an empty folder with 550
+                if str(exc).startswith("550"):
+                    return []
+                raise
+        return self._do(step)
+
+    def delete(self, name: str) -> None:
+        self._do(lambda f: f.delete(name))
+
+
+def destination(cfg: configparser.ConfigParser) -> Share | Folder | Sftp | Ftp:
     path = cfg.get("backup", "path", fallback="").strip()
+    if is_ftp(path):
+        return Ftp(path, cfg.get("backup", "user", fallback="").strip(), private.get_raw(cfg, "backup", "password"))
     if is_sftp(path):
         return Sftp(path, cfg.get("backup", "user", fallback="").strip(), private.get_raw(cfg, "backup", "password"),
                     cfg.get("backup", "key_file", fallback="").strip())
@@ -343,6 +457,8 @@ def backup(cfg: configparser.ConfigParser, config_path: Path) -> dict:
                 raise RuntimeError("the backup isn't there after copying it")
             for old in mine[:-keep] if keep > 0 else []:
                 dest.delete(old)
+            if getattr(dest, "encrypted", None) is False:
+                record["unencrypted"] = True      # plain FTP: the password crossed the network as is
             return {**record, "ok": True, "file": file.name, "bytes": file.stat().st_size,
                     "kept": min(len(mine), keep) if keep > 0 else len(mine)}
     except (OSError, RuntimeError, ValueError, sqlite3.Error, subprocess.TimeoutExpired) as exc:
@@ -407,7 +523,7 @@ def main(argv: list[str] | None = None) -> None:
         result = backup(cfg, Path(args.config))
         if result["ok"] is not None:
             write_record(result)
-        print(f"backed up: {result['file']} ({result['kept']} kept)" if result["ok"] else f"not backed up: {result['problem']}")
+        print(f"backed up: {result['file']} ({result['kept']} kept{', not encrypted' if result.get('unencrypted') else ''})" if result["ok"] else f"not backed up: {result['problem']}")
         sys.exit(0 if result["ok"] is not False else 1)
 
 

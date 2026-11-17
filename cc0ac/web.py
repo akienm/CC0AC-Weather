@@ -347,7 +347,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: Se
                 if result["ok"] is not None:
                     upkeep.write_record(result)
                 self._answer(200 if result["ok"] else 502,
-                             f"Backed up: {result['file']}." if result["ok"] else f"Not backed up: {result['problem']}")
+                             f"Backed up: {result['file']}" + (" (plain FTP, not encrypted)." if result.get("unencrypted") else ".") if result["ok"] else f"Not backed up: {result['problem']}")
                 return None
             return text
 

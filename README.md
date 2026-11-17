@@ -292,8 +292,8 @@ a reading was held back as impossible (see [About the station](#about-the-statio
 - **Disks.** Once a day it asks each disk about its own health (SMART) and
   says so on the dashboard, and by phone alert, when one is failing.
 - **Backup.** Once a week, if you name a folder, a Windows share
-  (`\\server\share\folder`) or an SFTP server (`sftp://me@server/folder`) in
-  setup, it copies the settings and every reading there and keeps the newest 8.
+  (`\\server\share\folder`), an SFTP server (`sftp://me@server/folder`) or an
+  FTP server (`ftp://me@server/folder`) in setup, it copies the settings and every reading there and keeps the newest 8.
 
 **Want a helper?** If you use Claude Code or another AI coding assistant on the
 Pi, point it at [SETUP-FOR-CLAUDE.md](SETUP-FOR-CLAUDE.md).
@@ -1584,6 +1584,17 @@ Each line says the version (or, before version numbers, the date) that added
 it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
+
+**1.4.20** · Nov 17, 2026
+- **Backups over FTP**: `[backup] path = ftp://user@server/folder`, with `[backup]
+  user` and `password`, for a server that has no SFTP. Python's own `ftplib`, so
+  nothing to install and no Docker rebuild. Encrypted (FTPS, AUTH TLS, the data
+  connection too) when the server offers it, without checking its certificate
+  (a NAS's is its own); plain FTP when it doesn't, and then "Copy now" and the
+  record say "not encrypted". Tested against a real FTP server both ways (folders
+  made, newest kept, a wrong password refused with the server's words); TLS
+  session reuse, which vsftpd and FileZilla Server demand, is handled but untested\*.
+  Asked for by a station keeper whose server has only FTP.
 
 **1.4.19** · Nov 17, 2026
 - The setup page says the hub is switched on to start with, and that a station

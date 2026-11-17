@@ -204,6 +204,9 @@ time = 06:00
 ; for another port; /~/folder is a folder in the login's home). It logs in with a key in
 ; ~/.ssh, or the one key_file names, or with password (Linux and macOS). The server's
 ; key is learned the first time and must stay the same after.
+; Or an FTP server: ftp://user@server/folder (ftp://user@server:2121/folder for another
+; port), with user and password. Encrypted (FTPS) when the server offers it, without
+; checking its certificate; plain FTP, password and all, when it doesn't.
 ; The disks' health is checked every day whether or not this is set.
 path =
 user =

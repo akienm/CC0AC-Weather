@@ -5,6 +5,7 @@ The backup goes to a folder; a share (smbclient) is not reached here."""
 import configparser
 import json
 import os
+import shutil
 import socket
 import sqlite3
 import sys
@@ -134,6 +135,101 @@ for line in Path(batch).read_text().splitlines():
         if not may_fail:
             print(f"{line}: {e}", file=sys.stderr); print("Connection closed", file=sys.stderr); sys.exit(1)
 '''
+
+
+class FakeFtp:
+    """ftplib.FTP's surface, over a dict of folders; tls=None means a server with no AUTH TLS."""
+    server: dict = {}
+    tls_offered = True
+    log: list = []
+
+    def __init__(self, *a, **kw):
+        self.path = "/"
+    def connect(self, host, port): FakeFtp.log.append(("connect", host, port))
+    def auth(self):
+        if not FakeFtp.tls_offered:
+            raise upkeep.ftplib.error_perm("500 AUTH not understood")
+        FakeFtp.log.append(("auth",))
+    def prot_p(self): FakeFtp.log.append(("prot_p",))
+    def login(self, user, password):
+        FakeFtp.log.append(("login", user, password))
+        if password != "pw":
+            raise upkeep.ftplib.error_perm("530 Login incorrect.")
+    def set_pasv(self, on): pass
+    def _here(self): return FakeFtp.server.setdefault(self.path, {})
+    def cwd(self, part):
+        new = "/" if part == "/" else (self.path.rstrip("/") + "/" + part)
+        if new not in FakeFtp.server and new != "/":
+            raise upkeep.ftplib.error_perm("550 no such folder")
+        self.path = new
+    def mkd(self, part): FakeFtp.server[self.path.rstrip("/") + "/" + part] = {}
+    def storbinary(self, cmd, fh): self._here()[cmd.split(" ", 1)[1]] = fh.read()
+    def delete(self, name):
+        if name not in self._here():
+            raise upkeep.ftplib.error_perm("550 not there")
+        del self._here()[name]
+    def rename(self, a, b): self._here()[b] = self._here().pop(a)
+    def nlst(self):
+        if not self._here():
+            raise upkeep.ftplib.error_perm("550 No files found")
+        return list(self._here())
+    def quit(self): pass
+    def close(self): pass
+
+
+class FtpBackup(unittest.TestCase):
+    def setUp(self):
+        self.d = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.d, ignore_errors=True)
+        (self.d / "readings").mkdir()
+        sqlite3.connect(self.d / "readings" / "weather.db").close()
+        FakeFtp.server, FakeFtp.log, FakeFtp.tls_offered = {}, [], True
+        for target in ("_ReusingFTP_TLS", "ftplib.FTP"):
+            p = unittest.mock.patch(f"cc0ac.upkeep.{target}", FakeFtp)
+            p.start()
+            self.addCleanup(p.stop)
+
+    def run_backup(self, path, password="pw", keep=2):
+        cfg = configparser.ConfigParser(interpolation=None)
+        cfg.read_dict({"device": {"write_path": str(self.d / "readings")},
+                       "backup": {"path": path, "user": "anthony", "password": password, "keep": str(keep)}})
+        (self.d / "config.ini").write_text("")
+        return upkeep.backup(cfg, self.d / "config.ini")
+
+    def test_split_ftp(self):
+        self.assertEqual(upkeep.split_sftp("ftp://nas/backups/weather", "me", default_port=21),
+                         ("me", "nas", 21, "/backups/weather"))
+        with self.assertRaisesRegex(ValueError, "ftp://"):
+            upkeep.split_sftp("ftp://me:secret@nas/x", default_port=21)
+
+    def test_an_encrypting_server_gets_tls_and_the_folders_are_made(self):
+        r = self.run_backup("ftp://nas/backups/weather")
+        self.assertTrue(r["ok"], r)
+        self.assertNotIn("unencrypted", r)
+        self.assertIn(("auth",), FakeFtp.log)
+        self.assertIn(("prot_p",), FakeFtp.log)
+        self.assertEqual(list(FakeFtp.server["/backups/weather"]), [r["file"]])   # the .part was renamed
+
+    def test_a_server_without_tls_gets_plain_ftp_and_the_record_says_so(self):
+        FakeFtp.tls_offered = False
+        r = self.run_backup("ftp://nas:2121/~/weather")
+        self.assertTrue(r["ok"], r)
+        self.assertTrue(r["unencrypted"])
+        self.assertIn(("connect", "nas", 2121), FakeFtp.log)
+        self.assertIn("weather", [k.rsplit("/", 1)[-1] for k in FakeFtp.server])
+
+    def test_keep_deletes_only_this_computers_older_copies(self):
+        old = [f"cc0ac-weather-{socket.gethostname()}-2026010{i}-0600.tar.gz" for i in (1, 2, 3)]
+        FakeFtp.server["/b"] = {n: b"" for n in old + ["cc0ac-weather-otherbox-20260101-0600.tar.gz"]}
+        r = self.run_backup("ftp://nas/b")
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(sorted(FakeFtp.server["/b"]),
+                         sorted([old[2], r["file"], "cc0ac-weather-otherbox-20260101-0600.tar.gz"]))
+
+    def test_a_refused_login_says_why(self):
+        r = self.run_backup("ftp://nas/b", password="wrong")
+        self.assertFalse(r["ok"])
+        self.assertEqual(r["problem"], "ftp nas: 530 Login incorrect.")
 
 
 class SftpBackup(unittest.TestCase):
