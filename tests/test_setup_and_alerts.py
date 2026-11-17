@@ -57,6 +57,18 @@ class ConfigEditing(unittest.TestCase):
         a.update(kw)
         return a
 
+    def test_the_hub_quiet_minutes_are_set_cleared_and_checked(self):
+        out = wizard.apply_setup(self.text, self.answers(alerts={"receiver_quiet_minutes": "15"}))
+        cfg = configparser.ConfigParser(interpolation=None)
+        cfg.read_string(out)
+        self.assertEqual(cfg.get("alerts", "receiver_quiet_minutes"), "15")
+        out = wizard.apply_setup(out, self.answers(alerts={"receiver_quiet_minutes": ""}))
+        cfg = configparser.ConfigParser(interpolation=None)
+        cfg.read_string(out)
+        self.assertFalse(cfg.has_option("alerts", "receiver_quiet_minutes"))   # blank: back to 5
+        with self.assertRaises(ValueError):
+            wizard.apply_setup(self.text, self.answers(alerts={"receiver_quiet_minutes": "ten"}))
+
     def test_answers_land_and_comments_stay(self):
         out = wizard.apply_setup(self.text, self.answers())
         cfg = configparser.ConfigParser()

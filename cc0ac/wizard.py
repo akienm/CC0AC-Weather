@@ -343,6 +343,9 @@ def apply_setup(text: str, answers: dict) -> str:
         kept: dict[str, str | None] = {k: _one_line(alerts.get(k)) or None for k in ALERT_KEYS if k in alerts}
         if not kept.get("smtp_password"):   # the page never shows it; blank means keep it
             kept.pop("smtp_password", None)
+        for k in ("quiet_minutes", "receiver_quiet_minutes"):
+            if kept.get(k) and not re.fullmatch(r"\d{1,4}", kept[k]):
+                raise ValueError(f"not a number of minutes for {k}: {kept[k]!r}")
         text = set_values(text, "alerts", kept)
         cfg = configparser.ConfigParser(interpolation=None)   # set or not: a reference counts as set
         cfg.read_string(text)
@@ -352,7 +355,7 @@ def apply_setup(text: str, answers: dict) -> str:
     return text
 
 
-ALERT_KEYS = ("quiet_minutes", "ntfy_topic", "ntfy_server", "email_to", "email_from",
+ALERT_KEYS = ("quiet_minutes", "receiver_quiet_minutes", "ntfy_topic", "ntfy_server", "email_to", "email_from",
               "smtp_host", "smtp_port", "smtp_user", "smtp_password", "healthcheck_url")
 
 

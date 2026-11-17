@@ -1585,6 +1585,12 @@ it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
 
+**1.4.18** · Nov 17, 2026
+- The setup page has the minutes the hub or radio may stay quiet before you're told
+  (`[alerts] receiver_quiet_minutes`, still 5 unless you change it), for a hub
+  whose uploads have short gaps. Asked for by a station keeper. Both quiet-minutes
+  boxes refuse anything that isn't a number.
+
 **1.4.17** · Nov 17, 2026
 - **Backups over SFTP**: `[backup] path = sftp://user@server/folder` (a port after
   the server name, `/~/folder` for a folder in the login's home) copies the weekly
