@@ -118,8 +118,8 @@
   <input type="text" id="ntfy_topic">
   <label for="quiet_minutes">Send a message after this many quiet minutes</label>
   <input type="number" id="quiet_minutes" min="10" step="5" placeholder="30">
-  <label for="receiver_quiet_minutes">Say so when the hub or radio has heard nothing for this many minutes</label>
-  <input type="number" id="receiver_quiet_minutes" min="1" step="1" placeholder="5">
+  <p class="help">What to alert on (lightning, frost, a sensor gone quiet, Weather Service alerts …), how long each
+     stays on and where it goes: the <a href="/alerts" style="color:var(--accent)">alerts page</a>.</p>
   <details id="emailbox">
     <summary>Or by email</summary>
     <label for="email_to">Send to</label><input type="email" id="email_to">
@@ -378,7 +378,7 @@ function answers() {
     longitude = +m[3] * (/w/i.test(m[4] || "") ? -1 : 1);
   }
   const alerts = {};
-  for (const k of ALERT_KEYS) alerts[k] = $(k).value.trim();
+  for (const k of ALERT_KEYS) if ($(k)) alerts[k] = $(k).value.trim();
   return {
     sensors: rows.map(r => ({id: r.id, name: r.name.trim() || (r.type === "Atlas" ? "Outside" : ""), disposition: r.use})),
     station: {name: $("name").value.trim(), latitude, longitude, elevation_ft: $("elev").value.trim(),

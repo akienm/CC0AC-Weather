@@ -43,7 +43,7 @@ class Home(unittest.TestCase):
         self.state = self.root / "alert-state.json"
         self.sent = []
         self.real_send = alerts.send
-        alerts.send = lambda cfg, title, message: self.sent.append((title, message)) or []
+        alerts.send = lambda cfg, title, message, targets=None: self.sent.append((title, message)) or []
 
     def tearDown(self):
         alerts.send = self.real_send

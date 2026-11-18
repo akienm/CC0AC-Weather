@@ -358,7 +358,7 @@ class WhatTheStationShows(unittest.TestCase):
     def test_one_alert_then_one_all_clear(self):
         sent = []
         real = alerts.send
-        alerts.send = lambda cfg, title, msg: sent.append(title) or []
+        alerts.send = lambda cfg, title, msg, targets=None: sent.append(title) or []
         try:
             with tempfile.TemporaryDirectory() as d:
                 state = Path(d) / "state.json"

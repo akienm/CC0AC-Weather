@@ -437,15 +437,17 @@ def main() -> None:
     if args.check or args.test_alert:
         iolog.keep()
     if args.check:
-        print(alerts.check(cfg, Path(cfg.get("device", "write_path")).expanduser()))
-        print(alerts.check_weather(cfg, Path(cfg.get("device", "write_path")).expanduser()))
+        write_path = Path(cfg.get("device", "write_path")).expanduser()
+        print(alerts.check(cfg, write_path))
+        print(alerts.check_weather(cfg, write_path))
         try:
-            sensors = json.loads((Path(cfg.get("device", "write_path")).expanduser() / "current.json").read_text())["sensors"]
+            sensors = json.loads((write_path / "current.json").read_text())["sensors"]
         except (OSError, ValueError, KeyError):
             sensors = []
-        print(alerts.check_upkeep(cfg, upkeep.problems(diagnostics.BOOT_ROOT) + upkeep.low_batteries(sensors)))
-        print(alerts.check_sensors(cfg, Path(cfg.get("device", "write_path")).expanduser()))
-        print(reports.check(cfg, database_path(cfg), sensor_map(cfg), Path(cfg.get("device", "write_path")).expanduser()))
+        print(alerts.check_upkeep(cfg, upkeep.problems(diagnostics.BOOT_ROOT) + upkeep.low_batteries(sensors),
+                                  write_path=write_path))
+        print(alerts.check_sensors(cfg, write_path))
+        print(reports.check(cfg, database_path(cfg), sensor_map(cfg), write_path))
     elif args.test_alert:
         problems = alerts.send(cfg, f"{page_title(cfg)}: test", "A test message from the weather station.")
         print("Sent." if not problems else "Not sent: " + "; ".join(problems))

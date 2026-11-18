@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weather Station Alerts</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔔</text></svg>">
+<style>
+  :root {
+    --bg: #000; --surface: #111; --border: #333; --text: #e8e8e8; --muted: #888;
+    --accent: #4af; --warn: #f44; --good: #6d6;
+    --font: "Helvetica Neue", Helvetica, Arial, Roboto, "Liberation Sans", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 15px; line-height: 1.45;
+         padding: 16px; max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  h1 a { color: var(--accent); text-decoration: none; font-size: 14px; margin-left: 12px; font-weight: normal; }
+  section { background: var(--surface); border: 1px solid var(--border); padding: 14px; margin-top: 14px; overflow-x: auto; }
+  p, .help { color: var(--muted); font-size: 14px; margin: 6px 0; }
+  .good { color: var(--good); } .bad { color: var(--warn); }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; color: var(--muted); font-weight: normal; font-size: 13px; padding: 4px; white-space: nowrap; }
+  td { padding: 3px; vertical-align: top; }
+  input, select { font: inherit; font-size: 14px; color: var(--text); background: var(--bg); border: 1px solid var(--border);
+                  padding: 5px 7px; width: 100%; min-width: 70px; }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  tr.off input, tr.off select { color: var(--muted); }
+  tr.problem td { border-top: 1px solid var(--warn); }
+  td.why { color: var(--warn); font-size: 13px; padding-bottom: 8px; }
+  td.hint { color: var(--muted); font-size: 12px; padding: 0 4px 8px; }
+  button { font: inherit; font-size: 14px; color: var(--text); background: var(--bg); border: 1px solid var(--border);
+           padding: 6px 12px; cursor: pointer; }
+  button.primary { border-color: var(--accent); color: var(--accent); }
+  td.x button { padding: 4px 8px; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 14px; color: var(--muted); }
+  dt { color: var(--text); }
+  #said { margin-top: 10px; }
+</style>
+</head>
+<body>
+<h1>Alerts <a href="/">← Dashboard</a><a href="/setup">Setup (where alerts go)</a></h1>
+<p>Each row is one alert: what it watches, when it starts, how long it stays on, and where it goes.
+   Messages go to the ntfy topic and email address on the setup page; <b>dashboard</b> shows it as a banner there.
+   Saved rows take effect at the next check, within a minute.</p>
+<p id="derived" class="help" hidden>These rows are the ones your earlier settings meant. Nothing changes until you save.</p>
+
+<section>
+  <table>
+    <thead><tr><th>Alert</th><th>Kind</th><th>Watching</th><th>Trigger</th><th>Stays on</th><th>Flags</th><th>Target</th><th></th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <p><button id="add">+ Add a row</button></p>
+  <p><button class="primary" id="save">Save</button> <span id="said"></span></p>
+</section>
+
+<section>
+  <dl>
+    <dt>Watching</dt><dd><b>any</b>, or one sensor's name or id (for a receiver: radio, hub or console).</dd>
+    <dt>Trigger</dt><dd>The line it crosses, in miles, °F, inHg or minutes whatever the dashboard shows;
+      for an NWS alert: any, minor, moderate, severe or extreme (that or worse).</dd>
+    <dt>Stays on</dt><dd><b>until clears</b>: while it is so. <b>hh:mm:ss</b> (or minutes): that long after the last
+      time it was so (lightning: after the last close strike). <b>once</b>: a message each time, never "over".</dd>
+    <dt>Flags</dt><dd><b>new</b>: a row on its own. <b>replaces</b>: rows of one kind take turns: one message when the
+      first starts, one when a stricter one starts ("closer"), one "over" when the last ends.
+      <b>over</b>: say when it ends. <b>repeat:hh:mm:ss</b>: say it again that often while it stays on.
+      <b>off</b>: kept, but does nothing.</dd>
+    <dt>Target</dt><dd><b>all</b>, or any of <b>ntfy</b>, <b>email</b>, <b>dashboard</b>.</dd>
+  </dl>
+</section>
+
+<script>
+let KINDS = {};
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"})[c]);
+const COLS = ["watching", "trigger", "stays", "flags", "target"];
+
+function hint(kind) {
+  const k = KINDS[kind];
+  return k ? `${k.label}: ${k.help}${k.unit ? " (" + k.unit + ")" : ""}.` + (k.stricter ? ` A stricter row says "${k.stricter}".` : "") : "";
+}
+
+function rowHtml(r) {
+  const kinds = Object.entries(KINDS).map(([k, v]) => `<option value="${k}"${k === r.kind ? " selected" : ""}>${esc(v.label)}</option>`).join("");
+  const off = /\boff\b/.test(r.flags || "");
+  return `<tr class="${off ? "off" : ""}${r.problem ? " problem" : ""}">
+    <td><input data-c="name" value="${esc(r.name)}"></td>
+    <td><select data-c="kind">${kinds}</select></td>
+    ${COLS.map(c => `<td><input data-c="${c}" value="${esc(r[c])}"></td>`).join("")}
+    <td class="x"><button title="Remove this row">✕</button></td></tr>
+    <tr><td></td><td colspan="7" class="${r.problem ? "why" : "hint"}">${esc(r.problem || hint(r.kind))}</td></tr>`;
+}
+
+function rows() {
+  const out = [];
+  for (const tr of document.querySelectorAll("#rows tr:nth-child(odd)")) {
+    const r = {};
+    for (const el of tr.querySelectorAll("[data-c]")) r[el.dataset.c] = el.value;
+    out.push(r);
+  }
+  return out;
+}
+
+function draw(list) {
+  const body = document.getElementById("rows");
+  body.innerHTML = list.map(rowHtml).join("");
+  body.querySelectorAll("td.x button").forEach((b, i) => b.onclick = () => { const l = rows(); l.splice(i, 1); draw(l); });
+  body.querySelectorAll("select[data-c=kind]").forEach((s, i) => s.onchange = () => {
+    const l = rows(), k = KINDS[s.value];
+    Object.assign(l[i], {trigger: k.trigger, stays: k.stays});
+    draw(l);
+  });
+}
+
+async function load() {
+  const r = await fetch("alert-rules.json", {cache: "no-store"});
+  const s = await r.json();
+  KINDS = s.kinds;
+  document.getElementById("derived").hidden = !s.from_settings;
+  draw(s.rows);
+}
+
+document.getElementById("add").onclick = () => {
+  const l = rows();
+  l.push({name: "lightning close", kind: "lightning", watching: "any", trigger: "1 mi", stays: "00:10:00",
+          flags: "replaces, over", target: "all"});
+  draw(l);
+};
+
+document.getElementById("save").onclick = async () => {
+  const said = document.getElementById("said");
+  said.className = ""; said.textContent = "Saving…";
+  try {
+    const r = await fetch("alerts.cgi", {method: "POST", headers: {"X-CC0AC-Config": "save", "Content-Type": "application/json"},
+                                         body: JSON.stringify({rows: rows()})});
+    const text = await r.text();
+    said.className = r.ok ? "good" : "bad"; said.textContent = text;
+    if (r.ok) await load();
+  } catch (e) { said.className = "bad"; said.textContent = "Not saved: " + e; }
+};
+
+load();
+</script>
+</body>
+</html>

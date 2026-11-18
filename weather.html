@@ -94,10 +94,10 @@
   }
   .more { background: none; border: 1px solid var(--border); color: var(--accent); font: inherit;
           font-size: 12px; padding: 2px 8px; cursor: pointer; }
-  #alerts .alert { border: 2px solid #f90; background: #210; padding: 10px 14px; margin-bottom: 12px; }
-  #alerts .alert.severe { border-color: var(--warn); background: #300; }
+  #alerts .alert, #station-alerts .alert { border: 2px solid #f90; background: #210; padding: 10px 14px; margin-bottom: 12px; }
+  #alerts .alert.severe, #station-alerts .alert.severe { border-color: var(--warn); background: #300; }
   #alerts summary { cursor: pointer; font-weight: bold; }
-  #alerts .text { white-space: pre-wrap; margin-top: 8px; color: var(--text); }
+  #alerts .text, #station-alerts .text { white-space: pre-wrap; margin-top: 8px; color: var(--text); }
   #warnings .warning { border: 1px solid #f90; color: #fc6; padding: 8px 14px; margin-bottom: 12px; }
   .above { color: #f96; } .below { color: #6cf; }
   /* weather.html?embed, for an iframe on another page: no lower pane, no charts link. */
@@ -115,6 +115,7 @@
 <h1><span id="title">CC0AC Weather</span> <a class="charts" href="/charts.html">📈 Charts</a></h1>
 <div class="ts" id="written">waiting for data…</div>
 <div id="warnings"></div>
+<div id="station-alerts"></div>
 <div id="alerts"></div>
 <div class="grid" id="grid">
   <div class="pane" id="p-outdoor"></div>
@@ -299,6 +300,17 @@ function observationRows(fc) {
 function renderWarnings(data) {
   document.getElementById('warnings').innerHTML =
     ((data && data.warnings) || []).map(w => `<div class="warning">🛠️ ${esc(w)}</div>`).join('');
+}
+
+// The station's own alerts whose row targets the dashboard (alerts.js, written by the check).
+function renderStationAlerts() {
+  const list = (window.ACURITE_ALERTS && window.ACURITE_ALERTS.alerts) || [];
+  const key = JSON.stringify(list);
+  if (drawn.station === key) return;
+  drawn.station = key;
+  document.getElementById('station-alerts').innerHTML = list.map(a =>
+    `<div class="alert${a.kind === 'lightning' || a.kind === 'nws' ? ' severe' : ''}"><b>🔔 ${esc(a.title.charAt(0).toUpperCase() + a.title.slice(1))}</b>`
+    + `<div class="text">${esc(a.message)}</div></div>`).join('');
 }
 
 function renderAlerts(fc) {
@@ -908,6 +920,9 @@ const loadForecast = () => loadScript('forecast', 'forecast.js', drawForecast);
 const loadClimate = () => loadScript('climate', 'climate.js', drawClimate);
 // Missing air.js is fine: [air] is off, and the pane stays empty.
 const loadAir = () => loadScript('air', 'air.js', drawAir);
+// Missing alerts.js: no alert targets the dashboard yet. A gone file clears the banners.
+const loadStationAlerts = () => loadScript('station-alerts-data', 'alerts.js', renderStationAlerts,
+                                           () => { window.ACURITE_ALERTS = null; renderStationAlerts(); });
 
 // Stale readings first try a full reload, which also clears a stuck timer or a page
 // left running across an update. Only when current.js still loads (a reload while the
@@ -921,7 +936,7 @@ function reloadIfStale() {
 
 // A phone that slept, or a tab left in the background, catches up when looked at.
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') { loadCurrent(); loadForecast(); loadClimate(); loadAir(); }
+  if (document.visibilityState === 'visible') { loadCurrent(); loadForecast(); loadClimate(); loadAir(); loadStationAlerts(); }
 });
 
 loadCurrent();
@@ -931,6 +946,8 @@ loadAir();
 setInterval(loadForecast, FORECAST_POLL_SECONDS * 1000);
 setInterval(loadClimate, FORECAST_POLL_SECONDS * 1000);
 setInterval(loadAir, FORECAST_POLL_SECONDS * 1000);
+loadStationAlerts();
+setInterval(loadStationAlerts, 60 * 1000);
 setInterval(() => { tickAges(); drawForecast(); reloadIfStale(); }, 60 * 1000);
 </script>
 </body>

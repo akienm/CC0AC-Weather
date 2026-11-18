@@ -17,7 +17,7 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any
 
-from cc0ac import alerts, diagnostics, mcp_server, private, release, reports, secure_web, units, upkeep, wizard
+from cc0ac import alert_rules, alerts, diagnostics, mcp_server, private, release, reports, secure_web, units, upkeep, wizard
 from cc0ac.config import (
     CONFIG_MAX_BYTES,
     DEFAULT_TITLE,
@@ -52,13 +52,14 @@ DATA_FILES = {"/current.js": "application/javascript", "/current.json": "applica
               "/forecast.js": "application/javascript", "/forecast.json": "application/json",
               "/climate.js": "application/javascript", "/climate.json": "application/json",
               "/air.js": "application/javascript", "/air.json": "application/json",
+              "/alerts.js": "application/javascript", "/alerts.json": "application/json",
               "/history.csv": "text/csv"}
 
 # From outside your network (anything through the router's port forward) only the
 # dashboard and the charts are served, with what those two pages load; everything
 # else answers 404. Your own network gets every page, the data files and /config.cgi.
 OUTSIDE_PATHS = {"/", "/weather.html", "/charts.html", "/theme.css", "/units.js",
-                 "/current.js", "/forecast.js", "/climate.js", "/air.js", "/history.json"}
+                 "/current.js", "/forecast.js", "/climate.js", "/air.js", "/alerts.js", "/history.json"}
 
 
 def _local_client(address: str) -> bool:
@@ -150,6 +151,9 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: Se
                 return
             if path in ("/setup", "/setup.json"):
                 self._setup_page(path)
+                return
+            if path in ("/alerts", "/alert-rules.json"):
+                self._alerts_page(path)
                 return
             if path == "/update.json":
                 if self._config_allowed():
@@ -258,12 +262,46 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: Se
             state = wizard.setup_state(load_config(config_path))
             self._send(json.dumps(state).encode(), "application/json")
 
+        def _alerts_page(self, path: str) -> None:
+            if not self._config_allowed():
+                return
+            if path == "/alerts":
+                self._send((page_dir / "alerts.html").read_bytes(), PAGE_TYPES[".html"])
+                return
+            assert config_path is not None   # _config_allowed
+            self._send(json.dumps(alert_rules.page_state(load_config(config_path))).encode(), "application/json")
+
+        def _save_alert_rules(self, body: str) -> None:
+            """The alerts page's rows -> [alert_rules]. No restart: the check reads
+            config.ini afresh each minute."""
+            assert config_path is not None   # do_POST checked _config_allowed
+            try:
+                answers = json.loads(body)
+                if not isinstance(answers, dict) or not isinstance(answers.get("rows"), list):
+                    raise ValueError("expected {rows: [...]}")
+                text = alert_rules.apply_rows(config_path.read_text(), answers["rows"])
+            except ValueError as e:
+                self._answer(400, f"Not saved: {e}")
+                return
+            problem = check_config(text, config_path)
+            if problem:
+                self._answer(400, problem)
+                return
+            try:
+                save_config(config_path, text)
+            except OSError as e:
+                log.error("Saving %s failed: %s", config_path, e)
+                self._answer(500, f"Not saved: {e}")
+                return
+            log.info("alert rules saved from %s", self.client_address[0])
+            self._answer(200, "Saved. The next check, within a minute, uses them.")
+
         def do_POST(self) -> None:
             target = urllib.parse.urlparse(self.path).path
             if target == "/mcp" and mcp_server_ is not None:
                 self._mcp()
                 return
-            if target not in ("/config.cgi", "/setup.cgi", "/update.cgi"):
+            if target not in ("/config.cgi", "/setup.cgi", "/update.cgi", "/alerts.cgi"):
                 self.send_error(404)
                 return
             if not self._config_allowed():
@@ -295,6 +333,9 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: Se
                 text = self.rfile.read(length).decode("utf-8")
             except UnicodeDecodeError:
                 self._answer(400, "Not saved: the text isn't UTF-8.")
+                return
+            if target == "/alerts.cgi":
+                self._save_alert_rules(text)
                 return
             if target == "/setup.cgi":
                 answered = self._setup_answers(text)

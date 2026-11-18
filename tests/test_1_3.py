@@ -57,7 +57,7 @@ class WeatherAlerts(unittest.TestCase):
         self.state = self.root / "state.json"
         self.sent = []
         self._send = alerts.send
-        alerts.send = lambda c, title, message: self.sent.append((title, message)) or []
+        alerts.send = lambda c, title, message, targets=None: self.sent.append((title, message)) or []
         self.c = cfg(alerts={"enabled": "true", "weather": "frost, heat, storm"}, station={"name": "Home"})
 
     def tearDown(self):

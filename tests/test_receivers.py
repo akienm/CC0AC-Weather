@@ -30,7 +30,7 @@ class Receivers(unittest.TestCase):
         self.state = self.root / "alert-state.json"
         self.sent = []
         self.saved = alerts.send, alerts.RTL_433_LAST_EXIT, alerts._raw_log_written
-        alerts.send = lambda cfg, title, message: self.sent.append((title, message)) or []
+        alerts.send = lambda cfg, title, message, targets=None: self.sent.append((title, message)) or []
         alerts.RTL_433_LAST_EXIT = self.root / "rtl_433-last-exit.txt"
         self.logs: dict = {}                     # receiver -> its raw log's last write
         alerts._raw_log_written = lambda cfg: dict(self.logs)

@@ -177,7 +177,7 @@ class LightningAlertThroughABurst(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         self.sent, self._send = [], alerts.send
-        alerts.send = lambda c, title, message: self.sent.append((title, message)) or []
+        alerts.send = lambda c, title, message, targets=None: self.sent.append((title, message)) or []
         self.c = configparser.ConfigParser()
         self.c.read_dict({"alerts": {"enabled": "true", "weather": "lightning"}, "station": {"name": "Home"}})
 

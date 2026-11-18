@@ -169,15 +169,26 @@ class Alerts(unittest.TestCase):
              "fields": {"temp_f": 30, "feels_like_f": 110, "last_strike_mi": 5, "last_strike_heard": now}}]}
 
     def test_messages_follow_units(self):
-        cfg = config(alerts={"weather": "frost, heat, lightning, storm"}, units={"system": "metric"})
-        said = alerts.weather_conditions(cfg, self.snapshot(), datetime.now(timezone.utc).timestamp())
-        self.assertEqual(said["frost"], "Frost risk: -1.1°C at Yard.")
-        self.assertEqual(said["heat"], "Dangerous heat: feels like 43°C at Yard.")
-        self.assertEqual(said["lightning"], "Lightning: a strike 8 km away, heard at Yard.")
-        self.assertIn("fallen 3.4 hPa in 3 hours", said["storm"])
-        self.assertEqual(alerts.WEATHER_OVER["lightning"].format(
-            lightning_distance=units.show("distance", 10, units.chosen(cfg)), lightning_minutes=30),
-            "No lightning within 16 km for 30 minutes.")
+        cfg = config(alerts={"enabled": "true", "ntfy_topic": "t", "weather": "frost, heat, lightning, storm"},
+                     units={"system": "metric"})
+        sent, real = [], alerts.send
+        alerts.send = lambda c, title, message, targets=None: sent.append(message) or []
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                home, now = Path(d), datetime.now(timezone.utc).timestamp()
+                (home / "current.json").write_text(json.dumps(self.snapshot()))
+                alerts.check_weather(cfg, home, now, home / "state.json")
+                said = "\n".join(sent)
+                self.assertIn("Frost risk: -1.1°C at Yard.", said)
+                self.assertIn("Dangerous heat: feels like 43°C at Yard.", said)
+                self.assertIn("Lightning: a strike 8 km away, heard at Yard.", said)
+                self.assertIn("fallen 3.4 hPa in 3 hours", said)
+                (home / "current.json").write_text(json.dumps({"sensors": []}))
+                sent.clear()
+                alerts.check_weather(cfg, home, now + 31 * 60, home / "state.json")
+                self.assertIn("No lightning within 16 km for 30 minutes.", sent)
+        finally:
+            alerts.send = real
 
 
 class Served(unittest.TestCase):

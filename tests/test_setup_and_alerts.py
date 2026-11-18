@@ -193,7 +193,7 @@ class AlertCheck(unittest.TestCase):
     def test_one_message_going_quiet_one_coming_back(self):
         sent = []
         real = alerts.send
-        alerts.send = lambda cfg, title, msg: sent.append(title) or []
+        alerts.send = lambda cfg, title, msg, targets=None: sent.append(title) or []
         try:
             with tempfile.TemporaryDirectory() as d:
                 d = Path(d)
@@ -222,7 +222,7 @@ class AlertCheck(unittest.TestCase):
     def test_a_failed_send_tries_again(self):
         calls = []
         real = alerts.send
-        alerts.send = lambda cfg, title, msg: calls.append(title) or ["ntfy: down"]
+        alerts.send = lambda cfg, title, msg, targets=None: calls.append(title) or ["ntfy: down"]
         try:
             with tempfile.TemporaryDirectory() as d:
                 d = Path(d)

@@ -1131,18 +1131,44 @@ APRS parser; an accepted upload with a real account is not yet measured.
 
 ## Weather alerts
 
-Besides telling you when readings stop, the station can warn about the
-weather, in the same ways (ntfy, email): one message when it starts and one
-when it's over. In `[alerts]`:
+Besides telling you when readings stop, the station can warn about the weather
+and about itself, by ntfy, email, or a banner on the dashboard. What it warns
+about is a table, one row per alert, on the **alerts page** (`/alerts`, your
+network only; linked from the setup page). Saved rows take effect at the next
+check, within a minute, with no restart.
 
-```ini
-weather = frost, heat, storm, lightning
-frost_f = 35              ; outdoors at or below this
-heat_f = 105              ; feels-like at or above this
-pressure_drop_inhg = 0.06 ; the barometer falls this much in 3 hours
-lightning_mi = 10         ; a strike this close or closer
-lightning_minutes = 30    ; ...heard in this long; over after this long without one
-```
+| Alert | Kind | Watching | Trigger | Stays on | Flags | Target |
+|---|---|---|---|---|---|---|
+| lightning | lightning | any | 10 mi | 00:30:00 | replaces, over | all |
+| lightning close | lightning | any | 1 mi | 00:10:00 | replaces, over | ntfy |
+| weather service | nws | any | severe | until clears | new, over | ntfy, dashboard |
+| attic battery | battery | Attic | any | until clears | new, over | dashboard |
+
+- **Kind**: lightning, frost, heat, storm (the barometer falling in 3 hours),
+  nws (a Weather Service alert), readings (none from any sensor), sensor (one
+  quiet while the others report), receiver (the radio, hub or console hearing
+  nothing), held_back ([readings that can't be right](#readings-that-cant-be-right)),
+  battery, upkeep (disk, backup), service (the station started, stopped, updated).
+- **Watching**: `any`, or one sensor's name or id.
+- **Trigger**: the line it crosses, in the dashboard's units; for nws, `any`,
+  `minor`, `moderate`, `severe` or `extreme` (that or worse).
+- **Stays on**: `until clears` (while it is so), `hh:mm:ss` or minutes (that long
+  after the last time it was so: for lightning, the last strike that close), or
+  `once` (a message each time, never "over").
+- **Flags**: `new`, the default, is a row on its own. `replaces`: the rows of one
+  kind take turns, so a storm coming closer sends one message when the first row
+  starts, one "lightning, closer" when a stricter row starts, and one "over" when
+  the last one ends. `over`: say when it ends. `repeat:hh:mm:ss`: say it again that
+  often while it stays on. `off`: kept, but does nothing.
+- **Target**: `all`, or any of `ntfy`, `email`, `dashboard`. Where ntfy and email
+  go is set on the setup page.
+
+In `config.ini` the table is `[alert_rules]`, one row per line,
+`name = kind | watching | trigger | stays on | flags | target`. Until it is
+saved, the older `[alerts]` settings (`weather`, `frost_f`, `heat_f`,
+`pressure_drop_inhg`, `lightning_mi`, `lightning_minutes`, `notices`,
+`receiver_quiet_minutes`) still say what to alert on, and the alerts page shows
+them as rows; saving replaces them.
 
 Lightning needs a lightning sensor (the Atlas's add-on, or a tower such as the
 6045M). It gives the distance to the storm, not its direction. If you can hear
@@ -1164,27 +1190,8 @@ The station's own outdoor sensor is used when it has been heard lately, and an
 internet one (`[online]`) only when it hasn't. Each alert has a little room
 before it says "over" (2° for frost, 3° for heat, half the drop for a storm),
 so a reading hovering at the line doesn't send a message every few minutes.
-Checked on the same 5-minute timer as the readings-stopped alert.
-
-### About the station
-
-The same messages can tell you about the station itself. All three are on
-whenever alerts are; in `[alerts]`, list only the ones you want, or leave it
-blank for none:
-
-```ini
-notices = service, sensors, held_back
-```
-
-- **service**: the station started (and with which version, when it changed),
-  it was stopped, or it started again after stopping without saying so (a
-  crash, or the computer lost power). Saving on the setup page restarts it and
-  sends nothing.
-- **sensors**: one sensor not heard for `quiet_minutes` while the others still
-  are (often its batteries), and again when it's back. When every sensor stops,
-  that's the "no readings" message instead.
-- **held_back**: a reading held back as impossible ([Readings that can't be
-  right](#readings-that-cant-be-right)), and again when its readings are believed.
+Checked every minute. Saving on the setup page restarts the station and sends
+nothing.
 
 ## Bringing in older readings
 
@@ -1555,9 +1562,11 @@ Check the types too: `python3 -m pip install mypy`, then `python3 -m mypy` from 
 | `charts.html` | Charts over any period; reads `/history.json` |
 | `config.html` | The settings page served at `/config.cgi` (your network only) |
 | `setup.html` | The first-run setup page at `/setup` (your network only) |
+| `alerts.html` | The alerts page at `/alerts` (your network only) |
 | `status.html` | The status page at `/status` (your network only); reads `/status.json` |
 | `cc0ac/wizard.py` | Finds the hub, reads its page, writes the setup page's answers into the settings |
-| `cc0ac/alerts.py` | Sends a message when readings stop and when they're back, and weather alerts (`--check`, `--test-alert`) |
+| `cc0ac/alerts.py` | The alert check: readings stopped, the weather, sensors, upkeep, the station itself (`--check`, `--test-alert`) |
+| `cc0ac/alert_rules.py` | The alert rules table, `[alert_rules]` |
 | `cc0ac/climate.py` | Records, the 1991-2020 normals, degree days and ET0: `climate.json` and the dashboard's Records card |
 | `cc0ac/zambretti.py` | The barometer outlook on the outdoor card |
 | `cc0ac/mcp_server.py` | The read-only MCP server at `/mcp`, for AI assistants |
@@ -1584,6 +1593,23 @@ Each line says the version (or, before version numbers, the date) that added
 it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
+
+**1.5.0** · Nov 18, 2026
+- **The alert rules table**: what to alert on is one table on a new page,
+  `/alerts` (`[alert_rules]`), a row per alert: kind, watching, trigger, how long
+  it stays on, flags and target. So two lightning rows can differ (10 miles for
+  30 minutes, 1 mile for 10), and flagged `replaces` they take turns: one message,
+  then "lightning, closer", then one "over", instead of a pair from each. Replayed
+  against a station's real storm day: four lightning start-and-over pairs became
+  one alert and two "closer". Without the table, the older settings are the rows,
+  so alerts go on as before. Asked for by Akien.
+- **Weather Service alerts** as a kind\* (`nws`), from the forecast's alerts, at a
+  severity or worse.
+- **Targets**: each row goes to ntfy, email, the dashboard, or any of them. On the
+  **dashboard**\*, a row targeting it is a banner while it stays on.
+- **repeat**\*: a row can say itself again, every so often, while it stays on.
+- A station in the middle of an alert while it updates may send that alert once
+  more: the old alert record is not carried over.
 
 **1.4.21** · Nov 18, 2026
 - **Docker**\*: the image brings its root certificates up to date. The pinned base

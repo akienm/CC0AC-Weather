@@ -447,27 +447,40 @@ quiet_minutes = 30
 ; <url>/fail when they stop. When the pings stop, the service tells you.
 ; healthcheck_url = https://hc-ping.com/your-check-id
 ;
-; About the station itself, sent the same ways (all on unless listed otherwise):
-; service (it started, now on which version; it was stopped; it started again
-; after stopping without saying so), sensors (one sensor quiet for quiet_minutes
-; while the others still report, or one receiver, the radio, hub or console,
-; hearing nothing for receiver_quiet_minutes; and back), held_back (a reading held back as
-; impossible, see [sanity], and believed again). A restart for saved settings
-; sends nothing. List only the ones you want; for none, leave it blank.
-; notices = service, sensors, held_back
+; What to alert on is the rules table, [alert_rules] below, edited on the alerts
+; page (/alerts). Until it is saved there, the older settings here say it:
+;   notices = service, sensors, held_back      (the station itself; blank: none)
+;   weather = frost, heat, storm, lightning     (blank: none)
+;   frost_f = 35, heat_f = 105, pressure_drop_inhg = 0.06,
+;   lightning_mi = 10, lightning_minutes = 30, receiver_quiet_minutes = 5
+; and saving the alerts page replaces them with rows.
+
+; [alert_rules]
+; One row per alert: name = kind | watching | trigger | stays on | flags | target
 ;
-; Weather alerts, sent the same ways: one message when it starts, one when it's
-; over. Any of: frost (outdoors at or below frost_f), heat (feels like at or
-; above heat_f), storm (the barometer falls pressure_drop_inhg in 3 hours),
-; lightning (a lightning sensor heard a strike within lightning_mi in the last
-; lightning_minutes; over when that long passes with none so close. If you can
-; hear thunder you are within about 10 miles of it).
-; weather = frost, heat, storm, lightning
-; frost_f = 35
-; heat_f = 105
-; pressure_drop_inhg = 0.06
-; lightning_mi = 10
-; lightning_minutes = 30
+; kind       lightning, frost, heat, storm, nws (a Weather Service alert), readings
+;            (none from any sensor), sensor (one quiet while the rest report),
+;            receiver (the radio, hub or console hearing nothing), held_back (a
+;            reading held back as impossible, see [sanity]), battery, upkeep (disk,
+;            backup), service (the station started, stopped, was updated).
+; watching   any, or one sensor's name or id (a receiver: radio, hub or console).
+; trigger    the line it crosses, in miles, °F, inHg or minutes; nws: any, minor,
+;            moderate, severe or extreme (that or worse). Kinds with none: any.
+; stays on   until clears: while it is so. hh:mm:ss (or minutes): that long after
+;            the last time it was so (lightning: the last strike that close).
+;            once: a message each time, never "over".
+; flags      new (the default): a row on its own. replaces: rows of one kind take
+;            turns, one message when the first starts, one when a stricter one
+;            starts ("closer", "colder" ...), one "over" when the last ends.
+;            over: say when it ends. repeat:hh:mm:ss: say it again that often while
+;            it stays on. off: kept, but does nothing.
+; target     all, or any of ntfy, email, dashboard (a banner on the dashboard).
+;
+; For example, lightning in two steps, the close one to the phone only:
+; lightning = lightning | any | 10 mi | 00:30:00 | replaces, over | all
+; lightning close = lightning | any | 1 mi | 00:10:00 | replaces, over | ntfy
+; weather service = nws | any | severe | until clears | new, over | ntfy, dashboard
+; attic battery = battery | Attic | any | until clears | new, over | dashboard
 
 [lightning]
 ; Strikes farther than this many miles are left out everywhere: the strikes

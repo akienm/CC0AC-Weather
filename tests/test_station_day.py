@@ -215,7 +215,7 @@ class LightningAlert(unittest.TestCase):
         self.root = Path(self.dir.name)
         self.sent = []
         self._send = alerts.send
-        alerts.send = lambda c, title, message: self.sent.append((title, message)) or []
+        alerts.send = lambda c, title, message, targets=None: self.sent.append((title, message)) or []
         self.c = configparser.ConfigParser()
         self.c["alerts"] = {"enabled": "true", "weather": "lightning"}
         self.c["station"] = {"name": "Home"}
