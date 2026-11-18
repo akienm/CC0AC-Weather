@@ -5,10 +5,13 @@
 # uses only the standard library.
 FROM python:3.12.7-slim-bookworm
 
+# ca-certificates: named so it is brought up to date, not left as the pinned base
+# image's (Oct 2024, without the Sectigo R46 root pollen.com chains to: Debian added
+# it in 20230311+deb12u1, June 2025);
 # smartmontools: the disk check (it sees disks only when they are passed in);
 # smbclient: the backup to a Windows share; rtl-433: a USB radio passed in (compose.yaml).
 RUN apt-get update -qq \
- && apt-get install -y -qq --no-install-recommends smartmontools smbclient openssh-client tzdata openssl rtl-433 \
+ && apt-get install -y -qq --no-install-recommends ca-certificates smartmontools smbclient openssh-client tzdata openssl rtl-433 \
  && rm -rf /var/lib/apt/lists/*
 
 # The version in the image installs on the first start; after that the volume
