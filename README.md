@@ -1154,7 +1154,8 @@ check, within a minute, with no restart.
   `minor`, `moderate`, `severe` or `extreme` (that or worse).
 - **Stays on**: `until clears` (while it is so), `hh:mm:ss` or minutes (that long
   after the last time it was so: for lightning, the last strike that close), or
-  `once` (a message each time, never "over").
+  `once` (a message each time, never "over"). A `service` (Station) row is always
+  once: its `hh:mm:ss` is how long the dashboard shows the message (`once`: an hour).
 - **Flags**: `new`, the default, is a row on its own. `replaces`: the rows of one
   kind take turns, so a storm coming closer sends one message when the first row
   starts, one "lightning, closer" when a stricter row starts, and one "over" when
@@ -1593,6 +1594,21 @@ Each line says the version (or, before version numbers, the date) that added
 it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
+
+**1.5.1** · Nov 19, 2026
+- **The setup page saves again beside an `[alert_rules]` section.** 1.5.0 took the
+  section for a sensor, so every save (backups included) said "not a sensor ID:
+  'alert_rules'".
+- **Alert rows stay in config.ini.** A row named like a private setting (`station`,
+  `key`, `user` ...) was moved into secrets.env by the setup page and then quietly
+  stopped working. Rows moved that way are read back, and the alerts page's next
+  save writes them out plainly again.
+- **A Station row's "stays on" is how long its banner stays on the dashboard**
+  (`once`: an hour, as before). 1.5.0 said "Saved" and put `once` back. "until
+  clears" is refused, with the reason, instead of quietly changed.
+- A row of `[alert_rules]` that doesn't read is named in the station log when it
+  starts, instead of doing nothing without a word.
+Found by a station keeper running 1.5.0 in Docker.
 
 **1.5.0** · Nov 18, 2026
 - **The alert rules table**: what to alert on is one table on a new page,

@@ -468,7 +468,8 @@ quiet_minutes = 30
 ;            moderate, severe or extreme (that or worse). Kinds with none: any.
 ; stays on   until clears: while it is so. hh:mm:ss (or minutes): that long after
 ;            the last time it was so (lightning: the last strike that close).
-;            once: a message each time, never "over".
+;            once: a message each time, never "over". A station row is always
+;            once; hh:mm:ss there is how long the dashboard shows it (once: an hour).
 ; flags      new (the default): a row on its own. replaces: rows of one kind take
 ;            turns, one message when the first starts, one when a stricter one
 ;            starts ("closer", "colder" ...), one "over" when the last ends.

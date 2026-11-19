@@ -11,6 +11,8 @@ trigger   the threshold, in the station's own units (miles, °F, inHg, minutes);
           NWS: any, minor, moderate, severe or extreme (that or worse).
 stays on  until clears: while it is so; hh:mm:ss (or minutes): that long after the
           last time it was so; once: one message each time it happens, never "over".
+          A Station row is always once; its hh:mm:ss is how long the dashboard shows
+          the message (once: an hour).
 flags     replaces: rows of one kind take turns, one alert standing at a time (a
           stricter row says "closer", "colder" ...; one "over" when every row of
           the kind has ended); new (the default): a row on its own. over: a message
@@ -32,6 +34,7 @@ SECTION = "alert_rules"
 TARGETS = ("ntfy", "email", "dashboard")
 SEVERITIES = ("minor", "moderate", "severe", "extreme")
 CLEARS, ONCE = 0.0, None     # stays on: 0 s after it stops being so; None: once
+SHOWN_ONCE_S = 3600.0        # a once-only message stays on the dashboard this long, unless its row says
 
 
 @dataclass(frozen=True)
@@ -150,7 +153,16 @@ def parse(name: str, line: str) -> Rule:
     try:
         rule.trigger = _trigger(kind, trigger)
         s = stays.lower()
-        if kind == "service" or s == "once":
+        if kind == "service":
+            # Said once each time, never "over": stays on is how long the dashboard shows it.
+            if s in ("", "default", "once"):
+                rule.stays = ONCE
+            elif s in ("until clears", "clears", "until dropped", "until it clears"):
+                raise ValueError("a Station message is said once, so it can't stay until it clears: "
+                                 "write once (on the dashboard for an hour) or hh:mm:ss (that long)")
+            else:
+                rule.stays = duration(stays)
+        elif s == "once":
             rule.stays = ONCE
         elif s in ("", "default"):
             rule.stays = k.stays
@@ -182,9 +194,14 @@ def parse(name: str, line: str) -> Rule:
             rule.targets = frozenset(t)
     except ValueError as e:
         raise ValueError(f"{name}: {e}") from None
-    if rule.stays is ONCE:
+    if rule.stays is ONCE or kind == "service":
         rule.over = False
     return rule
+
+
+def shown_for(rule: Rule) -> float:
+    """How long a once-only message (a Station row's) stays on the dashboard, in seconds."""
+    return SHOWN_ONCE_S if rule.stays is ONCE else float(rule.stays)
 
 
 def _number(v: float) -> str:
@@ -245,14 +262,21 @@ def from_settings(cfg: configparser.ConfigParser) -> list[Rule]:
     return rows
 
 
+def _lines(cfg: configparser.ConfigParser) -> list[tuple[str, str]]:
+    """The [alert_rules] rows as written. 1.5.0's setup page moved a row named like a
+    private setting (station, key, user ...) into secrets.env; such a row is read back
+    through its reference, and the alerts page's next save writes it out plainly again."""
+    from cc0ac import private
+    return [(name, private.get_raw(cfg, SECTION, name)) for name in cfg.options(SECTION)
+            if name not in cfg.defaults()]
+
+
 def rules(cfg: configparser.ConfigParser) -> list[Rule]:
     """Every row in force. A row that doesn't read is left out, and said so in problems()."""
     if not cfg.has_section(SECTION):
         return from_settings(cfg)
     out = []
-    for name, line in cfg.items(SECTION, raw=True):
-        if name in cfg.defaults():
-            continue
+    for name, line in _lines(cfg):
         try:
             out.append(parse(name, line))
         except ValueError:
@@ -265,7 +289,7 @@ def problems(cfg: configparser.ConfigParser) -> list[str]:
     if not cfg.has_section(SECTION):
         return []
     out = []
-    for name, line in cfg.items(SECTION, raw=True):
+    for name, line in _lines(cfg):
         try:
             parse(name, line)
         except ValueError as e:
@@ -296,9 +320,7 @@ def page_state(cfg: configparser.ConfigParser) -> dict:
     """What the alerts page shows: the rows (as their columns), the kinds, and what is wrong."""
     if cfg.has_section(SECTION):
         rows = []
-        for name, line in cfg.items(SECTION, raw=True):
-            if name in cfg.defaults():
-                continue
+        for name, line in _lines(cfg):
             try:
                 rows.append(_columns(name, show(parse(name, line))))
             except ValueError as e:

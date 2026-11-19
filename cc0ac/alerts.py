@@ -168,7 +168,6 @@ def _load_state(path: Path) -> dict:
 ONLINE_IDS = ("open-meteo", "nws-")    # sources/online.py: internet weather, not a station
 GRACE_S = 120.0                        # a strike heard this recently counts, whatever the stays-on
 DASHBOARD_FILE = "alerts"              # <write_path>/alerts.json and alerts.js: the dashboard's banners
-ONCE_SHOWN_S = 3600.0                  # a once-only message stays on the dashboard this long
 
 
 def _setting(cfg: configparser.ConfigParser, key: str, default: float) -> float:
@@ -560,7 +559,7 @@ def write_dashboard(cfg: configparser.ConfigParser, write_path: Path, state: dic
                     shown.append({"row": row, "kind": rb.get("kind"), "title": s.get("title", ""),
                                   "message": s.get("message", ""), "since": s.get("since")})
     for e in state.get("events") or []:
-        if e.get("row") in rows and now - float(e.get("at") or 0) <= ONCE_SHOWN_S:
+        if e.get("row") in rows and now - float(e.get("at") or 0) <= alert_rules.shown_for(rows[e["row"]]):
             shown.append({"row": e["row"], "kind": "service", "title": e.get("title", ""),
                           "message": e.get("message", ""), "since": e.get("at")})
     shown.sort(key=lambda a: a.get("since") or 0)
@@ -678,14 +677,15 @@ def _service_rows(cfg: configparser.ConfigParser) -> list[alert_rules.Rule]:
 
 def _say_service(cfg: configparser.ConfigParser, title: str, message: str, state_path: Path,
                  now: float) -> list[str]:
-    """Through every service row's targets; the dashboard keeps it an hour."""
+    """Through every service row's targets; the dashboard keeps it as long as its row says (an hour)."""
     rows = _service_rows(cfg)
     targets = frozenset().union(*(r.targets for r in rows))
     name = cfg.get("station", "name", fallback="").strip() or "Weather station"
     problems = send(cfg, f"{name}: {title}", message, targets) if targets & {"ntfy", "email"} else []
     shown = [r for r in rows if "dashboard" in r.targets]
     if shown:
-        events = [e for e in _load_state(state_path).get("events") or [] if now - float(e.get("at") or 0) <= ONCE_SHOWN_S]
+        longest = max(alert_rules.shown_for(r) for r in rows)
+        events = [e for e in _load_state(state_path).get("events") or [] if now - float(e.get("at") or 0) <= longest]
         events.append({"row": shown[0].name, "title": title, "message": message, "at": now})
         _save_state(state_path, "events", events[-10:])
         write_path = cfg.get("device", "write_path", fallback="").strip()

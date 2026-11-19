@@ -49,6 +49,7 @@ from pathlib import Path
 from typing import Any
 
 from cc0ac import (
+    alert_rules,
     alerts,
     calibration,
     climate,
@@ -340,6 +341,10 @@ def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) 
     if (config_path is not None and not os.environ.get("CC0AC_BOOTLOADER_ROOT")
             and not cfg.get("capture", "read", fallback="").strip()):
         threading.Thread(target=_check_loop, args=(config_path,), daemon=True, name="check").start()
+
+    # A row of [alert_rules] that doesn't read does nothing; say which, and why.
+    for problem in alert_rules.problems(cfg):
+        log.error("[alert_rules] row left out: %s", problem)
 
     # [alerts] notices = service: a message that it started, and one when it is stopped.
     threading.Thread(target=lambda: log.info("Notice: %s", alerts.service_started(cfg, station_version())),

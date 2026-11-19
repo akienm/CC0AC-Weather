@@ -60,7 +60,8 @@
     <dt>Trigger</dt><dd>The line it crosses, in miles, °F, inHg or minutes whatever the dashboard shows;
       for an NWS alert: any, minor, moderate, severe or extreme (that or worse).</dd>
     <dt>Stays on</dt><dd><b>until clears</b>: while it is so. <b>hh:mm:ss</b> (or minutes): that long after the last
-      time it was so (lightning: after the last close strike). <b>once</b>: a message each time, never "over".</dd>
+      time it was so (lightning: after the last close strike). <b>once</b>: a message each time, never "over". A Station row is always once: its hh:mm:ss
+      is how long the dashboard shows the message (once: an hour).</dd>
     <dt>Flags</dt><dd><b>new</b>: a row on its own. <b>replaces</b>: rows of one kind take turns: one message when the
       first starts, one when a stricter one starts ("closer"), one "over" when the last ends.
       <b>over</b>: say when it ends. <b>repeat:hh:mm:ss</b>: say it again that often while it stays on.

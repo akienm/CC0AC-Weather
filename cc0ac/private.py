@@ -34,6 +34,8 @@ PRIVATE_KEYS = frozenset((
     "token", "header", "username", "domain", "latitude", "longitude", "google_api_key", "pollen_zip"))
 # Not private, though the name says so: [web] key is where the TLS key file is.
 NOT_PRIVATE = frozenset((("web", "key"),))
+# Sections whose keys are names someone chose, not settings: an alert row called "station" is no station ID.
+NOT_PRIVATE_SECTIONS = frozenset(("alert_rules",))
 # Read without %(name)s by the code that uses them, so moved as written.
 RAW_READ = frozenset((("backup", "password"),))
 _REF = re.compile(r"file:\S*#[A-Za-z_][A-Za-z0-9_]*")
@@ -202,6 +204,8 @@ def move_private(text: str, config_path: Path) -> str:
     secrets_path = Path(config_path).expanduser().resolve().parent / SECRETS_FILE
     moved: dict[str, str] = {}
     for section in cfg.sections():
+        if section.strip().lower() in NOT_PRIVATE_SECTIONS:
+            continue
         refs: dict[str, str | None] = {}
         for option, value in cfg.items(section):
             v = value.strip()
