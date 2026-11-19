@@ -36,6 +36,14 @@ PRIVATE_KEYS = frozenset((
 NOT_PRIVATE = frozenset((("web", "key"),))
 # Sections whose keys are names someone chose, not settings: an alert row called "station" is no station ID.
 NOT_PRIVATE_SECTIONS = frozenset(("alert_rules",))
+
+
+def is_private(section: str, option: str) -> bool:
+    """A setting whose value is kept out of config.ini and out of a diagnostics file."""
+    s, o = section.strip().lower(), option.strip().lower()
+    return o in PRIVATE_KEYS and (s, o) not in NOT_PRIVATE and s not in NOT_PRIVATE_SECTIONS
+
+
 # Read without %(name)s by the code that uses them, so moved as written.
 RAW_READ = frozenset((("backup", "password"),))
 _REF = re.compile(r"file:\S*#[A-Za-z_][A-Za-z0-9_]*")
@@ -204,13 +212,11 @@ def move_private(text: str, config_path: Path) -> str:
     secrets_path = Path(config_path).expanduser().resolve().parent / SECRETS_FILE
     moved: dict[str, str] = {}
     for section in cfg.sections():
-        if section.strip().lower() in NOT_PRIVATE_SECTIONS:
-            continue
         refs: dict[str, str | None] = {}
         for option, value in cfg.items(section):
             v = value.strip()
             where = (section.lower(), option.lower())
-            if option.lower() in PRIVATE_KEYS and where not in NOT_PRIVATE and v and not is_reference(v):
+            if is_private(section, option) and v and not is_reference(v):
                 if where not in RAW_READ:
                     try:
                         v = plain.get(section, option).strip()

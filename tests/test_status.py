@@ -235,6 +235,14 @@ class StatusPages(Station):
         for private in ("FW9999", "3954.00N", "10506.00W"):
             self.assertNotIn(private, sent)
 
+    def test_the_diagnostics_file_has_the_alert_rules_as_saved_since_the_start(self):
+        # 2026-11-19 in Docker: a file made 5 s after an alerts save showed the rows from the start.
+        with (self.home / "config.ini").open("a") as f:
+            f.write("\n[alert_rules]\nfrost = frost\n")
+        with tarfile.open(fileobj=io.BytesIO(self.get("/diagnostics")[1])) as tar:
+            rules = tar.extractfile("cc0ac-diagnostics/alert-rules.txt").read().decode()
+        self.assertEqual(rules, "frost = frost\n")
+
 
 class Links(unittest.TestCase):
     def test_the_dashboard_links_it_where_it_would_open(self):

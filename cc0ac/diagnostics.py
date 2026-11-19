@@ -3,10 +3,13 @@
 
 It bundles what a fix needs and nothing personal: the raw uploads and radio
 lines of the last few days, what was sent to other services and their answers,
-the service's log, the radio and console settings, the sensor IDs, and
-versions. Passwords, station keys and IDs, MACs, public IP addresses, positions
-and sensor names are replaced with ****. Location, alert addresses and
-everything else in config.ini are left out.
+the service's log, the radio and console settings, the sensor IDs, the
+versions, the alert rules, and when each alert and dashboard banner came and went
+(not their words). Passwords, station keys and IDs, MACs, public IP addresses,
+positions and sensor names are replaced with ****. Location, alert addresses and
+everything else in config.ini are left out. In Docker, where there is no
+journal, the station keeps its own log for this (station.log beside config.ini,
+2 MB at most, and one older file).
 
 Download it from the status page (/status), or: python3 acurite-capture.py --diagnostics
 """
@@ -17,6 +20,8 @@ import configparser
 import io
 import ipaddress
 import json
+import logging
+import logging.handlers
 import os
 import platform
 import re
@@ -29,7 +34,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from cc0ac import private, sensor_config
+from cc0ac import alert_rules, private, sensor_config
 
 CONFIG_DIR = Path.home() / ".cc0ac-weather"
 HERE = Path(__file__).resolve().parent.parent
@@ -37,6 +42,51 @@ RAW_DIRS = ("hub-raw", "console-raw", "radio-raw")
 # Set by the boot loader (updates/bootloader.py) for the station it starts.
 BOOT_ROOT = Path(os.environ["CC0AC_BOOTLOADER_ROOT"]) if os.environ.get("CC0AC_BOOTLOADER_ROOT") else None
 DAYS = 3
+DOCKER_LOG = "station.log"      # beside config.ini, in Docker only
+DOCKER_LOG_BYTES = 2_000_000
+
+
+def in_docker() -> bool:
+    return os.path.exists("/.dockerenv")
+
+
+def keep_docker_log(config_dir: Path | None = None) -> None:
+    """In Docker the log is the container's output, which the station can't read back: keep
+    a copy beside config.ini as well, so a diagnostics file carries it."""
+    path = (config_dir or CONFIG_DIR) / DOCKER_LOG
+    root = logging.getLogger()
+    if any(getattr(h, "baseFilename", None) == str(path) for h in root.handlers):
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    h = logging.handlers.RotatingFileHandler(path, maxBytes=DOCKER_LOG_BYTES, backupCount=1, encoding="utf-8")
+    h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    root.addHandler(h)
+
+
+WORDS = ("title", "message", "label", "text")   # an alert's words: a Weather Service one names the county
+
+
+def timing(path: Path) -> str:
+    """An alert file (alert-state.json, alerts.json) with its words left out: which rows, when."""
+    def strip(o: Any) -> Any:
+        if isinstance(o, dict):
+            return {k: strip(v) for k, v in o.items() if k not in WORDS}
+        if isinstance(o, list):
+            return [strip(v) for v in o]
+        return o
+    try:
+        return json.dumps(strip(json.loads(path.read_text())), indent=1) + "\n"
+    except (OSError, ValueError):
+        return ""
+
+
+def alert_rules_text(cfg: configparser.ConfigParser) -> str:
+    """The [alert_rules] rows as the station reads them, and any it leaves out and why."""
+    if not cfg.has_section(alert_rules.SECTION):
+        return "No [alert_rules] section: the older [alerts] settings say what to alert on.\n"
+    out = [f"{name} = {line}" for name, line in alert_rules._lines(cfg)]
+    out += [f"left out: {p}" for p in alert_rules.problems(cfg)]
+    return "\n".join(out) + "\n"
 
 _KEYS = re.compile(r"\b((?:PASSKEY|MAC|ID|id|PASSWORD|hub_id|station)=)[^&\s'\"]+")
 _IPV4 = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
@@ -124,7 +174,10 @@ def service_log() -> str:
     is none (Windows, macOS). Docker has neither: its log is the container's output."""
     if BOOT_ROOT is not None and (BOOT_ROOT / "station.log").exists():
         return _tail(BOOT_ROOT / "station.log", 3000)
-    if os.path.exists("/.dockerenv"):
+    if in_docker():
+        kept = CONFIG_DIR / DOCKER_LOG
+        if kept.exists():
+            return _tail(kept, 3000)
         return ("No systemd journal here; in Docker the station's log is the container's output:\n"
                 "docker compose logs cc0ac-weather\n")
     unit = f"cc0ac-weather@{os.environ.get('USER', '')}" if BOOT_ROOT is None else "cc0ac-weather"
@@ -138,7 +191,7 @@ def bundle(cfg: configparser.ConfigParser, out_dir: Path | None = None) -> Path:
     # Station IDs, keys and the like, wherever they turn up (a CWOP answer names its station).
     # The values themselves, a file: reference followed, so a secret that turns up in a log is caught.
     names += [v.strip() for s in cfg.sections() if s != "sensors"
-              for k in cfg.options(s) if k in SECRET_KEYS and (s, k) not in private.NOT_PRIVATE
+              for k in cfg.options(s) if private.is_private(s, k)
               for v in (private.get_raw(cfg, s, k),) if len(v.strip()) >= 4]
     parts = {
         "info.txt": info(cfg),
@@ -150,7 +203,10 @@ def bundle(cfg: configparser.ConfigParser, out_dir: Path | None = None) -> Path:
         parts["boot-state.json"] = _tail(BOOT_ROOT / "state.json", 200)
         parts["disks.json"] = _tail(BOOT_ROOT / "disks.json", 200)
     parts["backup.json"] = _tail(CONFIG_DIR / "backup.json", 50)
+    parts["alert-rules.txt"] = alert_rules_text(cfg)
+    parts["alert-state.json"] = timing(CONFIG_DIR / "alert-state.json")
     write_path = Path(cfg.get("device", "write_path", fallback="~/AcuRite")).expanduser()
+    parts["alerts.json"] = timing(write_path / "alerts.json")     # the banners on the dashboard now
     try:
         # What the readings decoded to, with the sensors' names left out.
         current = json.loads((write_path / "current.json").read_text())

@@ -247,6 +247,8 @@ def _check_loop(config_path: Path | None, every: float = CHECK_EVERY_S) -> None:
 
 def run_daemon(cfg: configparser.ConfigParser, config_path: Path | None = None) -> None:
     iolog.keep()
+    if diagnostics.in_docker():
+        diagnostics.keep_docker_log()
     write_path = Path(cfg.get("device", "write_path")).expanduser()
     write_path.mkdir(parents=True, exist_ok=True)
     sensors = sensor_map(cfg)

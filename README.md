@@ -1595,6 +1595,19 @@ it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
 
+**1.5.2** · Nov 19, 2026
+- **The diagnostics file says more about alerts**: the `[alert_rules]` rows as the
+  station reads them now (not as they were when it started), any it leaves out and
+  why, and when each alert and dashboard banner came and went. It doesn't include
+  their words, because a Weather Service alert names the county.
+- **In Docker, the diagnostics file carries the station's log.** Docker keeps the
+  log as the container's output, which the station can't read back, so it now also
+  keeps `station.log` beside config.ini (2 MB at most, plus one older file).
+- The diagnostics file no longer stars out an alert row named `station` or `key`,
+  taking it for a password (the same fault 1.5.1 fixed in the setup page).
+Tested in Docker Desktop (Windows 11): a file downloaded from `/status` seconds after
+an alerts save.
+
 **1.5.1** · Nov 19, 2026
 - **The setup page saves again beside an `[alert_rules]` section, and keeps it.**
   1.5.0 took the section for a sensor: the page listed it among the sensors, so

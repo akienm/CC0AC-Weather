@@ -222,7 +222,8 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: Se
                 self._send(json.dumps(system_status(cfg, write_path)).encode(), "application/json")
             elif path == "/diagnostics":
                 with tempfile.TemporaryDirectory() as d:
-                    made = diagnostics.bundle(cfg, Path(d))
+                    # As config.ini says now: the alert rules are read anew every minute, not at start.
+                    made = diagnostics.bundle(load_config(config_path) if config_path else cfg, Path(d))
                     body = made.read_bytes()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/gzip")
