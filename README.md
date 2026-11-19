@@ -173,7 +173,7 @@ prints an address: open it and answer the setup page.
 | **Debian or Ubuntu** (an old laptop works well) | the same line | Lists the wired ports your network isn't on and asks which one the hub's cable goes into; Enter for none. Stops if no other port reaches the internet. Without a terminal to ask: `--hub-network PORT` |
 | **Mac** | the same line **without** `sudo` | Needs Python 3 from python.org or Homebrew; runs while you're logged in. Untested: no Mac to test on |
 | **Windows 10/11** | in PowerShell: `irm https://raw.githubusercontent.com/akienm/CC0AC-Weather/main/setup/install.ps1 \| iex` | Installs Python if it's missing; starts when you log on. Untested |
-| **Docker** (anything) | `cd setup/docker && docker compose up -d` in a copy of this project (a git clone or the zip). The station updates its own code; to update the image too, run `docker compose up -d --build` in a newer copy's `setup/docker`, which finds the same volume | Readings and settings in the volume `cc0ac-weather-data`. Tested to the setup page on Docker Desktop, Windows 11; not yet with a hub |
+| **Docker** (anything) | `cd setup/docker && docker compose up -d` in a copy of this project (a git clone or the zip). The station updates its own code; to update the image too, run `docker compose up -d --build` in a newer copy's `setup/docker`, which finds the same volume | Readings and settings in the volume `cc0ac-weather-data`. Tested to the setup page on Docker Desktop, Windows 11, and by a station keeper running it with a hub on Linux, updating itself 1.4.18 → 1.5.2 |
 
 Only a Pi or a Debian machine with a spare wired port can take the hub's
 cable. A laptop usually has one network port, and it's the one it reaches your
