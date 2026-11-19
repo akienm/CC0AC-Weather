@@ -263,9 +263,10 @@ def from_settings(cfg: configparser.ConfigParser) -> list[Rule]:
 
 
 def _lines(cfg: configparser.ConfigParser) -> list[tuple[str, str]]:
-    """The [alert_rules] rows as written. 1.5.0's setup page moved a row named like a
-    private setting (station, key, user ...) into secrets.env; such a row is read back
-    through its reference, and the alerts page's next save writes it out plainly again."""
+    """The [alert_rules] rows as written. A row pointed into secrets.env (the setup page's
+    private-settings move matched a row named station, key, user ... until 1.5.1 skipped
+    the section) is read back through its reference; the alerts page's next save writes
+    it out plainly again."""
     from cc0ac import private
     return [(name, private.get_raw(cfg, SECTION, name)) for name in cfg.options(SECTION)
             if name not in cfg.defaults()]

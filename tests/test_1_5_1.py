@@ -36,7 +36,8 @@ class NotASensor(unittest.TestCase):
         sensors = [{"id": sid, "name": name} for sid, name in sensor_config.titles(cfg).items()]
         out = wizard.apply_setup(text, {"sensors": sensors + [{"id": "00001234", "name": "Yard"}],
                                         "backup": {"path": "/mnt/backup"}})
-        self.assertEqual(parsed(out).get("alert_rules", "frost"), "frost")
+        self.assertEqual(parsed(out).get("alert_rules", "frost"), "frost")   # 1.5.0 deleted the section
+        self.assertNotIn("alert_rules", sensor_config.titles(cfg))           # 1.5.0's page listed it as a sensor
 
 
 class NotASecret(unittest.TestCase):
@@ -55,7 +56,7 @@ class NotASecret(unittest.TestCase):
         self.assertEqual(cfg.get("alert_rules", "station"), "service | any | any | once | new | dashboard")
         self.assertEqual(cfg.get("alert_rules", "key"), "battery")
 
-    def test_a_row_1_5_0_moved_is_read_back_through_its_reference(self):
+    def test_a_row_moved_into_secrets_is_read_back_through_its_reference(self):
         (self.config.parent / private.SECRETS_FILE).write_text(
             "ALERT_RULES_STATION=service | any | any | 00:05:00 | new | dashboard\n")
         self.config.write_text("[alert_rules]\nstation = file:secrets.env#ALERT_RULES_STATION\nfrost = frost\n")

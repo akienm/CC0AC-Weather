@@ -1596,19 +1596,21 @@ read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
 
 **1.5.1** · Nov 19, 2026
-- **The setup page saves again beside an `[alert_rules]` section.** 1.5.0 took the
-  section for a sensor, so every save (backups included) said "not a sensor ID:
-  'alert_rules'".
-- **Alert rows stay in config.ini.** A row named like a private setting (`station`,
-  `key`, `user` ...) was moved into secrets.env by the setup page and then quietly
-  stopped working. Rows moved that way are read back, and the alerts page's next
-  save writes them out plainly again.
+- **The setup page saves again beside an `[alert_rules]` section, and keeps it.**
+  1.5.0 took the section for a sensor: the page listed it among the sensors, so
+  every save (backups included) said "not a sensor ID: 'alert_rules'", and a save
+  from a page opened before the section existed deleted the whole section, as a
+  sensor taken away.
+- **Alert rows stay in config.ini.** The setup page moves private settings into
+  secrets.env; it now leaves `[alert_rules]` alone, where `station` or `key` is a
+  row's name, not a setting. A row found there anyway is read back.
 - **A Station row's "stays on" is how long its banner stays on the dashboard**
   (`once`: an hour, as before). 1.5.0 said "Saved" and put `once` back. "until
   clears" is refused, with the reason, instead of quietly changed.
 - A row of `[alert_rules]` that doesn't read is named in the station log when it
   starts, instead of doing nothing without a word.
-Found by a station keeper running 1.5.0 in Docker.
+Found by a station keeper running 1.5.0 in Docker, and tested the same way: each fault
+shown on 1.5.0 in Docker Desktop (Windows 11), then gone after its "Update now" to 1.5.1.
 
 **1.5.0** · Nov 18, 2026
 - **The alert rules table**: what to alert on is one table on a new page,
