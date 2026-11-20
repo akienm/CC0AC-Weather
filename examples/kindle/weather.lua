@@ -4,7 +4,7 @@
 local cjson = require("cjson")
 local STATION = arg[1] or "http://127.0.0.1:12345"
 local EVERY = tonumber(arg[2] or "300")
-local FBINK = "/mnt/us/libkh/bin/fbink"
+local FBINK = os.getenv("FBINK") or "/mnt/us/libkh/bin/fbink"
 local F = "/usr/java/lib/fonts/"
 local REG, BOLD = F .. "Amazon-Ember-Regular.ttf", F .. "Amazon-Ember-Bold.ttf"
 local W, H = 600, 800

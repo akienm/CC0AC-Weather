@@ -4,24 +4,48 @@ An old e-ink Kindle can show your station's readings, the forecast, and every ro
 five minutes. **The Kindle does all the drawing.** It fetches `current.json` and `forecast.js`,
 two small files your station already writes. The station does no extra work for it.
 
-Tested on a Kindle Basic 2 (8th generation, firmware 5.15.1.1). Any jailbroken Kindle with FBInk
-and Lua should work.
+Tested on a Kindle Basic 2 (8th generation, firmware 5.15.1.1, jailbroken with WinterBreak).
+Other touchscreen Kindles that run firmware 5.x and can be jailbroken should work, but none has
+been tested yet.
 
-## You need
+## 1. Jailbreak the Kindle
 
-- A **jailbroken** Kindle (WinterBreak works on current firmware) with **FBInk**, which the
-  jailbreak's hotfix installs at `/mnt/us/libkh/bin/fbink`. Its Lua and `cjson` are built in.
-- The Kindle on the same network as your station.
+This part is not ours, and the people who maintain it keep it current, so we point to them
+rather than copy it: **[kindlemodding.org/jailbreaking](https://kindlemodding.org/jailbreaking/)**.
+Its *Jailbreaking Wizard* asks for your model and firmware and picks the method that works.
+Do the post-jailbreak steps too (**Setting Up A Hotfix**, and **Disabling OTA Updates** so an
+Amazon update doesn't undo it).
 
-## Install
+The weather screen needs **FBInk**, the tool that draws on the e-ink screen. On ours it came with
+the jailbreak's hotfix. If the start book (below) says FBInk is missing, install it from the
+kindlemodding.org "What's Next" pages. Lua and `cjson` are already on the Kindle.
 
-1. Plug the Kindle in by USB.
-2. Copy `weather.lua` and `leave.sh` into a new folder `cc0ac-weather/` at the top of the Kindle's drive.
-3. Copy `cc0ac-weather.sh` and `cc0ac-weather-stop.sh` into its `documents/` folder.
-4. Open `cc0ac-weather.sh` and change `STATION=` to your dashboard's address, for example
-   `http://192.168.1.20:12345`.
-5. Eject the Kindle. Two new "books" appear in its library: **CC0AC Weather** and
-   **CC0AC Weather stop**. Tap **CC0AC Weather** to start the screen.
+## 2. Copy our files over
+
+Plug the Kindle into a computer by USB. It shows up as a drive.
+
+| From this folder | To the Kindle drive |
+|---|---|
+| `weather.lua`, `leave.sh` | a new folder `cc0ac-weather/` at the top of the drive |
+| `cc0ac-weather.sh`, `cc0ac-weather-stop.sh` | the `documents/` folder |
+
+## 3. Tell it where your station is
+
+On the Kindle drive, open `documents/cc0ac-weather.sh` in a plain text editor and change the line
+
+    STATION=http://YOUR-STATION:12345
+
+to your dashboard's address, the one you open in a browser, for example
+`STATION=http://192.168.1.20:12345`. Use the station's local network address, because the Kindle
+must reach it over Wi-Fi. `EVERY=300` is the number of seconds between redraws.
+
+Eject the Kindle and unplug it from the computer. Two new "books" appear in its library:
+**CC0AC Weather** and **CC0AC Weather stop**.
+
+## 4. Use it
+
+Tap **CC0AC Weather**. If something is missing, the book says what. Otherwise the weather appears
+within a few seconds.
 
 While the weather shows, the Kindle's own interface is switched off so that nothing draws over it.
 Wi-Fi and power stay on. **Touch the screen anywhere to leave**: the weather stops and the library

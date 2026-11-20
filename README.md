@@ -263,6 +263,15 @@ regular expression* to `Kiosk`, so it skips the card-image releases (the app's
 releases keep "Kiosk" in their titles). It tells you when there's a new version.
 Obtainium runs on an ordinary phone, not on the kiosk itself.
 
+## On an old Kindle: an e-ink weather screen
+
+A jailbroken e-ink Kindle can sit on a shelf showing the weather now, the
+forecast and every room, redrawn every five minutes. The Kindle does all the
+drawing itself, so the station does no extra work. Jailbreaking is the hard
+part, and others document it; [examples/kindle/README.md](examples/kindle/README.md)
+points you there, then shows how to copy our two "books" over and set the
+station's address.
+
 ## Troubleshooting
 
 **If <http://cc0ac-weather.local/> doesn't open:** some Android phones and
