@@ -15,8 +15,10 @@ The revised announcement that followed it is in
 | `log.png` | The service log, opened from the status page |
 | `noaa.png` | A NOAA-style monthly climate summary |
 | `custom-theme.png` | The dashboard restyled with a single `theme.css` |
+| `kindle.png` | A jailbroken Kindle as the weather screen (`examples/kindle/`) |
 | `revised-announcement.md` | The revised announcement, as posted to r/AcuRite |
-| `last-version-announcement.md` | Draft: the 1.3.20 "last version for a while" post, not yet posted |
+| `last-version-announcement.md` | Draft: the 1.3.20 "last version for a while" post, never posted; replaced by the next row |
+| `20261120_reddit_announcement.md` | Draft: the 1.5.2 post, written for newcomers, then what's new. Not yet posted |
 
 ## Where
 
