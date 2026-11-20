@@ -18,8 +18,5 @@ lua -e 'require("cjson")' 2>/dev/null || { echo "CC0AC Weather: this Kindle has 
 case "$STATION" in *YOUR-STATION*) echo "CC0AC Weather: set STATION= in documents/cc0ac-weather.sh first."; exit 1;; esac
 
 sh $DIR/leave.sh keep-gui             # end any copy already running
-# Stop the Kindle's own interface so nothing draws over the weather; Wi-Fi and power stay up.
-stop lab126_gui; sleep 3
-cd $DIR && (FBINK=$FBINK setsid nohup lua weather.lua "$STATION" "$EVERY" > $DIR/run.log 2>&1 < /dev/null &)
-# Any touch on the screen ends the weather screen and brings the library back.
-(setsid sh -c "echo \$\$ > $DIR/touch.pid; dd if=/dev/input/event0 bs=16 count=1 > /dev/null 2>&1; rm -f $DIR/touch.pid; sh $DIR/leave.sh" < /dev/null > /dev/null 2>&1 &)
+# run.sh pauses the Kindle's interface, which runs this book, so it starts detached from us.
+(setsid sh $DIR/run.sh "$STATION" "$EVERY" "$FBINK" < /dev/null > /dev/null 2>&1 &)

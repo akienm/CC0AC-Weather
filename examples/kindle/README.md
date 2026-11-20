@@ -26,7 +26,7 @@ Plug the Kindle into a computer by USB. It shows up as a drive.
 
 | From this folder | To the Kindle drive |
 |---|---|
-| `weather.lua`, `leave.sh` | a new folder `cc0ac-weather/` at the top of the drive |
+| `weather.lua`, `run.sh`, `gui.sh`, `leave.sh` | a new folder `cc0ac-weather/` at the top of the drive |
 | `cc0ac-weather.sh`, `cc0ac-weather-stop.sh` | the `documents/` folder |
 
 ## 3. Tell it where your station is
@@ -44,13 +44,14 @@ Eject the Kindle and unplug it from the computer. Two new "books" appear in its 
 
 ## 4. Use it
 
-Tap **CC0AC Weather**. If something is missing, the book says what. Otherwise the weather appears
-within a few seconds.
+Tap **CC0AC Weather**. If something is missing, the book says what. Otherwise the library
+shows for a moment, the screen flickers, and the weather appears, about 3 seconds in all.
 
-While the weather shows, the Kindle's own interface is switched off so that nothing draws over it.
-Wi-Fi and power stay on. **Touch the screen anywhere to leave**: the weather stops and the library
-comes back. (You only need the "stop" book if you started the screen some other way.) If the
-Kindle ever seems stuck, holding the power button for about 40 seconds restarts it normally.
+While the weather shows, the Kindle's own interface is **paused**, so nothing draws over it.
+Wi-Fi and power keep running. **Touch the screen anywhere to leave**: the interface resumes, and
+the library is back in about a second. (You only need the "stop" book if you started the screen
+some other way.) If the Kindle ever seems stuck, holding the power button for about 40 seconds
+restarts it normally.
 
 While the screen runs, the Kindle won't go to sleep. Leave it on its charger. Every sixth redraw
 flashes the screen black once to clear e-ink ghosting. If the station stops answering, the screen
