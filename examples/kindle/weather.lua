@@ -116,7 +116,7 @@ local function screen(cur, fc, n)
   local w = cur.written and iso_utc(cur.written)
   local age = w and (now - w) or nil
   text("Readings " .. (w and hm(w) or "?") ..
-       (age and age > 900 and ("  (" .. math.floor(age / 60) .. " min old!)") or "") .. "   CC0AC-Weather",
+       (age and age > 900 and ("  (" .. math.floor(age / 60) .. " min old!)") or "") .. "   Touch the screen to leave",
        24, H - 34, 18, age and age > 900)
   draw(n % 6 == 0)          -- a black flash every 6th refresh clears e-ink ghosting
 end
