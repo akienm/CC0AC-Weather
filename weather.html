@@ -96,6 +96,11 @@
           font-size: 12px; padding: 2px 8px; cursor: pointer; }
   #alerts .alert, #station-alerts .alert { border: 2px solid #f90; background: #210; padding: 10px 14px; margin-bottom: 12px; }
   #alerts .alert.severe, #station-alerts .alert.severe { border-color: var(--warn); background: #300; }
+  #station-alerts .alert { position: relative; padding-right: 36px; }
+  #station-alerts .cancel { position: absolute; top: 4px; right: 6px; background: none; border: none;
+                            color: var(--muted); font: inherit; font-size: 16px; line-height: 1;
+                            padding: 4px 6px; cursor: pointer; opacity: 0.7; }
+  #station-alerts .cancel:hover, #station-alerts .cancel:focus { opacity: 1; color: var(--text); }
   #alerts summary { cursor: pointer; font-weight: bold; }
   #alerts .text, #station-alerts .text { white-space: pre-wrap; margin-top: 8px; color: var(--text); }
   #warnings .warning { border: 1px solid #f90; color: #fc6; padding: 8px 14px; margin-bottom: 12px; }
@@ -303,15 +308,35 @@ function renderWarnings(data) {
 }
 
 // The station's own alerts whose row targets the dashboard (alerts.js, written by the check).
+// ✕ cancels a banner: the station drops it from every screen (dismiss.cgi, your own
+// network only); this browser hides it at once, and keeps hiding it if the station
+// can't be told (from outside your network).
+const CANCELLED_KEY = 'cc0ac-cancelled-alerts';
+const cancelled = () => { try { return JSON.parse(localStorage.getItem(CANCELLED_KEY)) || []; } catch (e) { return []; } };
+
 function renderStationAlerts() {
-  const list = (window.ACURITE_ALERTS && window.ACURITE_ALERTS.alerts) || [];
+  const gone = cancelled();
+  const list = ((window.ACURITE_ALERTS && window.ACURITE_ALERTS.alerts) || []).filter(a => !gone.includes(a.id));
   const key = JSON.stringify(list);
   if (drawn.station === key) return;
   drawn.station = key;
   document.getElementById('station-alerts').innerHTML = list.map(a =>
-    `<div class="alert${a.kind === 'lightning' || a.kind === 'nws' ? ' severe' : ''}"><b>🔔 ${esc(a.title.charAt(0).toUpperCase() + a.title.slice(1))}</b>`
+    `<div class="alert${a.kind === 'lightning' || a.kind === 'nws' ? ' severe' : ''}">`
+    + (a.id ? `<button class="cancel" title="Cancel this alert" aria-label="Cancel this alert" data-id="${esc(a.id)}">✕</button>` : '')
+    + `<b>🔔 ${esc(a.title.charAt(0).toUpperCase() + a.title.slice(1))}</b>`
     + `<div class="text">${esc(a.message)}</div></div>`).join('');
 }
+
+document.getElementById('station-alerts').addEventListener('click', e => {
+  const button = e.target.closest('.cancel');
+  if (!button) return;
+  const id = button.dataset.id;
+  const shown = ((window.ACURITE_ALERTS && window.ACURITE_ALERTS.alerts) || []).map(a => a.id);
+  try { localStorage.setItem(CANCELLED_KEY, JSON.stringify([...cancelled().filter(i => shown.includes(i)), id])); } catch (err) {}
+  renderStationAlerts();
+  fetch('dismiss.cgi', { method: 'POST', headers: { 'X-CC0AC-Config': 'save', 'Content-Type': 'text/plain' }, body: id })
+    .catch(() => {});
+});
 
 function renderAlerts(fc) {
   const box = document.getElementById('alerts');

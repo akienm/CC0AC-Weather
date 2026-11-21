@@ -302,7 +302,7 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: Se
             if target == "/mcp" and mcp_server_ is not None:
                 self._mcp()
                 return
-            if target not in ("/config.cgi", "/setup.cgi", "/update.cgi", "/alerts.cgi"):
+            if target not in ("/config.cgi", "/setup.cgi", "/update.cgi", "/alerts.cgi", "/dismiss.cgi"):
                 self.send_error(404)
                 return
             if not self._config_allowed():
@@ -311,6 +311,15 @@ def _make_web_handler(write_path: Path, db_path: Path | None = None, sensors: Se
             # site can't, so it can't save over your config from your browser.
             if self.headers.get("X-CC0AC-Config") != "save":
                 self.send_error(403)
+                return
+            if target == "/dismiss.cgi":
+                length = int(self.headers.get("Content-Length") or 0)
+                alert_id = self.rfile.read(length).decode("utf-8", "replace").strip() if 0 < length <= 1000 else ""
+                if not alert_id or cfg is None:
+                    self._answer(400, "Nothing to cancel.")
+                    return
+                alerts.dismiss(cfg, alert_id)
+                self._answer(200, "Cancelled.")
                 return
             if target == "/update.cgi":
                 if not release.boot_loader_running():

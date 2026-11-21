@@ -554,14 +554,16 @@ def write_dashboard(cfg: configparser.ConfigParser, write_path: Path, state: dic
     shown = []
     for row, rb in (state.get("rules") or {}).items():
         if row in rows:
-            for s in rb.get("on", {}).values():
+            for i, s in rb.get("on", {}).items():
                 if s.get("told") and s.get("so"):
-                    shown.append({"row": row, "kind": rb.get("kind"), "title": s.get("title", ""),
-                                  "message": s.get("message", ""), "since": s.get("since")})
+                    shown.append({"id": f"{row}|{i}|{s.get('since')}", "row": row, "kind": rb.get("kind"),
+                                  "title": s.get("title", ""), "message": s.get("message", ""), "since": s.get("since")})
     for e in state.get("events") or []:
         if e.get("row") in rows and now - float(e.get("at") or 0) <= alert_rules.shown_for(rows[e["row"]]):
-            shown.append({"row": e["row"], "kind": "service", "title": e.get("title", ""),
-                          "message": e.get("message", ""), "since": e.get("at")})
+            shown.append({"id": f"{e['row']}|event|{e.get('at')}", "row": e["row"], "kind": "service",
+                          "title": e.get("title", ""), "message": e.get("message", ""), "since": e.get("at")})
+    gone = state.get("dismissed") or {}
+    shown = [a for a in shown if a["id"] not in gone]
     shown.sort(key=lambda a: a.get("since") or 0)
     text = json.dumps({"written": now, "alerts": shown})
     try:
@@ -578,6 +580,25 @@ def write_dashboard(cfg: configparser.ConfigParser, write_path: Path, state: dic
             tmp.replace(write_path / f"{DASHBOARD_FILE}{suffix}")
     except OSError as e:
         log.warning("Couldn't write the dashboard's alerts: %s", e)
+
+
+DISMISSED_KEPT_S = 7 * 24 * 3600     # long past any banner it could hide
+
+
+def dismiss(cfg: configparser.ConfigParser, alert_id: str, state_path: Path | None = None,
+            now: float | None = None) -> None:
+    """The banner's cancel button: that banner leaves the dashboard, on every screen.
+    Only the banner: the alert itself still stands, and its "fine again" still comes.
+    An id holds the alert's start, so the same alert starting again is a new banner."""
+    now = time.time() if now is None else now
+    state_path = STATE_FILE if state_path is None else state_path
+    state = _load_state(state_path)
+    gone = {k: v for k, v in (state.get("dismissed") or {}).items() if now - float(v) <= DISMISSED_KEPT_S}
+    gone[alert_id] = now
+    _save_state(state_path, "dismissed", gone)
+    write_path = cfg.get("device", "write_path", fallback="").strip()
+    if write_path:
+        write_dashboard(cfg, Path(write_path).expanduser(), _load_state(state_path), now)
 
 
 def _enabled(cfg: configparser.ConfigParser) -> bool:

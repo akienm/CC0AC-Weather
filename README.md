@@ -1144,7 +1144,8 @@ Besides telling you when readings stop, the station can warn about the weather
 and about itself, by ntfy, email, or a banner on the dashboard. What it warns
 about is a table, one row per alert, on the **alerts page** (`/alerts`, your
 network only; linked from the setup page). Saved rows take effect at the next
-check, within a minute, with no restart.
+check, within a minute, with no restart. A banner's ✕ (upper right) cancels that
+banner on every screen; the alert itself carries on.
 
 | Alert | Kind | Watching | Trigger | Stays on | Flags | Target |
 |---|---|---|---|---|---|---|
@@ -1618,8 +1619,14 @@ tested part ran on.
   and refused every other one. A hub that restarted couldn't look up its time server
   and sent nothing until the station was fixed by hand. The update adds the missing
   line on the stations it set up.
+- **A dashboard banner has a cancel button**, a small ✕ in its upper right. It is
+  handy for "station stopped" and "station started". Cancelling a banner takes it off
+  every screen showing the dashboard on your own network. From outside your network,
+  the banner goes only from that browser. Only the banner goes: the alert itself
+  still stands, its "fine again" still comes, and if it starts again later it gets a
+  new banner.
 Tested on the station that had both faults (Linux Mint 22, AcuRite Access hub on a
-USB adapter).
+USB adapter). The cancel button was tested in Chrome, and on that station.
 
 **1.5.2** · Nov 19, 2026
 - **The diagnostics file says more about alerts**: the `[alert_rules]` rows as the
