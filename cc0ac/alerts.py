@@ -768,7 +768,16 @@ def _field_words(field: str) -> str:
 # for receiver_quiet_minutes (5) is a short notice pointing at the status page, whether
 # or not another receiver still hears: two receivers hearing the same sensors hide
 # each other's silence from the per-sensor notice. Its name, and what to try.
+# A receiver is never called quiet before it has missed two of its own cycles: the hub
+# sends every 5 minutes, so a 5-minute limit called it quiet whenever a batch came a few
+# seconds late (31 false notices 2026-11-20..21). 2.5 cycles, not 2: one batch missed
+# outright is a gap of two cycles (measured 9.7 min, twice in those two days), and a
+# limit at exactly two would flap on it. Its cycle is the longest every_s its
+# sensors show, kept in the alert state for when the hour's reception no longer has it,
+# and the wait is never stretched past RECEIVER_QUIET_CAP_S.
 RECEIVER_QUIET_MINUTES = 5
+RECEIVER_CYCLES = 2.5
+RECEIVER_QUIET_CAP_S = 60 * 60
 RECEIVER_WORDS = {
     "radio": ("The radio (rtl_433)", "Check the radio dongle is plugged in; if rtl_433 keeps failing to start, "
                                      "unplug the dongle and plug it back in."),
@@ -810,11 +819,21 @@ def status_url(cfg: configparser.ConfigParser) -> str:
 def _quiet_receivers(cfg: configparser.ConfigParser, snapshot: dict, now: float, state: dict,
                      state_path: Path, quiet: float) -> dict[str, tuple[str, str]]:
     heard: dict = dict(state.get("receivers_heard") or {})    # receiver -> when it last heard anything
+    cycle: dict = dict(state.get("receivers_every") or {})    # receiver -> its longest every_s lately
+    now_cycle: dict = {}
     for s in snapshot.get("sensors", []):
         for who, r in (s.get("reception") or {}).items():
             at = _stamp(str((r or {}).get("last") or ""))
             if at is not None and at > float(heard.get(who) or 0):
                 heard[who] = at
+            try:
+                every = float((r or {}).get("every_s") or 0)
+            except (TypeError, ValueError):
+                every = 0
+            if every > now_cycle.get(who, 0):
+                now_cycle[who] = every
+    cycle.update(now_cycle)
+    _save_state(state_path, "receivers_every", cycle)
     try:
         for who, at in _raw_log_written(cfg).items():
             if at > float(heard.get(who) or 0):
@@ -825,7 +844,8 @@ def _quiet_receivers(cfg: configparser.ConfigParser, snapshot: dict, now: float,
     found = {}
     for who in _receivers_on(cfg):
         last = heard.get(who)
-        if last is None or now - float(last) <= quiet:
+        wait = max(quiet, min(RECEIVER_CYCLES * float(cycle.get(who) or 0), RECEIVER_QUIET_CAP_S))
+        if last is None or now - float(last) <= wait:
             continue
         label, hint = RECEIVER_WORDS[who]
         since = datetime.fromtimestamp(float(last)).astimezone().strftime("%a %b %d %H:%M")

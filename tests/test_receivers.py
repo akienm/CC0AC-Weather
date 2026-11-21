@@ -46,11 +46,16 @@ class Receivers(unittest.TestCase):
                        "hub": {"enabled": "true"}, "capture": {"enabled": "true"}, **more})
         return cfg
 
-    def heard(self, hub_ago=1, radio_ago=None, at=NOW):
-        """Two sensors as of `at`, both heard by the hub; by the radio too while radio_ago is given."""
+    def heard(self, hub_ago=1, radio_ago=None, at=NOW, hub_every=None, radio_every=None):
+        """Two sensors as of `at`, both heard by the hub; by the radio too while radio_ago is given.
+        hub_every / radio_every: the receiver's cycle as the recorder infers it (every_s)."""
         reception = {"hub": {"last": iso(at - hub_ago * 60)}}
+        if hub_every is not None:
+            reception["hub"]["every_s"] = hub_every
         if radio_ago is not None:
             reception["radio"] = {"last": iso(at - radio_ago * 60)}
+            if radio_every is not None:
+                reception["radio"]["every_s"] = radio_every
         sensors = [{"sensor_id": sid, "name": name, "type": "tower", "updated": iso(at - min(hub_ago, radio_ago or hub_ago) * 60),
                     "fields": {}, "reception": reception} for sid, name in (("a1", "Den"), ("b2", "Attic"))]
         (self.root / "current.json").write_text(json.dumps({"written": iso(at), "sensors": sensors}))
@@ -146,7 +151,48 @@ class Receivers(unittest.TestCase):
         self.assertEqual(self.check(cfg=cfg), "sensor notices off")
 
 
-class Rtl433Stderr(unittest.TestCase):
+class TwoCycles(Receivers):
+    """2026-11-20..21: the hub sends every 5 minutes and the limit was 5, so a batch a few
+    seconds late was a notice and a minute later it was back: 31 times in two days."""
+
+    def test_a_hub_batch_a_little_late_says_nothing(self):
+        self.heard(hub_ago=5.2, radio_ago=0, hub_every=300, radio_every=16)
+        self.assertEqual(self.check(), "sensors: fine")
+
+    def test_one_batch_missed_outright_says_nothing(self):
+        self.heard(hub_ago=9.8, radio_ago=0, hub_every=291, radio_every=16)     # 2026-11-20 10:42 -> 10:52
+        self.assertEqual(self.check(), "sensors: fine")
+
+    def test_a_hub_that_missed_two_batches_is_told(self):
+        self.heard(hub_ago=12.6, radio_ago=0, hub_every=300, radio_every=16)
+        self.assertEqual(self.check(), "sensors: told (1)")
+        self.assertIn("The hub hasn't heard any sensor since", self.sent[0][1])
+
+    def test_a_fast_receiver_keeps_the_five_minutes(self):
+        self.heard(hub_ago=0, radio_ago=6, hub_every=300, radio_every=16)
+        self.assertEqual(self.check(), "sensors: told (1)")
+        self.assertIn("The radio (rtl_433) hasn't heard", self.sent[0][1])
+
+    def test_the_cycle_is_remembered_when_the_hour_forgets_it(self):
+        self.heard(hub_ago=1, radio_ago=0, hub_every=300, radio_every=16)
+        self.assertEqual(self.check(), "sensors: fine")
+        later = NOW + 11 * 60                    # the hub's every_s gone from reception, 12 min quiet
+        self.heard(hub_ago=12, radio_ago=0, at=later)
+        self.assertEqual(self.check(later), "sensors: fine")
+        self.heard(hub_ago=13, radio_ago=0, at=later + 60)
+        self.assertEqual(self.check(later + 60), "sensors: told (1)")
+
+    def test_a_wild_cycle_never_waits_past_an_hour(self):
+        self.heard(hub_ago=61, radio_ago=0, hub_every=10 * 3600, radio_every=16)
+        self.check()
+        self.assertTrue(any("The hub hasn't heard any sensor since" in m for _, m in self.sent), self.sent)
+
+    def test_a_longer_limit_set_by_the_keeper_still_counts(self):
+        cfg = self.cfg()
+        cfg.set("alerts", "receiver_quiet_minutes", "15")
+        self.heard(hub_ago=12, radio_ago=0, hub_every=300, radio_every=16)
+        self.assertEqual(self.check(cfg=cfg), "sensors: fine")
+
     def test_the_last_lines_are_kept(self):
         import io
         from cc0ac.sources import rtl_433

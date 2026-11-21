@@ -1604,6 +1604,23 @@ it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
 
+**1.5.3** · Nov 21, 2026
+- **"The hub hasn't heard any sensor" no longer fires when a batch is a few seconds
+  late.** The hub sends every 5 minutes and the alert also waited 5, so a batch that
+  came a little late raised the alert, and it cleared a minute later. One station
+  saw it 31 times in two days. A receiver now has to miss two of its own cycles
+  before it counts as quiet: about 12 minutes for the hub (one missed batch is
+  ordinary, and says nothing). The radio, which hears a
+  sensor every few seconds, still alerts at 5. Your `receiver_quiet_minutes` still
+  counts when it is longer, and the wait never goes past an hour.
+- **A station on Ubuntu or Mint with the hub on its cable passes the hub's other
+  names on.** There, the hub's network (dnsmasq) answered only the hub's server name
+  and refused every other one. A hub that restarted couldn't look up its time server
+  and sent nothing until the station was fixed by hand. The update adds the missing
+  line on the stations it set up.
+Tested on the station that had both faults (Linux Mint 22, AcuRite Access hub on a
+USB adapter).
+
 **1.5.2** · Nov 19, 2026
 - **The diagnostics file says more about alerts**: the `[alert_rules]` rows as the
   station reads them now (not as they were when it started), any it leaves out and

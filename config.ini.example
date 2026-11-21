@@ -424,7 +424,8 @@ enabled = false
 ; How long without a reading before a message goes out (the hub sends every 5).
 quiet_minutes = 30
 ; How long one receiver (the radio, hub or console) may hear nothing before a short
-; message pointing at the status page goes out.
+; message pointing at the status page goes out. A receiver is never called quiet
+; before it has missed two of its own cycles (the hub: about 12 minutes), up to an hour.
 ; receiver_quiet_minutes = 5
 ;
 ; ntfy (ntfy.sh): a free phone app. Subscribe in the app to a topic nobody else
