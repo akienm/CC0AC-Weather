@@ -25,6 +25,26 @@ PRIVATE4 = "10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.
 PRIVATE6 = "fe80::/10, fc00::/7"
 
 
+RESOLV = Path("/etc/resolv.conf")
+STUB = "127.0.0.53"   # systemd-resolved's own address on this machine
+
+
+def upstream(resolv: Path = RESOLV) -> str:
+    """Where dnsmasq asks for the names it doesn't answer itself. Under systemd-resolved
+    (Ubuntu, Mint) Debian's dnsmasq start script points it at /run/dnsmasq/resolv.conf,
+    which nothing there writes: dnsmasq then refuses every other name. On 2026-11-21 the
+    hub restarted, asked for pool.ntp.org to set its clock, was refused, and sent nothing
+    for 25 minutes. There, ask systemd-resolved; elsewhere dnsmasq's own default works."""
+    try:
+        servers = [l.split()[1] for l in resolv.read_text().splitlines()
+                   if l.startswith("nameserver") and len(l.split()) > 1]
+    except OSError:
+        return ""
+    if STUB not in servers:
+        return ""
+    return f"# Every other name: systemd-resolved on this machine.\nno-resolv\nserver={STUB}\n"
+
+
 def apply(ctx):
     if not ctx.hub_network:
         ctx.log.info("  no hub on the cable; network left alone")
@@ -41,7 +61,7 @@ def apply(ctx):
             env={"DEBIAN_FRONTEND": "noninteractive", "PATH": "/usr/sbin:/usr/bin:/sbin:/bin"})
     ctx.log.info("  the hub's port: %s", hub_if)
     ctx.write_ours(NM_FILE, NM.format(hub=hub_if, net=HUB_NET), 0o600)
-    ctx.write_ours(DNSMASQ_FILE, DNSMASQ.format(hub=hub_if, net=HUB_NET))
+    ctx.write_ours(DNSMASQ_FILE, DNSMASQ.format(hub=hub_if, net=HUB_NET) + upstream())
     ctx.write_ours(Path("/etc/sysctl.d/90-cc0ac-forward.conf"), "net.ipv4.ip_forward=1\n")
     if NFT.exists() and not ctx.ours_or_absent(NFT) and not Path(str(NFT) + ".before-cc0ac").exists():
         ctx.run(["cp", "-a", str(NFT), str(NFT) + ".before-cc0ac"])
