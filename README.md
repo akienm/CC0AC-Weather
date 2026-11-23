@@ -1606,6 +1606,12 @@ read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
 
 **1.5.3** · Nov 21, 2026
+- **The Kindle screen has a Try now button** when the station isn't answering: touch it
+  to try at once, or anywhere else to leave. Tested on a Kindle 8th gen.
+- **The Kindle screen rejoins Wi-Fi after a drop.\*** The Kindle doesn't rejoin by itself
+  while the weather shows, so one stayed off Wi-Fi for 75 minutes. Asked directly, it is
+  back in about 5 seconds; the screen now asks whenever the station can't be reached,
+  and says "Wi-Fi is down" if it stays down.
 - **"The hub hasn't heard any sensor" no longer fires when a batch is a few seconds
   late.** The hub sends every 5 minutes and the alert also waited 5, so a batch that
   came a little late raised the alert, and it cleared a minute later. One station

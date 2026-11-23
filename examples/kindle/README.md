@@ -26,7 +26,7 @@ Plug the Kindle into a computer by USB. It shows up as a drive.
 
 | From this folder | To the Kindle drive |
 |---|---|
-| `weather.lua`, `run.sh`, `gui.sh`, `leave.sh` | a new folder `cc0ac-weather/` at the top of the drive |
+| `weather.lua`, `touch.lua`, `run.sh`, `gui.sh`, `leave.sh` | a new folder `cc0ac-weather/` at the top of the drive |
 | `cc0ac-weather.sh`, `cc0ac-weather-stop.sh` | the `documents/` folder |
 
 ## 3. Tell it where your station is
@@ -55,5 +55,7 @@ restarts it normally.
 
 While the screen runs, the Kindle won't go to sleep. Leave it on its charger. Every sixth redraw
 flashes the screen black once to clear e-ink ghosting. If the station stops answering, the screen
-says so and keeps trying. If the readings are more than 15 minutes old, the bottom line says how
+says so, keeps trying, and shows a **Try now** button: touch it to try at once, or touch anywhere
+else to leave. The Kindle doesn't rejoin Wi-Fi by itself after a drop, so when the station can't be
+reached the screen asks Wi-Fi to reconnect first, and says "Wi-Fi is down" if it stays down. If the readings are more than 15 minutes old, the bottom line says how
 old they are.

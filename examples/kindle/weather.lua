@@ -9,6 +9,9 @@ local F = "/usr/java/lib/fonts/"
 local REG, BOLD = F .. "Amazon-Ember-Regular.ttf", F .. "Amazon-Ember-Bold.ttf"
 local W, H = 600, 800
 local STOP = "/mnt/us/cc0ac-weather/stop"
+local RETRY = "/mnt/us/cc0ac-weather/retry"          -- run.sh leaves it when the Try now button is touched
+local RETRY_BOX = "/mnt/us/cc0ac-weather/retry-box"  -- where that button is, while it shows
+local BOX = {60, 500, 540, 600}                      -- left, top, right, bottom
 
 local function q(s) return "'" .. tostring(s):gsub("'", "'\\''") .. "'" end
 
@@ -121,11 +124,50 @@ local function screen(cur, fc, n)
   draw(n % 6 == 0)          -- a black flash every 6th refresh clears e-ink ghosting
 end
 
+local function exists(path) local f = io.open(path); if f then f:close() end; return f ~= nil end
+
+local function box(l, t, r, b, w)                       -- an outline w pixels thick
+  for _, k in ipairs({{l, t, r - l, w}, {l, b - w, r - l, w}, {l, t, w, b - t}, {r - w, t, w, b - t}}) do
+    cmds[#cmds + 1] = string.format("%s -q -b -k top=%d,left=%d,width=%d,height=%d -B BLACK", FBINK, k[2], k[1], k[3], k[4])
+  end
+end
+
 local function failed(why, n)
   text("Station not answering", 24, 330, 34, true)
   text(why, 24, 384, 22, false)
   text("Trying again every " .. EVERY .. " s", 24, 424, 22, false)
+  local l, t, r, b = BOX[1], BOX[2], BOX[3], BOX[4]
+  box(l, t, r, b, 4)
+  text("Try now", l + 150, t + 30, 34, true, r - 8)
+  text("Touch anywhere else to leave", 24, b + 30, 22, false)
   draw(n % 6 == 0)
+  local f = io.open(RETRY_BOX, "w"); if f then f:write(table.concat(BOX, " "), "\n"); f:close() end
+end
+
+-- After a drop the Kindle rejoins Wi-Fi only when its own interface wants the network (a book, the
+-- store), never for a script, so a dropped connection stayed down until someone left the screen and
+-- opened something (measured 2026-11-21: 75 minutes). Asked directly, it is back in about 5 s.
+local function wifi_up()
+  local p = io.popen("wpa_cli -i wlan0 status 2>/dev/null"); local s = p:read("*a"); p:close()
+  return s:find("wpa_state=COMPLETED", 1, true) ~= nil
+end
+local function rejoin()
+  if wifi_up() then return false end
+  io.stderr:write(os.date() .. " Wi-Fi down; asking it to reconnect\n")
+  os.execute("wpa_cli -i wlan0 reconnect >/dev/null 2>&1")
+  for _ = 1, 45 do
+    if wifi_up() then os.execute("sleep 3"); io.stderr:write(os.date() .. " Wi-Fi back\n"); return true end
+    os.execute("sleep 1")
+  end
+  io.stderr:write(os.date() .. " Wi-Fi still down\n")
+  return false
+end
+
+local function trying()                                 -- the button was touched: say so before the wait
+  text("Trying now...", BOX[1] + 4, BOX[4] + 70, 26, true)
+  cmds[#cmds + 1] = FBINK .. " -q -s"
+  os.execute(table.concat(cmds, " ; ") .. " >/dev/null 2>&1")
+  cmds = {}
 end
 
 os.execute("lipc-set-prop com.lab126.powerd preventScreenSaver 1")
@@ -133,11 +175,19 @@ local n = 0
 while true do
   local f = io.open(STOP); if f then f:close(); os.remove(STOP); break end
   local cur = decode(fetch("/current.json"))
+  if not cur and rejoin() then cur = decode(fetch("/current.json")) end
   local ok, err
   if cur then ok, err = pcall(screen, cur, decode(fetch("/forecast.js")), n)
-  else ok, err = false, "no answer from " .. STATION end
-  if not ok then cmds = {}; failed(tostring(err), n); io.stderr:write(os.date() .. " " .. tostring(err) .. "\n") end
+  else ok, err = false, "no answer from " .. STATION .. (wifi_up() and "" or " (Wi-Fi is down)") end
+  if ok then os.remove(RETRY_BOX)
+  else cmds = {}; failed(tostring(err), n); io.stderr:write(os.date() .. " " .. tostring(err) .. "\n") end
   n = n + 1
-  os.execute("sleep " .. EVERY)
+  os.remove(RETRY)
+  for _ = 1, EVERY do                                   -- a second at a time, so a Try now is seen at once
+    if exists(RETRY) or exists(STOP) then break end
+    os.execute("sleep 1")
+  end
+  if exists(RETRY) then trying() end
 end
+os.remove(RETRY_BOX)
 os.execute("lipc-set-prop com.lab126.powerd preventScreenSaver 0")
