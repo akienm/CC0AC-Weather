@@ -389,6 +389,39 @@ class Import(unittest.TestCase):
         self.assertEqual((f["temp_f"], round(f["pressure_inhg"], 2), f["rain_day_in"], f["wind_mph"]),
                          (61.2, 30.05, 0.05, None))
 
+    def test_wu_throttled_waits_and_a_bad_key_stops(self):
+        import io
+        from datetime import date
+        calls, slept = [], []
+
+        def refused(text):
+            return urllib.error.HTTPError("u", 401, "Unauthorized", {}, io.BytesIO(text.encode()))
+
+        def day_of(answers):
+            def wu_day(station, key, day):
+                calls.append(day)
+                a = answers.pop(0)
+                if isinstance(a, Exception):
+                    raise a
+                return a
+            return wu_day
+        obs = [{"obsTimeUtc": "2021-10-16T12:00:00Z", "imperial": {"tempAvg": 50.0}}]
+        real = importer.wu_day, importer.time.sleep
+        importer.time.sleep = slept.append
+        try:
+            importer.wu_day = day_of([refused("API key is throttled"), obs])
+            rows = list(importer.rows_wu("S", "K", date(2021, 10, 16), date(2021, 10, 16), say=lambda m: None))
+            self.assertEqual((len(rows), len(calls)), (1, 2))            # the same day asked again
+            self.assertEqual(slept[0], importer.WU_THROTTLE_WAIT_S)
+            importer.wu_day = day_of([refused("Invalid apiKey.")])
+            with self.assertRaisesRegex(ValueError, "refused the API key"):
+                list(importer.rows_wu("S", "K", date(2021, 10, 16), date(2021, 10, 16), say=lambda m: None))
+            importer.wu_day = day_of([refused("API key is throttled") for _ in range(importer.WU_THROTTLE_TRIES + 1)])
+            with self.assertRaisesRegex(ValueError, "--from 2021-10-16"):
+                list(importer.rows_wu("S", "K", date(2021, 10, 16), date(2021, 10, 16), say=lambda m: None))
+        finally:
+            importer.wu_day, importer.time.sleep = real
+
 
 
 class PressureSeed(unittest.TestCase):

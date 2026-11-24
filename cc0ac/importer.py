@@ -374,16 +374,35 @@ def wu_fields(obs: dict) -> dict:
             "uv_index": obs.get("uvHigh")}
 
 
+WU_PACE_S = 2.1          # WU allows 30 calls a minute
+WU_THROTTLE_WAIT_S = 60  # a key over that is "throttled" for a few minutes (measured: about 5)
+WU_THROTTLE_TRIES = 30
+
+
 def rows_wu(station: str, key: str, start: date, end: date, say: Callable[[str], None] = print) -> Iterator[dict]:
     day = start
+    waits = 0
     while day <= end:
         try:
             observations = wu_day(station, key, day)
         except urllib.error.HTTPError as e:
             if e.code in (401, 403):
+                try:
+                    body = e.read().decode("utf-8", "replace")
+                except OSError:
+                    body = ""
+                if "throttle" in body.lower() and waits < WU_THROTTLE_TRIES:
+                    waits += 1
+                    say(f"  {day}: Weather Underground says too many requests; waiting a minute")
+                    time.sleep(WU_THROTTLE_WAIT_S)
+                    continue
+                if "throttle" in body.lower():
+                    raise ValueError(f"Weather Underground kept the key throttled for {waits} minutes; "
+                                     f"run the import again later with --from {day}") from e
                 raise ValueError("Weather Underground refused the API key (it's the key from My Profile → "
                                  "API Keys, not the station's upload password)") from e
             raise
+        waits = 0
         say(f"  {day}: {len(observations)} observations")
         for obs in observations:
             try:
@@ -392,4 +411,4 @@ def rows_wu(station: str, key: str, start: date, end: date, say: Callable[[str],
                 continue
             yield {"epoch": epoch, "fields": wu_fields(obs)}
         day += timedelta(days=1)
-        time.sleep(1)    # WU allows 30 calls a minute
+        time.sleep(WU_PACE_S)

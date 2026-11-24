@@ -1608,6 +1608,14 @@ it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
 
+**1.5.5** · Nov 24, 2026
+- **A Weather Underground import waits out WU's limit instead of stopping.\*\* WU allows
+  30 requests a minute; the import asked about 46 times a minute, and after some
+  hundreds of days WU answered "throttled" for about 5 minutes. The import read that
+  as a bad API key and stopped. It now asks 30 times a minute, and when throttled
+  waits a minute and asks again (for up to half an hour). A long import (years) runs
+  to the end.
+
 **1.5.4** · Nov 24, 2026
 - **Rain this year on the Records card\***, beside the normal year-to-date (NOAA's,
   or worked out from Open-Meteo's history). When the records begin after January 1
