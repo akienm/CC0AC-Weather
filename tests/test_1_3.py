@@ -138,13 +138,33 @@ class Records(unittest.TestCase):
 
     def test_noaa_rows_and_computed_averages(self):
         days = climate.noaa_days([{"DATE": "01-01", "DLY-TMAX-NORMAL": "47.8", "DLY-TMIN-NORMAL": "-9999"}])
-        self.assertEqual(days["01-01"], {"high": 47.8, "low": None, "rain_mtd": None})
+        self.assertEqual(days["01-01"], {"high": 47.8, "low": None, "rain_mtd": None, "rain_ytd": None})
         daily = {"time": ["1991-03-01", "1991-03-02", "1992-03-01", "1992-03-02"],
                  "temperature_2m_max": [50, 52, 54, None], "temperature_2m_min": [30, 31, 32, 33],
                  "precipitation_sum": [0.1, 0.2, 0.3, None]}
         out = climate.computed_days(daily)
-        self.assertEqual(out["03-01"], {"high": 52.0, "low": 31.0, "rain_mtd": 0.2})
-        self.assertEqual(out["03-02"], {"high": 52.0, "low": 32.0, "rain_mtd": 0.3})
+        self.assertEqual(out["03-01"], {"high": 52.0, "low": 31.0, "rain_mtd": 0.2, "rain_ytd": 0.2})
+        self.assertEqual(out["03-02"], {"high": 52.0, "low": 32.0, "rain_mtd": 0.3, "rain_ytd": 0.3})
+        # The year's rain runs on across months: Feb's 1.0 is in March's year-to-date, not its month-to-date.
+        out = climate.computed_days({"time": ["1991-02-28", "1991-03-01"], "temperature_2m_max": [50, 50],
+                                     "temperature_2m_min": [30, 30], "precipitation_sum": [1.0, 0.25]})
+        self.assertEqual((out["03-01"]["rain_mtd"], out["03-01"]["rain_ytd"]), (0.25, 1.25))
+
+    def test_rain_this_year(self):
+        days = [day("2025-12-31", rain_in=5.0), day("2026-01-01", rain_in=0.5),
+                day("2026-06-01", rain_in=None), day("2026-11-24", rain_in=0.25)]
+        self.assertEqual(climate.year_rain(days, "2026-11-24"), (0.75, None))               # from Jan 1: no "since"
+        self.assertEqual(climate.year_rain(days[2:], "2026-11-24"), (0.25, "2026-11-24"))   # a station new this year
+        self.assertEqual(climate.year_rain(days[:1], "2026-11-24"), (None, None))
+        kept = {"source": "NOAA", "station": "X", "miles": 3,
+                "days": {"10-03": {"rain_ytd": 10.0}, "11-24": {"rain_ytd": 12.5}}}
+        self.assertEqual(climate.year_rain_normal(kept, "2026-11-24", None), 12.5)
+        self.assertEqual(climate.year_rain_normal(kept, "2026-11-24", "2026-10-04"), 2.5)   # the same days only
+        self.assertIsNone(climate.year_rain_normal(kept, "2026-11-24", "2026-05-01"))      # no normal for Apr 30
+        self.assertIsNone(climate.year_rain_normal(None, "2026-11-24", None))
+        doc = climate.build([{"id": "1", "name": "Yard", "days": days[2:]}], "2026-11-24", kept)
+        s0 = doc["sensors"][0]
+        self.assertEqual((s0["year_rain"], s0["year_rain_since"]), (0.25, "2026-11-24"))
 
     def test_kept_normals_are_reused_and_an_old_copy_beats_none(self):
         with tempfile.TemporaryDirectory() as d:
@@ -156,6 +176,15 @@ class Records(unittest.TestCase):
             try:
                 self.assertEqual(climate.normals(1.0, 2.0, p, NOW)["source"], "s")
                 self.assertEqual(climate.normals(1.0, 2.0, p, NOW + 400 * 86400)["source"], "s")
+                # A fresh copy is kept as is; one from before the year's rain normal is fetched again.
+                fresh = {"lat": 1.0, "lon": 2.0, "fetched": NOW - 86400, "source": "kept", "station": None, "miles": 0,
+                         "days": {"01-01": {"high": 1.0, "low": 0.0, "rain_mtd": 0.0, "rain_ytd": 0.0}}}
+                p.write_text(json.dumps(fresh))
+                climate.fetch_normals = lambda lat, lon: {**fresh, "source": "fetched"}
+                self.assertEqual(climate.normals(1.0, 2.0, p, NOW)["source"], "kept")
+                del fresh["days"]["01-01"]["rain_ytd"]
+                p.write_text(json.dumps(fresh))
+                self.assertEqual(climate.normals(1.0, 2.0, p, NOW)["source"], "fetched")
             finally:
                 climate.fetch_normals = fetch
 

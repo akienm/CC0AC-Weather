@@ -812,6 +812,8 @@ function climateCard(cl) {
       ${row('🔺 High today', Units.num('temperature', s.high) + '°' + vsNormal('temperature', s.high, n.high, 0))}
       ${row('🔻 Low today', Units.num('temperature', s.low) + '°' + vsNormal('temperature', s.low, n.low, 0))}
       ${row('☔ Rain this month', Units.num('rain', s.month_rain) + (n.rain_mtd == null ? after('rain') : '') + vsNormal('rain', s.month_rain ?? 0, n.rain_mtd))}
+      ${row('☔ Rain this year' + (s.year_rain_since ? ` <span class="ts">since ${new Date(s.year_rain_since + 'T12:00').toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>` : ''),
+            Units.num('rain', s.year_rain) + (s.year_rain_normal == null ? after('rain') : '') + vsNormal('rain', s.year_rain ?? 0, s.year_rain_normal))}
       ${degreeDays(s.heating, '♨️', 'Heating')}
       ${degreeDays(s.cooling, '❄️', 'Cooling')}
       ${row(`💧 ${ET0} today`, Units.text('rain', s.et0?.today))}

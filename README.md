@@ -630,8 +630,11 @@ use [uPlot](https://github.com/leeoniya/uPlot), loaded from jsDelivr.
 ### Records and normals
 
 A Records card on the dashboard sets today against normal: the high and low
-beside the 1991-2020 normals for the date, and the month's rain so far beside
-the normal month-to-date. Below that come the station's records for this month,
+beside the 1991-2020 normals for the date, and the month's and the year's rain so
+far beside the normal month-to-date and year-to-date. A station whose records
+begin partway through the year says "since" the day they begin, and its year's
+rain is set against the normal for those same days, so a station new in October
+isn't shown as dry. Readings brought in with `--import` fill the year out. Below that come the station's records for this month,
 this year and all time: hottest, coldest, highest gust, wettest day and the
 pressure range, each with its date. Records count from the station's first
 reading here, or from older readings brought in with `--import` (see
@@ -1605,13 +1608,19 @@ it. **\*** marks what is written but not yet tested: run, that is, not just
 read. [What it runs on](#what-it-runs-on-and-whats-been-tested) says what each
 tested part ran on.
 
-**1.5.3** · Nov 21, 2026
+**1.5.4** · Nov 24, 2026
+- **Rain this year on the Records card\***, beside the normal year-to-date (NOAA's,
+  or worked out from Open-Meteo's history). When the records begin after January 1
+  it says since when, and the normal is for those same days only. Normals kept from
+  before this version are fetched again once, to get the year's figure.
 - **The Kindle screen has a Try now button** when the station isn't answering: touch it
   to try at once, or anywhere else to leave. Tested on a Kindle 8th gen.
 - **The Kindle screen rejoins Wi-Fi after a drop.\*** The Kindle doesn't rejoin by itself
   while the weather shows, so one stayed off Wi-Fi for 75 minutes. Asked directly, it is
   back in about 5 seconds; the screen now asks whenever the station can't be reached,
   and says "Wi-Fi is down" if it stays down.
+
+**1.5.3** · Nov 21, 2026
 - **"The hub hasn't heard any sensor" no longer fires when a batch is a few seconds
   late.** The hub sends every 5 minutes and the alert also waited 5, so a batch that
   came a little late raised the alert, and it cleared a minute later. One station

@@ -44,7 +44,7 @@ import math
 import time
 import urllib.parse
 import urllib.request
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -85,6 +85,26 @@ def records(days: list[dict], today: str) -> dict:
 def month_rain(days: list[dict], today: str) -> float | None:
     rain = [d["rain_in"] for d in days if d["day"][:7] == today[:7] and d.get("rain_in") is not None]
     return round(sum(rain), 2) if rain else None
+
+
+def year_rain(days: list[dict], today: str) -> tuple[float | None, str | None]:
+    """This year's rain, and the day it is counted from when the records begin
+    after January 1 (a station new this year), else None."""
+    have = [d for d in days if d["day"][:4] == today[:4] and d["day"] <= today and d.get("rain_in") is not None]
+    if not have:
+        return None, None
+    first = min(d["day"] for d in have)
+    return round(sum(d["rain_in"] for d in have), 2), (first if first[5:] != "01-01" else None)
+
+
+def year_rain_normal(kept: dict | None, today: str, since: str | None) -> float | None:
+    """The normal rain from January 1 (or from since) through today: the
+    year-to-date normal today, less the year-to-date normal the day before since."""
+    now = (normal_for(kept, today) or {}).get("rain_ytd")
+    if now is None or since is None:
+        return now
+    before = (normal_for(kept, (date.fromisoformat(since) - timedelta(days=1)).isoformat()) or {}).get("rain_ytd")
+    return None if before is None else round(max(0.0, now - before), 2)
 
 
 # ── Degree days and evapotranspiration ────────────────────────────────────────
@@ -188,29 +208,33 @@ def _number(v: Any) -> float | None:
 
 
 def noaa_days(rows: list[dict]) -> dict:
-    """NCEI daily normals rows → "MM-DD" → {high, low, rain_mtd}."""
+    """NCEI daily normals rows → "MM-DD" → {high, low, rain_mtd, rain_ytd}."""
     return {r["DATE"]: {"high": _number(r.get("DLY-TMAX-NORMAL")), "low": _number(r.get("DLY-TMIN-NORMAL")),
-                        "rain_mtd": _number(r.get("MTD-PRCP-NORMAL"))}
+                        "rain_mtd": _number(r.get("MTD-PRCP-NORMAL")), "rain_ytd": _number(r.get("YTD-PRCP-NORMAL"))}
             for r in rows if isinstance(r, dict) and r.get("DATE")}
 
 
 def computed_days(daily: dict) -> dict:
-    """Open-Meteo's 1991-2020 daily history → "MM-DD" → {high, low, rain_mtd},
-    each the average over the years. rain_mtd is the month's rain up to that
-    day, averaged, as NOAA gives it."""
+    """Open-Meteo's 1991-2020 daily history → "MM-DD" → {high, low, rain_mtd, rain_ytd},
+    each the average over the years. rain_mtd (rain_ytd) is the month's (year's)
+    rain up to that day, averaged, as NOAA gives it."""
     sums: dict[str, list] = {}
     month_so_far: dict = {}
+    year_so_far: dict = {}
     for day, hi, lo, rain in zip(daily["time"], daily["temperature_2m_max"],
                                  daily["temperature_2m_min"], daily["precipitation_sum"]):
         ym, md = day[:7], day[5:]
         if rain is not None:
             month_so_far[ym] = month_so_far.get(ym, 0.0) + rain
-        s = sums.setdefault(md, [[], [], []])
-        for i, v in enumerate((hi, lo, month_so_far.get(ym) if rain is not None else None)):
+            year_so_far[day[:4]] = year_so_far.get(day[:4], 0.0) + rain
+        s = sums.setdefault(md, [[], [], [], []])
+        for i, v in enumerate((hi, lo, month_so_far.get(ym) if rain is not None else None,
+                               year_so_far.get(day[:4]) if rain is not None else None)):
             if v is not None:
                 s[i].append(v)
     avg = lambda v: round(sum(v) / len(v), 2) if v else None
-    return {md: {"high": avg(s[0]), "low": avg(s[1]), "rain_mtd": avg(s[2])} for md, s in sorted(sums.items())}
+    return {md: {"high": avg(s[0]), "low": avg(s[1]), "rain_mtd": avg(s[2]), "rain_ytd": avg(s[3])}
+            for md, s in sorted(sums.items())}
 
 
 def fetch_normals(lat: float, lon: float) -> dict:
@@ -222,7 +246,7 @@ def fetch_normals(lat: float, lon: float) -> dict:
         near = nearest_noaa(lat, lon, search)
         if near:
             rows = _get_json(NCEI_DATA, {"dataset": "normals-daily", "stations": near[0],
-                                         "dataTypes": "DLY-TMAX-NORMAL,DLY-TMIN-NORMAL,MTD-PRCP-NORMAL",
+                                         "dataTypes": "DLY-TMAX-NORMAL,DLY-TMIN-NORMAL,MTD-PRCP-NORMAL,YTD-PRCP-NORMAL",
                                          "startDate": "2010-01-01", "endDate": "2010-12-31",
                                          "format": "json", "units": "standard"})
             days = noaa_days(rows)
@@ -245,7 +269,8 @@ def normals(lat: float, lon: float, path: Path, now: float) -> dict | None:
         kept = json.loads(path.read_text())
     except (OSError, ValueError):
         kept = None
-    if kept and (kept.get("lat"), kept.get("lon")) == (lat, lon) and now - kept.get("fetched", 0) < NORMALS_KEEP_S:
+    if (kept and (kept.get("lat"), kept.get("lon")) == (lat, lon) and now - kept.get("fetched", 0) < NORMALS_KEEP_S
+            and "rain_ytd" in next(iter(kept.get("days", {}).values()), {})):   # older copies lack the year's rain
         return kept
     try:
         fresh = fetch_normals(lat, lon)
@@ -274,9 +299,12 @@ def build(sensors: list[dict], today: str, kept_normals: dict | None,
     out: dict[str, Any] = {"today": today, "normal": normal_for(kept_normals, today), "sensors": []}
     for s in sensors:
         now: dict = next((d for d in s["days"] if d["day"] == today), {})
+        year, since = year_rain(s["days"], today)
         out["sensors"].append({"id": s["id"], "name": s["name"],
                                "high": now.get("temp_max"), "low": now.get("temp_min"),
                                "month_rain": month_rain(s["days"], today),
+                               "year_rain": year, "year_rain_since": since,
+                               "year_rain_normal": year_rain_normal(kept_normals, today, since),
                                "since": s["days"][0]["day"] if s["days"] else None,
                                "records": records(s["days"], today),
                                **degree_days_and_et0(s["days"], today, lat, bases)})
